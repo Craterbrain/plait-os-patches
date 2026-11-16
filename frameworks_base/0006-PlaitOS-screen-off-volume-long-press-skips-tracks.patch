@@ -1,0 +1,262 @@
+From 414cacf8253be583c81e087d7c2f3d49224ecbba Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 17:21:18 -0600
+Subject: [PATCH 06/75] PlaitOS: screen-off volume long-press skips tracks
+
+Port of LineageOS's volume rocker music controls: Simon Shields' PhoneWindowManager hook
+(LineageOS frameworks_base dc15f1f9ef2a, "PhoneWindowManager: add LineageButtons volumekey hook")
+and LineageButtons from lineage-sdk (The LineageOS Project, Apache-2.0).
+
+Changes from LineageOS: a framework-local VolumeKeyMusicControls class instead of lineage-sdk,
+the plain Settings.System key plait_volbtn_music_controls (off by default), and a null check so
+a volume press before systemBooted() cannot crash system_server.
+
+Co-authored-by: Simon Shields <simon@lineageos.org>
+---
+ .../server/policy/PhoneWindowManager.java     |   9 +
+ .../server/policy/VolumeKeyMusicControls.java | 199 ++++++++++++++++++
+ 2 files changed, 208 insertions(+)
+ create mode 100644 services/core/java/com/android/server/policy/VolumeKeyMusicControls.java
+
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index a8b99a214..9f35e44e9 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -728,6 +728,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     // Whether or not the device supports interactive doze.
+     private boolean mInteractiveDozeEnabled;
+ 
++    // Created in systemBooted(); null before that, so volume keys behave normally during boot
++    private VolumeKeyMusicControls mVolumeKeyMusicControls;
++
+     private final boolean mVisibleBackgroundUsersEnabled = isVisibleBackgroundUsersEnabled();
+ 
+     private static final int MSG_DISPATCH_MEDIA_KEY_WITH_WAKE_LOCK = 3;
+@@ -4732,6 +4735,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                     // {@link interceptKeyBeforeDispatching()}.
+                     result |= ACTION_PASS_TO_USER;
+                 } else if ((result & ACTION_PASS_TO_USER) == 0) {
++                    if (mVolumeKeyMusicControls != null
++                            && mVolumeKeyMusicControls.handleVolumeKey(event, interactive)) {
++                        break;
++                    }
++
+                     // If we aren't passing to the user and no one else
+                     // handled it send it to the session manager to
+                     // figure out.
+@@ -6046,6 +6054,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                 mKeyguardDelegate.onBootCompleted();
+             }
+         }
++        mVolumeKeyMusicControls = new VolumeKeyMusicControls(mContext);
+         mSideFpsEventHandler.onFingerprintSensorReady();
+         startedWakingUp(
+                 Display.DEFAULT_DISPLAY_GROUP,
+diff --git a/services/core/java/com/android/server/policy/VolumeKeyMusicControls.java b/services/core/java/com/android/server/policy/VolumeKeyMusicControls.java
+new file mode 100644
+index 000000000..abf9d4c84
+--- /dev/null
++++ b/services/core/java/com/android/server/policy/VolumeKeyMusicControls.java
+@@ -0,0 +1,199 @@
++/*
++ * SPDX-FileCopyrightText: The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * Ported to PlaitOS from lineage-sdk (sdk/src/java/org/lineageos/internal/buttons/LineageButtons.java,
++ * lineage-24.0): reads the plain Settings.System key plait_volbtn_music_controls instead of
++ * LineageSettings, and is off unless the user turns it on.
++ */
++
++package com.android.server.policy;
++
++import android.content.ContentResolver;
++import android.content.Context;
++import android.content.res.Resources;
++import android.database.ContentObserver;
++import android.media.AudioManager;
++import android.media.session.MediaController;
++import android.media.session.MediaSessionLegacyHelper;
++import android.media.session.MediaSessionManager;
++import android.media.session.PlaybackState;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.Message;
++import android.os.UserHandle;
++import android.provider.Settings;
++import android.util.Slog;
++import android.view.KeyEvent;
++import android.view.ViewConfiguration;
++
++import java.util.List;
++
++/** Screen off: long-press volume up / down skips to the next / previous track of the playing media session. */
++final class VolumeKeyMusicControls {
++    private final String TAG = "VolumeKeyMusicControls";
++    static final String SETTING = "plait_volbtn_music_controls";
++    private final boolean DEBUG = false;
++
++    private static final int MSG_DISPATCH_VOLKEY_WITH_WAKELOCK = 1;
++
++    private final Context mContext;
++    private final ButtonHandler mHandler;
++    private final MediaSessionManager mMediaSessionManager;
++
++    private boolean mIsLongPress = false;
++
++    private boolean mVolBtnMusicControls = false;
++
++    private class ButtonHandler extends Handler {
++        ButtonHandler() {
++            super(Looper.getMainLooper());
++        }
++
++        @Override
++        public void handleMessage(Message msg) {
++            switch (msg.what) {
++                case MSG_DISPATCH_VOLKEY_WITH_WAKELOCK:
++                    KeyEvent ev = (KeyEvent) msg.obj;
++                    mIsLongPress = true;
++                    if (DEBUG) {
++                        Slog.d(TAG, "Dispatching key to audio service");
++                    }
++                    onSkipTrackEvent(ev);
++                    break;
++            }
++        }
++    }
++
++    VolumeKeyMusicControls(Context context) {
++        mContext = context;
++        mHandler = new ButtonHandler();
++        mMediaSessionManager = mContext.getSystemService(MediaSessionManager.class);
++
++        SettingsObserver observer = new SettingsObserver(new Handler(Looper.getMainLooper()));
++        observer.observe();
++    }
++
++    public boolean handleVolumeKey(KeyEvent event, boolean isInteractive) {
++        final boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
++        final int keyCode = event.getKeyCode();
++
++        if (isInteractive) {
++            // nothing to do here for now
++            if (DEBUG) {
++                Slog.d(TAG, "Skipping because interactive");
++            }
++            return false;
++        }
++
++        switch (keyCode) {
++            case KeyEvent.KEYCODE_VOLUME_DOWN:
++            case KeyEvent.KEYCODE_VOLUME_UP:
++                if (!mVolBtnMusicControls) {
++                    return false;
++                }
++
++                if (down) {
++                    mIsLongPress = false;
++                    // queue skip event
++                    int newKeyCode = (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
++                            ? KeyEvent.KEYCODE_MEDIA_PREVIOUS
++                            : KeyEvent.KEYCODE_MEDIA_NEXT);
++
++                    KeyEvent newEvent = new KeyEvent(event.getDownTime(), event.getEventTime(),
++                            event.getAction(), newKeyCode, 0);
++                    if (DEBUG) {
++                        Slog.d(TAG, "Queueing media " +
++                                (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ? "previous" : "next") +
++                                " event " + newEvent);
++                    }
++                    Message msg = mHandler.obtainMessage(MSG_DISPATCH_VOLKEY_WITH_WAKELOCK,
++                            newEvent);
++                    msg.setAsynchronous(true);
++                    mHandler.sendMessageDelayed(msg, ViewConfiguration.getLongPressTimeout());
++                } else {
++                    // cancel skip event
++                    mHandler.removeMessages(MSG_DISPATCH_VOLKEY_WITH_WAKELOCK);
++
++                    if (mIsLongPress) {
++                        // if key was long pressed, media next/prev action has been performed,
++                        // so don't change volume
++                        break;
++                    }
++                    // sendVolumeKeyEvent will only change the volume on ACTION_DOWN,
++                    // so fake the ACTION_DOWN event.
++                    KeyEvent newEvent = new KeyEvent(KeyEvent.ACTION_DOWN, keyCode);
++                    MediaSessionLegacyHelper.getHelper(mContext).sendVolumeKeyEvent(newEvent,
++                            AudioManager.USE_DEFAULT_STREAM_TYPE, true);
++                }
++                break;
++            default:
++                // key unhandled
++                return false;
++        }
++        return true;
++    }
++
++    private void triggerKeyEvents(KeyEvent evDown, MediaController controller) {
++        final KeyEvent evUp = KeyEvent.changeAction(evDown, KeyEvent.ACTION_UP);
++        mHandler.post(() -> controller.dispatchMediaButtonEvent(evDown));
++        mHandler.postDelayed(() -> controller.dispatchMediaButtonEvent(evUp), 20);
++    }
++
++    public void onSkipTrackEvent(KeyEvent ev) {
++        if (mMediaSessionManager != null) {
++            final List<MediaController> sessions = mMediaSessionManager.getActiveSessionsForUser(
++                    null, UserHandle.ALL);
++            for (MediaController mediaController : sessions) {
++                if (PlaybackState.STATE_PLAYING ==
++                        getMediaControllerPlaybackState(mediaController)) {
++                    triggerKeyEvents(ev, mediaController);
++                    break;
++                }
++            }
++        }
++    }
++
++    private int getMediaControllerPlaybackState(MediaController controller) {
++        if (controller != null) {
++            final PlaybackState playbackState = controller.getPlaybackState();
++            if (playbackState != null) {
++                return playbackState.getState();
++            }
++        }
++        return PlaybackState.STATE_NONE;
++    }
++
++    class SettingsObserver extends ContentObserver {
++        SettingsObserver(Handler handler) {
++            super(handler);
++        }
++
++        void observe() {
++            ContentResolver resolver = mContext.getContentResolver();
++
++            resolver.registerContentObserver(Settings.System.getUriFor(SETTING),
++                            false, this, UserHandle.USER_ALL);
++
++            update();
++        }
++
++        @Override
++        public void onChange(boolean selfChange) {
++            update();
++        }
++
++        private void update() {
++            ContentResolver resolver = mContext.getContentResolver();
++            Resources res = mContext.getResources();
++
++            mVolBtnMusicControls = Settings.System.getIntForUser(
++                    resolver, SETTING, 0,
++                    UserHandle.USER_CURRENT) == 1;
++
++            if (DEBUG) {
++                Slog.d(TAG, "music controls enabled = " + mVolBtnMusicControls);
++            }
++        }
++    }
++}
+-- 
+2.56.0
+

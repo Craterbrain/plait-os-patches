@@ -1,0 +1,116 @@
+From aa792905defef418ea1b95e6171d206b3a5e09d9 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 14:49:44 -0600
+Subject: [PATCH 15/15] PlaitOS: icon pack from the system-wide setting
+
+The launcher's global icon pack is now Settings.Secure plait_icon_pack,
+picked in Wallpaper & style and also used by the framework for other
+apps, instead of a launcher preference with its own picker. When it
+changes, the launcher reloads every app icon (calendar and clock icons
+too) and updates the pref_icon_pack preference, so recents clears its
+task icons as before. Per-app overrides stay in the launcher.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../launcher3/customization/IconDatabase.java | 19 +++++++++++----
+ .../launcher3/icons/pack/IconPackManager.java | 24 +++++++++++++++++++
+ 2 files changed, 39 insertions(+), 4 deletions(-)
+
+diff --git a/src/com/android/launcher3/customization/IconDatabase.java b/src/com/android/launcher3/customization/IconDatabase.java
+index c143a52..7a401dd 100644
+--- a/src/com/android/launcher3/customization/IconDatabase.java
++++ b/src/com/android/launcher3/customization/IconDatabase.java
+@@ -2,25 +2,36 @@ package com.android.launcher3.customization;
+ 
+ import android.content.Context;
+ import android.content.SharedPreferences;
++import android.provider.Settings;
+ 
+ import com.android.launcher3.BuildConfig;
+ import com.android.launcher3.util.ComponentKey;
+ 
+ public class IconDatabase {
+     private static final String PREF_FILE_NAME = BuildConfig.APPLICATION_ID + ".ICON_DATABASE";
+-    private static final String KEY_GLOBAL = "global";
++    /**
++     * Launcher preference that mirrors the global pack, so the launcher's preference listeners
++     * (recents' TaskIconCache) hear when it changes. IconPackManager keeps it up to date.
++     */
++    public static final String KEY_ICON_PACK = "pref_icon_pack";
++    /**
++     * PlaitOS: the icon pack is a system-wide setting (Settings.Secure, picked in Wallpaper &
++     * style), also used outside the launcher, instead of a launcher preference.
++     */
++    public static final String SETTING_ICON_PACK = "plait_icon_pack";
+     private static final String VALUE_DEFAULT = "";
+ 
+     public static String getGlobal(Context context) {
+-        return getIconPackPrefs(context).getString(KEY_GLOBAL, VALUE_DEFAULT);
++        String value = Settings.Secure.getString(context.getContentResolver(), SETTING_ICON_PACK);
++        return value != null ? value : VALUE_DEFAULT;
+     }
+ 
+     public static void setGlobal(Context context, String value) {
+-        getIconPackPrefs(context).edit().putString(KEY_GLOBAL, value).apply();
++        Settings.Secure.putString(context.getContentResolver(), SETTING_ICON_PACK, value);
+     }
+ 
+     public static void resetGlobal(Context context) {
+-        getIconPackPrefs(context).edit().remove(KEY_GLOBAL).apply();
++        Settings.Secure.putString(context.getContentResolver(), SETTING_ICON_PACK, VALUE_DEFAULT);
+     }
+ 
+     public static String getByComponent(Context context, ComponentKey key) {
+diff --git a/src/com/android/launcher3/icons/pack/IconPackManager.java b/src/com/android/launcher3/icons/pack/IconPackManager.java
+index 8c54880..6a3c416 100644
+--- a/src/com/android/launcher3/icons/pack/IconPackManager.java
++++ b/src/com/android/launcher3/icons/pack/IconPackManager.java
+@@ -7,6 +7,8 @@ import android.content.Intent;
+ import android.content.IntentFilter;
+ import android.content.pm.ApplicationInfo;
+ import android.content.pm.PackageManager;
++import android.database.ContentObserver;
++import android.provider.Settings;
+ import android.content.pm.ResolveInfo;
+ import android.os.Handler;
+ import android.util.Log;
+@@ -25,6 +27,7 @@ import java.util.Map;
+ import java.util.Set;
+ 
+ import com.android.launcher3.customization.IconDatabase;
++import com.android.launcher3.LauncherPrefs;
+ import com.android.launcher3.util.AppReloader;
+ 
+ public class IconPackManager extends BroadcastReceiver {
+@@ -74,6 +77,27 @@ public class IconPackManager extends BroadcastReceiver {
+ 
+         // Called when any app has been installed, enabled, disabled, updated or deleted.
+         context.getApplicationContext().registerReceiver(this, filter, null, mHandler);
++
++        // PlaitOS: the pack is chosen outside the launcher (Wallpaper & style); follow it
++        context.getContentResolver().registerContentObserver(
++                Settings.Secure.getUriFor(IconDatabase.SETTING_ICON_PACK), false,
++                new ContentObserver(mHandler) {
++                    @Override
++                    public void onChange(boolean selfChange) {
++                        onGlobalPackChanged();
++                    }
++                });
++    }
++
++    private void onGlobalPackChanged() {
++        String global = IconDatabase.getGlobal(mContext);
++        Log.d(TAG, "Global icon pack is now " + (global.isEmpty() ? "none" : global));
++        reloadProviders();
++        // Tell the launcher's preference listeners (recents clears its task icons)
++        LauncherPrefs.getPrefs(mContext).edit()
++                .putString(IconDatabase.KEY_ICON_PACK, IconDatabase.getGlobal(mContext)).apply();
++        // Every app icon, including calendar and clock icons
++        AppReloader.get(mContext).reload();
+     }
+ 
+     @Override
+-- 
+2.56.0
+

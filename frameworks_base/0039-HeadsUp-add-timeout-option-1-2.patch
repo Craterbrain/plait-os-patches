@@ -1,0 +1,80 @@
+From 303360a86508168b4f8733c81db70c50298fef0b Mon Sep 17 00:00:00 2001
+From: Lars Greiss <kufikugel@googlemail.com>
+Date: Sat, 26 Mar 2016 21:18:14 -0400
+Subject: [PATCH 39/75] HeadsUp: add timeout option (1/2)
+
+Forward ported to marshmallow/nougat By: BeansTown106
+this was basically a rewrite as everything about it changed
+
+Squashed:
+
+    From: Pranav Vashi <neobuddy89@gmail.com>
+    Date: Fri, 15 Apr 2022 21:20:04 +0530
+    Subject: HeadsUp: Change heads up timeout to seconds
+
+Change-Id: I9c88d67d25440dff8f545e1330da672be5d36913
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ .../notification/headsup/HeadsUpManagerImpl.java | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java b/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
+index c9de3c3e8..c8c4f1c2b 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
+@@ -24,6 +24,8 @@ import android.content.res.Resources;
+ import android.database.ContentObserver;
+ import android.graphics.Region;
+ import android.os.Handler;
++import android.os.UserHandle;
++import android.provider.Settings;
+ import android.util.ArrayMap;
+ import android.util.ArraySet;
+ import android.util.Log;
+@@ -119,8 +121,9 @@ public class HeadsUpManagerImpl
+     private final int mMinimumDisplayTimeDefault;
+     private final int mMinimumDisplayTimeForUserInitiated;
+     private final int mStickyForSomeTimeAutoDismissTime;
+-    private final int mAutoDismissTime;
++    private int mAutoDismissTime;
+     private final DelayableExecutor mExecutor;
++    private final int mDecayDefault;
+ 
+     private final int mExtensionTime;
+ 
+@@ -204,7 +207,10 @@ public class HeadsUpManagerImpl
+                 R.integer.heads_up_notification_minimum_time_for_user_initiated);
+         mStickyForSomeTimeAutoDismissTime = resources.getInteger(
+                 R.integer.sticky_heads_up_notification_time);
+-        mAutoDismissTime = resources.getInteger(R.integer.heads_up_notification_decay);
++        mDecayDefault = resources.getInteger(R.integer.heads_up_notification_decay) / 1000;
++        mAutoDismissTime = Settings.System.getIntForUser(context.getContentResolver(),
++                Settings.System.HEADS_UP_TIMEOUT,
++                mDecayDefault, UserHandle.USER_CURRENT) * 1000;
+         mExtensionTime = resources.getInteger(R.integer.ambient_notification_extension_time);
+         mTouchAcceptanceDelay = resources.getInteger(R.integer.touch_acceptance_delay);
+         mSnoozedPackages = new ArrayMap<>();
+@@ -222,12 +228,18 @@ public class HeadsUpManagerImpl
+                     mSnoozeLengthMs = packageSnoozeLengthMs;
+                     mLogger.logSnoozeLengthChange(packageSnoozeLengthMs);
+                 }
++                mAutoDismissTime = Settings.System.getIntForUser(
++                    context.getContentResolver(), Settings.System.HEADS_UP_TIMEOUT,
++                    mDecayDefault, UserHandle.USER_CURRENT) * 1000;
+             }
+         };
+         globalSettings.registerContentObserverAsync(
+                 globalSettings.getUriFor(SETTING_HEADS_UP_SNOOZE_LENGTH_MS),
+                 /* notifyForDescendants= */ false,
+                 settingsObserver);
++        context.getContentResolver().registerContentObserver(
++                Settings.System.getUriFor(Settings.System.HEADS_UP_TIMEOUT), false,
++                settingsObserver);
+ 
+         statusBarStateController.addCallback(mStatusBarStateListener);
+         updateResources();
+-- 
+2.56.0
+

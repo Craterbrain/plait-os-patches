@@ -1,0 +1,76 @@
+From d5f679f29c732860ac1bdb183c1f9d416a29953e Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 18:43:48 -0600
+Subject: [PATCH 13/75] PlaitOS: adapt advanced restart to GrapheneOS
+
+- Inline lineage-sdk's PowerMenuUtils.isAdvancedRestartPossible: shown only when
+  Settings.Secure plait_advanced_reboot is on, for the primary user, and never while a secure
+  lock screen is showing
+- config_restartActionsList moves into SystemUI's plait_config.xml (same defaults as LineageOS:
+  restart, recovery, bootloader, fastbootd)
+---
+ packages/SystemUI/res/values/plait_config.xml    | 12 ++++++++++++
+ .../globalactions/GlobalActionsDialogLite.java   | 16 ++++++++++++----
+ 2 files changed, 24 insertions(+), 4 deletions(-)
+ create mode 100644 packages/SystemUI/res/values/plait_config.xml
+
+diff --git a/packages/SystemUI/res/values/plait_config.xml b/packages/SystemUI/res/values/plait_config.xml
+new file mode 100644
+index 000000000..3c5b0a4d3
+--- /dev/null
++++ b/packages/SystemUI/res/values/plait_config.xml
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS SystemUI configuration for features ported from LineageOS (Apache-2.0). -->
++<resources>
++    <!-- Actions shown in the advanced restart submenu (from LineageOS's config_restartActionsList).
++         Valid items: restart, restart_recovery, restart_bootloader, restart_download, restart_fastboot -->
++    <string-array name="config_restartActionsList" translatable="false">
++        <item>restart</item>
++        <item>restart_recovery</item>
++        <item>restart_bootloader</item>
++        <item>restart_fastboot</item>
++    </string-array>
++</resources>
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+index 153d3a71c..3a2c00ccd 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+@@ -165,7 +165,6 @@ import dagger.assisted.Assisted;
+ import dagger.assisted.AssistedFactory;
+ import dagger.assisted.AssistedInject;
+ 
+-import org.lineageos.internal.util.PowerMenuUtils;
+ 
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -678,14 +677,23 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         }
+     }
+ 
++    /**
++     * Advanced restart (recovery, bootloader, fastbootd): only when the user turned it on
++     * (Settings.Secure plait_advanced_reboot), for the primary user, and never while a secure
++     * lock screen is showing. Inlined from lineage-sdk's PowerMenuUtils.isAdvancedRestartPossible.
++     */
+     private boolean shouldShowRestartSubmenu() {
+-        return PowerMenuUtils.isAdvancedRestartPossible(mContext);
++        final android.app.KeyguardManager km = mContext.getSystemService(android.app.KeyguardManager.class);
++        final boolean keyguardLocked = km != null && km.inKeyguardRestrictedInputMode() && km.isKeyguardSecure();
++        final boolean enabled = android.provider.Settings.Secure.getInt(mContext.getContentResolver(),
++                "plait_advanced_reboot", 0) == 1;
++        final boolean isPrimaryUser = android.os.UserHandle.getCallingUserId() == android.os.UserHandle.USER_SYSTEM;
++        return enabled && !keyguardLocked && isPrimaryUser;
+     }
+ 
+     @VisibleForTesting
+     String[] getRestartActions() {
+-        return mResources.getStringArray(
+-                org.lineageos.platform.internal.R.array.config_restartActionsList);
++        return mResources.getStringArray(R.array.config_restartActionsList);
+     }
+ 
+     @VisibleForTesting
+-- 
+2.56.0
+

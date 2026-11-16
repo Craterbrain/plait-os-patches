@@ -1,0 +1,385 @@
+From 47f9927f20fba605127a639c79604b66f223f637 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 18:51:34 -0600
+Subject: [PATCH 16/75] PlaitOS: navigation bar long-press actions (home, back)
+ with power menu and kill app
+
+Selective port of LineageOS's hardware keys custom rebinding (frameworks_base 61456c0d9311,
+Phil Tunstall et al.): the performKeyAction dispatcher and SystemUI's hand-off of a home
+long press to PhoneWindowManager, plus DeviceKeysConstants.Action and ActionUtils
+(killForegroundApp, switchToLastApp) from lineage-sdk (The LineageOS Project, Apache-2.0).
+
+PlaitOS changes: only the 3-button navigation bar keys (home long press, back long press);
+a new POWER_MENU action; Settings.System plait_home_long_press_action and
+plait_back_long_press_action, where unset keeps the stock behavior (assistant on home);
+screenshots through ScreenshotHelper as Android 17 does; framework string for the kill toast.
+
+Co-authored-by: Phil Tunstall <ptunstall@gmail.com>
+---
+ core/res/res/values/plait_strings.xml         |   6 +
+ core/res/res/values/plait_symbols.xml         |   5 +
+ .../navigationbar/views/NavigationBar.java    |  10 ++
+ .../server/policy/PhoneWindowManager.java     |  95 ++++++++++-
+ .../server/policy/PlaitKeyActions.java        | 156 ++++++++++++++++++
+ 5 files changed, 271 insertions(+), 1 deletion(-)
+ create mode 100644 core/res/res/values/plait_strings.xml
+ create mode 100644 core/res/res/values/plait_symbols.xml
+ create mode 100644 services/core/java/com/android/server/policy/PlaitKeyActions.java
+
+diff --git a/core/res/res/values/plait_strings.xml b/core/res/res/values/plait_strings.xml
+new file mode 100644
+index 000000000..8651e907e
+--- /dev/null
++++ b/core/res/res/values/plait_strings.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS framework strings. -->
++<resources>
++    <!-- Toast shown after a navigation bar key killed the foreground app (from LineageOS's app_killed_message). -->
++    <string name="plait_app_killed_message">App killed</string>
++</resources>
+diff --git a/core/res/res/values/plait_symbols.xml b/core/res/res/values/plait_symbols.xml
+new file mode 100644
+index 000000000..4009642ee
+--- /dev/null
++++ b/core/res/res/values/plait_symbols.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS framework resources used from Java (private symbols). -->
++<resources>
++    <java-symbol type="string" name="plait_app_killed_message" />
++</resources>
+diff --git a/packages/SystemUI/src/com/android/systemui/navigationbar/views/NavigationBar.java b/packages/SystemUI/src/com/android/systemui/navigationbar/views/NavigationBar.java
+index c0ded474f..9d516bbe2 100644
+--- a/packages/SystemUI/src/com/android/systemui/navigationbar/views/NavigationBar.java
++++ b/packages/SystemUI/src/com/android/systemui/navigationbar/views/NavigationBar.java
+@@ -1490,6 +1490,16 @@ public class NavigationBar extends ViewController<NavigationBarView> implements
+         if (shouldDisableNavbarGestures()) {
+             return false;
+         }
++        // PlaitOS: when a home long-press action is chosen (Plait Settings), hand the long press to
++        // PhoneWindowManager as a key event, as LineageOS does; otherwise keep the stock assistant.
++        if (v instanceof KeyButtonView && android.provider.Settings.System.getIntForUser(
++                mContext.getContentResolver(), "plait_home_long_press_action", 0,
++                android.os.UserHandle.USER_CURRENT) != 0) {
++            KeyButtonView keyButtonView = (KeyButtonView) v;
++            keyButtonView.sendEvent(KeyEvent.ACTION_DOWN, KeyEvent.FLAG_LONG_PRESS);
++            keyButtonView.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_LONG_CLICKED);
++            return true;
++        }
+         mMetricsLogger.action(MetricsEvent.ACTION_ASSIST_LONG_PRESS);
+         mUiEventLogger.log(NavBarActionEvent.NAVBAR_ASSIST_LONGPRESS);
+         Bundle args = new Bundle();
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 35a3dfc10..e99236691 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -735,6 +735,10 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     // Whether or not the device supports interactive doze.
+     private boolean mInteractiveDozeEnabled;
+ 
++    // Navigation bar key actions chosen in Plait Settings (NOTHING = stock behavior)
++    private PlaitKeyActions.Action mHomeLongPressAction = PlaitKeyActions.Action.NOTHING;
++    private PlaitKeyActions.Action mBackLongPressAction = PlaitKeyActions.Action.NOTHING;
++
+     // Created in systemBooted(); null before that, so volume keys behave normally during boot
+     private VolumeKeyMusicControls mVolumeKeyMusicControls;
+ 
+@@ -956,6 +960,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             resolver.registerContentObserver(Settings.System.getUriFor(
+                     PLAIT_VOLUME_ANSWER_CALL), false, this,
+                     UserHandle.USER_ALL);
++            resolver.registerContentObserver(Settings.System.getUriFor(
++                    PlaitKeyActions.HOME_LONG_PRESS), false, this,
++                    UserHandle.USER_ALL);
++            resolver.registerContentObserver(Settings.System.getUriFor(
++                    PlaitKeyActions.BACK_LONG_PRESS), false, this,
++                    UserHandle.USER_ALL);
+             updateSettings();
+         }
+ 
+@@ -1633,6 +1643,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     private void backLongPress() {
+         mBackKeyHandled = true;
+ 
++        if (mBackLongPressAction != PlaitKeyActions.Action.NOTHING) {
++            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, "Back - Long Press");
++            performPlaitKeyAction(mBackLongPressAction, null);
++            return;
++        }
++
+         switch (mLongPressOnBackBehavior) {
+             case LONG_PRESS_BACK_NOTHING:
+                 break;
+@@ -1878,7 +1894,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     }
+ 
+     private boolean hasLongPressOnBackBehavior() {
+-        return mLongPressOnBackBehavior != LONG_PRESS_BACK_NOTHING;
++        return mLongPressOnBackBehavior != LONG_PRESS_BACK_NOTHING
++                || mBackLongPressAction != PlaitKeyActions.Action.NOTHING;
+     }
+ 
+     private boolean hasLongPressOnStemPrimaryBehavior() {
+@@ -1931,6 +1948,72 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         mHandler.sendEmptyMessage(MSG_DISPATCH_SHOW_GLOBAL_ACTIONS);
+     }
+ 
++    /**
++     * Runs a navigation bar key action chosen in Plait Settings. Adapted from LineageOS's
++     * performKeyAction (Phil Tunstall et al., hardware keys custom rebinding); POWER_MENU is new.
++     * [event] is null for keys handled by the single key gesture detector (back).
++     */
++    private void performPlaitKeyAction(PlaitKeyActions.Action action, KeyEvent event) {
++        switch (action) {
++            case NOTHING:
++                break;
++            case POWER_MENU:
++                showGlobalActionsInternal();
++                break;
++            case KILL_APP:
++                PlaitKeyActions.killForegroundApp(mContext, mCurrentUserId);
++                break;
++            case SCREENSHOT: {
++                final com.android.internal.util.ScreenshotRequest request =
++                        new com.android.internal.util.ScreenshotRequest.Builder(
++                                WindowManager.TAKE_SCREENSHOT_FULLSCREEN,
++                                WindowManager.ScreenshotSource.SCREENSHOT_KEY_OTHER).build();
++                new com.android.internal.util.ScreenshotHelper(mContext).takeScreenshot(
++                        request, mHandler, null /* completionConsumer */);
++                break;
++            }
++            case SLEEP:
++                mPowerManager.goToSleep(SystemClock.uptimeMillis());
++                break;
++            case LAST_APP:
++                PlaitKeyActions.switchToLastApp(mContext, mCurrentUserId);
++                break;
++            case RECENTS:
++                toggleRecentApps();
++                break;
++            case SPLIT_SCREEN: {
++                final StatusBarManagerInternal statusbar = getStatusBarManagerInternal();
++                if (statusbar != null) {
++                    statusbar.toggleSplitScreen();
++                }
++                break;
++            }
++            case ASSISTANT:
++                launchAssistAction(null, event != null ? event.getDeviceId() : -1,
++                        event != null ? event.getDisplayId() : DEFAULT_DISPLAY,
++                        event != null ? event.getEventTime() : SystemClock.uptimeMillis(),
++                        AssistUtils.INVOCATION_TYPE_UNKNOWN);
++                break;
++            case VOICE_ASSIST:
++                launchVoiceAssist(false /* allowDuringSetup */);
++                break;
++            case NOTIFICATIONS:
++                toggleNotificationPanel();
++                break;
++            case PLAY_PAUSE_MUSIC: {
++                final AudioManager audio = mContext.getSystemService(AudioManager.class);
++                if (audio != null) {
++                    final long now = SystemClock.uptimeMillis();
++                    final KeyEvent down = new KeyEvent(now, now, KeyEvent.ACTION_DOWN,
++                            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, 0);
++                    audio.dispatchMediaKeyEvent(down);
++                    audio.dispatchMediaKeyEvent(KeyEvent.changeAction(down, KeyEvent.ACTION_UP));
++                }
++                break;
++            }
++        }
++    }
++
+     void showGlobalActionsInternal() {
+         if (mGlobalActions == null) {
+             mGlobalActions = mGlobalActionsFactory.get();
+@@ -2258,6 +2341,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             if (mHomeConsumed) {
+                 return;
+             }
++            if (mHomeLongPressAction != PlaitKeyActions.Action.NOTHING) {
++                mHomeConsumed = true;
++                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, "Home - Long Press");
++                performPlaitKeyAction(mHomeLongPressAction, event);
++                return;
++            }
+             if (mLongPressOnHomeBehavior == LONG_PRESS_HOME_NOTHING) {
+                 return;
+             }
+@@ -3096,6 +3185,10 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                     UserHandle.USER_CURRENT);
+             mVolumeAnswerCall = Settings.System.getIntForUser(resolver,
+                     PLAIT_VOLUME_ANSWER_CALL, 0, UserHandle.USER_CURRENT) == 1;
++            mHomeLongPressAction = PlaitKeyActions.Action.fromSettings(resolver,
++                    PlaitKeyActions.HOME_LONG_PRESS);
++            mBackLongPressAction = PlaitKeyActions.Action.fromSettings(resolver,
++                    PlaitKeyActions.BACK_LONG_PRESS);
+ 
+             // Configure wake gesture.
+             boolean wakeGestureEnabledSetting = Settings.Secure.getIntForUser(resolver,
+diff --git a/services/core/java/com/android/server/policy/PlaitKeyActions.java b/services/core/java/com/android/server/policy/PlaitKeyActions.java
+new file mode 100644
+index 000000000..660e420cb
+--- /dev/null
++++ b/services/core/java/com/android/server/policy/PlaitKeyActions.java
+@@ -0,0 +1,156 @@
++/*
++ * SPDX-FileCopyrightText: The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * Ported to PlaitOS from lineage-sdk (DeviceKeysConstants.Action and ActionUtils, lineage-24.0):
++ * the action list is trimmed to what works with a 3-button navigation bar and gains POWER_MENU;
++ * settings are plain Settings.System keys; the kill toast uses a framework string and the last-app
++ * switch the default animation instead of lineage-sdk resources.
++ */
++
++package com.android.server.policy;
++
++import android.app.ActivityManager;
++import android.app.ActivityOptions;
++import android.app.ActivityTaskManager;
++import android.app.ActivityTaskManager.RootTaskInfo;
++import android.app.IActivityManager;
++import android.app.IActivityTaskManager;
++import android.content.ContentResolver;
++import android.content.Context;
++import android.content.Intent;
++import android.content.pm.ResolveInfo;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.RemoteException;
++import android.os.UserHandle;
++import android.provider.Settings;
++import android.util.Log;
++import android.widget.Toast;
++
++import java.util.List;
++
++/** Actions a navigation bar key press can be bound to, and the helpers that need more than a call. */
++final class PlaitKeyActions {
++    private static final String TAG = "PlaitKeyActions";
++    private static final String SYSTEMUI_PACKAGE = "com.android.systemui";
++
++    /** Settings.System keys (written by Plait Settings); unset or NOTHING keeps the stock behavior. */
++    static final String HOME_LONG_PRESS = "plait_home_long_press_action";
++    static final String BACK_LONG_PRESS = "plait_back_long_press_action";
++
++    /** Order is the stored value: append only. */
++    enum Action {
++        NOTHING,
++        POWER_MENU,
++        KILL_APP,
++        SCREENSHOT,
++        SLEEP,
++        LAST_APP,
++        RECENTS,
++        SPLIT_SCREEN,
++        ASSISTANT,
++        VOICE_ASSIST,
++        NOTIFICATIONS,
++        PLAY_PAUSE_MUSIC;
++
++        static Action fromIntSafe(int id) {
++            if (id < 0 || id >= values().length) {
++                return NOTHING;
++            }
++            return values()[id];
++        }
++
++        static Action fromSettings(ContentResolver cr, String setting) {
++            return fromIntSafe(Settings.System.getIntForUser(cr, setting, NOTHING.ordinal(),
++                    UserHandle.USER_CURRENT));
++        }
++    }
++
++    private PlaitKeyActions() {
++    }
++
++    /** Kills the top most user application, but leaves out the launcher and SystemUI. */
++    static boolean killForegroundApp(Context context, int userId) {
++        try {
++            final IActivityTaskManager atm = ActivityTaskManager.getService();
++            if (atm.getLockTaskModeState() == ActivityManager.LOCK_TASK_MODE_PINNED) {
++                return false;
++            }
++            final RootTaskInfo foregroundTask = getForegroundTask(context, userId);
++            if (foregroundTask == null) {
++                return false;
++            }
++            final String packageName = foregroundTask.topActivity.getPackageName();
++            if (packageName == null) {
++                return false;
++            }
++            ActivityManager.getService().forceStopPackage(packageName, foregroundTask.userId);
++            new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(context,
++                    com.android.internal.R.string.plait_app_killed_message, Toast.LENGTH_SHORT).show());
++            return true;
++        } catch (RemoteException e) {
++            Log.e(TAG, "Could not kill foreground app");
++            return false;
++        }
++    }
++
++    /** Brings up the activity before the current one in recents, skipping the launcher and SystemUI. */
++    static boolean switchToLastApp(Context context, int userId) {
++        try {
++            final ActivityManager.RecentTaskInfo lastTask = getLastTask(context, userId);
++            if (lastTask == null || lastTask.id < 0) {
++                return false;
++            }
++            final IActivityManager am = ActivityManager.getService();
++            am.moveTaskToFront(null, null, lastTask.id, ActivityManager.MOVE_TASK_NO_USER_ACTION,
++                    ActivityOptions.makeBasic().toBundle());
++            return true;
++        } catch (RemoteException e) {
++            Log.e(TAG, "Could not switch to last app");
++            return false;
++        }
++    }
++
++    private static ActivityManager.RecentTaskInfo getLastTask(Context context, int userId)
++            throws RemoteException {
++        final String defaultHomePackage = resolveCurrentLauncherPackage(context, userId);
++        final List<ActivityManager.RecentTaskInfo> tasks = ActivityManager.getService().getRecentTasks(5,
++                ActivityManager.RECENT_IGNORE_UNAVAILABLE, userId).getList();
++        for (int i = 1; i < tasks.size(); i++) {
++            final ActivityManager.RecentTaskInfo task = tasks.get(i);
++            if (task.origActivity != null) {
++                task.baseIntent.setComponent(task.origActivity);
++            }
++            final String packageName = task.baseIntent.getComponent().getPackageName();
++            if (!packageName.equals(defaultHomePackage) && !packageName.equals(SYSTEMUI_PACKAGE)) {
++                return task;
++            }
++        }
++        return null;
++    }
++
++    private static RootTaskInfo getForegroundTask(Context context, int userId) throws RemoteException {
++        final String defaultHomePackage = resolveCurrentLauncherPackage(context, userId);
++        final RootTaskInfo focusedStack = ActivityManager.getService().getFocusedRootTaskInfo();
++        if (focusedStack == null || focusedStack.topActivity == null) {
++            return null;
++        }
++        final String packageName = focusedStack.topActivity.getPackageName();
++        if (!packageName.equals(defaultHomePackage) && !packageName.equals(SYSTEMUI_PACKAGE)) {
++            return focusedStack;
++        }
++        return null;
++    }
++
++    private static String resolveCurrentLauncherPackage(Context context, int userId) {
++        final Intent launcherIntent = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
++        final ResolveInfo launcherInfo = context.getPackageManager().resolveActivityAsUser(
++                launcherIntent, 0, userId);
++        if (launcherInfo != null && launcherInfo.activityInfo != null
++                && !launcherInfo.activityInfo.packageName.equals("android")) {
++            return launcherInfo.activityInfo.packageName;
++        }
++        return null;
++    }
++}
+-- 
+2.56.0
+

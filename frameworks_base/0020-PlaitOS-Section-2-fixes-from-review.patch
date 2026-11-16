@@ -1,0 +1,103 @@
+From 2b141ed2c1b2ce8a4453e589ac5d04a4bbfacf0e Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 19:31:29 -0600
+Subject: [PATCH 20/75] PlaitOS: Section 2 fixes from review
+
+- Advanced restart: the main-user check used getCallingUserId(), which in
+  SystemUI is always the system user; ask UserTracker for the current user
+- Power menu Users entry: count only switchable human users, so a work
+  profile alone doesn't add it
+- Navigation bar actions: kill app, last app and split screen do nothing
+  while the lock screen is up (they would act on the app behind it)
+- Notification kill button: hidden while the lock screen is up instead of
+  shown and ignored; drop stray blank lines in the power menu imports
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../systemui/globalactions/GlobalActionsDialogLite.java  | 9 +++++----
+ .../notification/row/NotificationConversationInfo.java   | 2 +-
+ .../statusbar/notification/row/NotificationInfo.java     | 2 +-
+ .../com/android/server/policy/PhoneWindowManager.java    | 6 ++++++
+ 4 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+index 8930b5dc6..1a8486d7c 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+@@ -174,8 +174,6 @@ import dagger.assisted.Assisted;
+ import dagger.assisted.AssistedFactory;
+ import dagger.assisted.AssistedInject;
+ 
+-
+-
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.List;
+@@ -735,7 +733,8 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         final boolean keyguardLocked = km != null && km.inKeyguardRestrictedInputMode() && km.isKeyguardSecure();
+         final boolean enabled = android.provider.Settings.Secure.getInt(mContext.getContentResolver(),
+                 "plait_advanced_reboot", 0) == 1;
+-        final boolean isPrimaryUser = android.os.UserHandle.getCallingUserId() == android.os.UserHandle.USER_SYSTEM;
++        // SystemUI runs as the system user for everyone, so ask UserTracker who is in front
++        final boolean isPrimaryUser = mUserTracker.getUserId() == android.os.UserHandle.USER_SYSTEM;
+         return enabled && !keyguardLocked && isPrimaryUser;
+     }
+ 
+@@ -836,7 +835,9 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+                     }
+                     break;
+                 case USERS:
+-                    if (mUserManager.getUsers().size() > 1) {
++                    // Work profiles and other non-switchable users don't count
++                    if (mUserManager.getUsers().stream()
++                            .filter(UserInfo::isUiSwitchableHumanUser).count() > 1) {
+                         addUserActions(mUsersItems, currentUserInfo);
+                         addIfShouldShowAction(tempActions, new UsersAction());
+                     }
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationConversationInfo.java b/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationConversationInfo.java
+index d5043a73c..1e65035c3 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationConversationInfo.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationConversationInfo.java
+@@ -351,7 +351,7 @@ public class NotificationConversationInfo extends LinearLayout implements
+                     killDialog.show();
+                 }
+             });
+-            killButton.setVisibility(killButtonEnabled
++            killButton.setVisibility(killButtonEnabled && !isKeyguardLocked()
+                 && isForceStopAllowed() ? View.VISIBLE : View.GONE);
+         }
+ 
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationInfo.java b/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationInfo.java
+index 5a3379ba1..23afeea6f 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationInfo.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationInfo.java
+@@ -369,7 +369,7 @@ public class NotificationInfo extends LinearLayout implements NotificationGuts.G
+                     killDialog.show();
+                 }
+             });
+-            killButton.setVisibility(killButtonEnabled
++            killButton.setVisibility(killButtonEnabled && !isKeyguardLocked()
+                 && isForceStopAllowed() ? View.VISIBLE : View.GONE);
+         }
+     }
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index e99236691..aec07c85b 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -1954,6 +1954,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+      * [event] is null for keys handled by the single key gesture detector (back).
+      */
+     private void performPlaitKeyAction(PlaitKeyActions.Action action, KeyEvent event) {
++        // Behind the lock screen these would act on the app underneath it
++        if (keyguardOn() && (action == PlaitKeyActions.Action.KILL_APP
++                || action == PlaitKeyActions.Action.LAST_APP
++                || action == PlaitKeyActions.Action.SPLIT_SCREEN)) {
++            return;
++        }
+         switch (action) {
+             case NOTHING:
+                 break;
+-- 
+2.56.0
+

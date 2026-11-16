@@ -1,0 +1,30 @@
+From 47636519a095d2d01b159026a4e7509c536d4b67 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 16:02:27 -0600
+Subject: [PATCH] PlaitOS: let installd use libzstd
+
+installd streams app data backups as zstd-compressed tar for PlaitOS's
+plait_backup service (frameworks/native PlaitBackup.cpp).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+Change-Id: I2cd4c2f1df9851a24e0249b30a140bb5fb8a8faa
+---
+ Android.bp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Android.bp b/Android.bp
+index 85d9728..e22ea12 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -80,6 +80,7 @@ cc_library {
+         "//external/squashfs-tools/squashfs-tools:__subpackages__",
+         "//external/stg:__subpackages__",
+         "//frameworks/libs/binary_translation/tools:__subpackages__",
++        "//frameworks/native/cmds/installd:__subpackages__", // PlaitOS: app data backups
+         "//packages/modules/adb:__subpackages__",
+         "//packages/modules/Connectivity/bpf/loader", // For standalone 'netbpfloader' cli test util
+         "//system/logging/logd:__subpackages__",
+-- 
+2.56.0
+

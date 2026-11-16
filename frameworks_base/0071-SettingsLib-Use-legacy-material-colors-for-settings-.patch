@@ -1,0 +1,71 @@
+From 7ae8cb93c69559a38a0974736cb98c175137e994 Mon Sep 17 00:00:00 2001
+From: minaripenguin <minaripenguin@users.noreply.github.com>
+Date: Thu, 21 Nov 2024 13:00:07 +0800
+Subject: [PATCH 71/75] SettingsLib: Use legacy material colors for settings'
+ surface container
+
+* the monet engine background color changes doesnt seem to be noticeable with the latest material surface colors
+
+Change-Id: I0c449d9c8464aa8fb5bef9fe77130c476b2b755e
+Signed-off-by: minaripenguin <minaripenguin@users.noreply.github.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ .../SettingsLib/SettingsTheme/res/values-night-v36/colors.xml  | 1 +
+ packages/SettingsLib/SettingsTheme/res/values-v36/colors.xml   | 3 ++-
+ packages/SettingsLib/SettingsTheme/res/values-v36/themes.xml   | 2 +-
+ .../SettingsTheme/res/values-v36/themes_expressive.xml         | 2 +-
+ 4 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/packages/SettingsLib/SettingsTheme/res/values-night-v36/colors.xml b/packages/SettingsLib/SettingsTheme/res/values-night-v36/colors.xml
+index e31e80176..26b652a75 100644
+--- a/packages/SettingsLib/SettingsTheme/res/values-night-v36/colors.xml
++++ b/packages/SettingsLib/SettingsTheme/res/values-night-v36/colors.xml
+@@ -46,4 +46,5 @@
+     <color name="settingslib_colorSurfaceHeader">@color/settingslib_materialColorSurfaceVariant</color>
+ 
+     <color name="settingslib_text_color_preference_category_title">@color/settingslib_materialColorPrimary</color>
++    <color name="legacy_settingslib_materialColorSurfaceContainer">@android:color/system_neutral1_900</color>
+ </resources>
+diff --git a/packages/SettingsLib/SettingsTheme/res/values-v36/colors.xml b/packages/SettingsLib/SettingsTheme/res/values-v36/colors.xml
+index b1b37b12c..b6a103741 100644
+--- a/packages/SettingsLib/SettingsTheme/res/values-v36/colors.xml
++++ b/packages/SettingsLib/SettingsTheme/res/values-v36/colors.xml
+@@ -54,4 +54,5 @@
+     <color name="settingslib_spinner_title_color">@color/settingslib_materialColorOnPrimaryContainer</color>
+     <!-- The text color of dropdown item title -->
+     <color name="settingslib_spinner_dropdown_color">@color/settingslib_materialColorOnPrimaryContainer</color>
+-</resources>
+\ No newline at end of file
++    <color name="legacy_settingslib_materialColorSurfaceContainer">@android:color/system_neutral1_50</color>
++</resources>
+diff --git a/packages/SettingsLib/SettingsTheme/res/values-v36/themes.xml b/packages/SettingsLib/SettingsTheme/res/values-v36/themes.xml
+index 54bd069f2..724def554 100644
+--- a/packages/SettingsLib/SettingsTheme/res/values-v36/themes.xml
++++ b/packages/SettingsLib/SettingsTheme/res/values-v36/themes.xml
+@@ -18,7 +18,7 @@
+ <resources>
+     <style name="Theme.SettingsBase_v36" parent="Theme.SettingsBase_v33" >
+         <item name="android:colorAccent">@color/settingslib_materialColorPrimary</item>
+-        <item name="android:colorBackground">@color/settingslib_materialColorSurfaceContainer</item>
++        <item name="android:colorBackground">@color/legacy_settingslib_materialColorSurfaceContainer</item>
+         <item name="android:textColorPrimary">@color/settingslib_materialColorOnSurface</item>
+         <item name="android:textColorSecondary">@color/settingslib_text_color_secondary</item>
+         <item name="android:textColorTertiary">@color/settingslib_materialColorOutline</item>
+diff --git a/packages/SettingsLib/SettingsTheme/res/values-v36/themes_expressive.xml b/packages/SettingsLib/SettingsTheme/res/values-v36/themes_expressive.xml
+index 1e67ecc81..3d6f3b01d 100644
+--- a/packages/SettingsLib/SettingsTheme/res/values-v36/themes_expressive.xml
++++ b/packages/SettingsLib/SettingsTheme/res/values-v36/themes_expressive.xml
+@@ -18,7 +18,7 @@
+ <resources>
+     <style name="Theme.SettingsBase.Expressive">
+         <!-- Set up background color -->
+-        <item name="android:colorBackground">@color/settingslib_materialColorSurfaceContainer</item>
++        <item name="android:colorBackground">@color/legacy_settingslib_materialColorSurfaceContainer</item>
+ 
+         <!-- Set up Preference title text style -->
+         <item name="android:textAppearanceListItem">@style/TextAppearance.SettingsLib.PreferenceTitle</item>
+-- 
+2.56.0
+

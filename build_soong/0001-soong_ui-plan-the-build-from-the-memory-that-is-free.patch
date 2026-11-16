@@ -1,0 +1,409 @@
+From 8350bdb8a63888c606aadcb118d0c427b8d797cc Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 20:43:46 -0600
+Subject: [PATCH] soong_ui: plan the build from the memory that is free now
+
+Soong sizes its parallelism from total RAM ("32 GB or less: 2 memory-heavy
+jobs"), whatever else is running. On a 30 GB desktop that already holds 10+ GB
+(idle pages swapped to zram), a full ROM build drove memory and swap past the
+90% swap line at which systemd-oomd kills the whole build, four times in a row.
+
+The build's memory budget is the available RAM (MemAvailable) minus
+(100 - ceiling)% of the total (ceiling 88%, just under oomd's 90%) minus an
+optional extra reserve. From it come the default -j (about 2.5 GiB per job,
+never above cpus+2), the number of memory-heavy jobs (about 10 GiB each,
+1 or 2), and a cap on soong_build's Go heap (85% of the budget, 8 to 24 GiB;
+a smaller GOMEMLIMIT already set still wins). An explicit -j or
+NINJA_HIGHMEM_NUM_JOBS always wins. The decision is printed at the start.
+
+  PLAIT_MEM_BUDGET=off        stock behavior
+  PLAIT_MEM_CEILING_PCT=88    the ceiling, 50..98
+  PLAIT_MEM_RESERVE_GB=0      extra memory left to everything else
+
+Linux only (/proc/meminfo); no change on macOS. The calculation is in
+memory_budget.go with unit tests.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ ui/build/Android.bp            |   2 +
+ ui/build/config.go             |  47 +++++++++++-
+ ui/build/config_darwin.go      |   5 ++
+ ui/build/config_linux.go       |  30 +++++++-
+ ui/build/memory_budget.go      | 128 +++++++++++++++++++++++++++++++++
+ ui/build/memory_budget_test.go |  71 ++++++++++++++++++
+ 6 files changed, 279 insertions(+), 4 deletions(-)
+ create mode 100644 ui/build/memory_budget.go
+ create mode 100644 ui/build/memory_budget_test.go
+
+diff --git a/ui/build/Android.bp b/ui/build/Android.bp
+index 03c5f34..0612c6a 100644
+--- a/ui/build/Android.bp
++++ b/ui/build/Android.bp
+@@ -58,6 +58,7 @@ bootstrap_go_package {
+         "cipd.go",
+         "cleanbuild.go",
+         "config.go",
++        "memory_budget.go",
+         "context.go",
+         "staging_snapshot.go",
+         "dumpvars.go",
+@@ -79,6 +80,7 @@ bootstrap_go_package {
+     testSrcs: [
+         "cleanbuild_test.go",
+         "config_test.go",
++        "memory_budget_test.go",
+         "environment_test.go",
+         "proc_sync_test.go",
+         "rbe_test.go",
+diff --git a/ui/build/config.go b/ui/build/config.go
+index d2431f3..8e1ad1b 100644
+--- a/ui/build/config.go
++++ b/ui/build/config.go
+@@ -144,9 +144,13 @@ type configImpl struct {
+ 	enforceNoReanalysis bool
+ 
+ 	// Autodetected
+-	totalRAM      uint64
+-	systemCpuInfo *metrics.CpuInfo
+-	systemMemInfo *metrics.MemInfo
++	totalRAM uint64
++	// PlaitOS: memory the build may use now (see memory_budget.go); memBudgetKnown is false if it is switched
++	// off or the RAM figures were unavailable
++	memBudget      uint64
++	memBudgetKnown bool
++	systemCpuInfo  *metrics.CpuInfo
++	systemMemInfo  *metrics.MemInfo
+ 
+ 	brokenDupRules       bool
+ 	brokenUsesNetwork    bool
+@@ -315,6 +319,7 @@ func newConfig(ctx Context, isDumpVar bool, args ...string) Config {
+ 	ret.keepGoing = 1
+ 
+ 	ret.totalRAM = detectTotalRAM(ctx)
++	ret.applyMemoryBudget(ctx)
+ 	ret.systemCpuInfo, err = metrics.NewCpuInfo(fs.OsFs)
+ 	if err != nil {
+ 		ctx.Fatalln("Failed to get cpuinfo:", err)
+@@ -1585,10 +1590,46 @@ func (c *configImpl) SetLogsPrefix(prefix string) {
+ 	c.logsPrefix = prefix
+ }
+ 
++// applyMemoryBudget (PlaitOS) sets the default -j and caps soong_build's Go heap from the memory available now.
++// parseArgs runs later, so an explicit -j still wins; so does an explicit GOMEMLIMIT if it is smaller.
++func (c *configImpl) applyMemoryBudget(ctx Context) {
++	if v, _ := c.environ.Get("PLAIT_MEM_BUDGET"); v == "off" {
++		return
++	}
++	ceiling := plaitDefaultCeilingPct
++	if i, ok := c.environ.GetInt("PLAIT_MEM_CEILING_PCT"); ok {
++		ceiling = i
++	}
++	var extra uint64
++	if i, ok := c.environ.GetInt("PLAIT_MEM_RESERVE_GB"); ok && i > 0 {
++		extra = uint64(i) * gib
++	}
++	available := detectAvailableRAM(ctx)
++	budget, known := memoryBudget(c.totalRAM, available, ceiling, extra)
++	if !known {
++		return
++	}
++	c.memBudget, c.memBudgetKnown = budget, true
++	c.parallel = memoryParallel(budget, runtime.NumCPU())
++	existing, _ := c.environ.Get("GOMEMLIMIT")
++	limit := effectiveGoMemLimit(existing, memoryGoLimit(budget))
++	c.environ.Set("GOMEMLIMIT", strconv.FormatUint(limit, 10)+"B")
++	ctx.Printf("PlaitOS memory budget: %.1f GiB free of %.1f GiB, ceiling %d%% + %.0f GiB reserve -> %.1f GiB for the build: -j%d, %d memory-heavy job(s), Go heap limit %.1f GiB (PLAIT_MEM_BUDGET=off to disable)",
++		float64(available)/float64(gib), float64(c.totalRAM)/float64(gib), ceiling, float64(extra)/float64(gib),
++		float64(budget)/float64(gib), c.parallel, memoryHighmemParallel(budget), float64(limit)/float64(gib))
++}
++
+ func (c *configImpl) HighmemParallel() int {
+ 	if i, ok := c.environ.GetInt("NINJA_HIGHMEM_NUM_JOBS"); ok {
+ 		return i
+ 	}
++	if c.memBudgetKnown {
++		// PlaitOS: from the free memory now, never above Soong's own limit
++		if p := memoryHighmemParallel(c.memBudget); p < c.parallel {
++			return p
++		}
++		return c.parallel
++	}
+ 
+ 	const minMemPerHighmemProcess = 8 * 1024 * 1024 * 1024
+ 	parallel := c.Parallel()
+diff --git a/ui/build/config_darwin.go b/ui/build/config_darwin.go
+index fe74e31..3ba3d95 100644
+--- a/ui/build/config_darwin.go
++++ b/ui/build/config_darwin.go
+@@ -19,6 +19,11 @@ import (
+ 	"syscall"
+ )
+ 
++// detectAvailableRAM: not implemented on macOS (the memory budget stays off there).
++func detectAvailableRAM(ctx Context) uint64 {
++	return 0
++}
++
+ func detectTotalRAM(ctx Context) uint64 {
+ 	s, err := syscall.Sysctl("hw.memsize")
+ 	if err != nil {
+diff --git a/ui/build/config_linux.go b/ui/build/config_linux.go
+index 162d372..9cb6c82 100644
+--- a/ui/build/config_linux.go
++++ b/ui/build/config_linux.go
+@@ -14,7 +14,13 @@
+ 
+ package build
+ 
+-import "syscall"
++import (
++	"bufio"
++	"os"
++	"strconv"
++	"strings"
++	"syscall"
++)
+ 
+ func detectTotalRAM(ctx Context) uint64 {
+ 	var info syscall.Sysinfo_t
+@@ -25,3 +31,25 @@ func detectTotalRAM(ctx Context) uint64 {
+ 	}
+ 	return uint64(info.Totalram) * uint64(info.Unit)
+ }
++
++// detectAvailableRAM is the kernel's estimate of the memory a new workload can use without swapping (MemAvailable),
++// 0 if it cannot be read. PlaitOS: see memory_budget.go.
++func detectAvailableRAM(ctx Context) uint64 {
++	f, err := os.Open("/proc/meminfo")
++	if err != nil {
++		return 0
++	}
++	defer f.Close()
++	sc := bufio.NewScanner(f)
++	for sc.Scan() {
++		if rest, ok := strings.CutPrefix(sc.Text(), "MemAvailable:"); ok {
++			fields := strings.Fields(rest)
++			if len(fields) >= 1 {
++				if kb, err := strconv.ParseUint(fields[0], 10, 64); err == nil {
++					return kb * 1024
++				}
++			}
++		}
++	}
++	return 0
++}
+diff --git a/ui/build/memory_budget.go b/ui/build/memory_budget.go
+new file mode 100644
+index 0000000..900e3ba
+--- /dev/null
++++ b/ui/build/memory_budget.go
+@@ -0,0 +1,128 @@
++// Copyright 2026 The PlaitOS Project
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package build
++
++import (
++	"strconv"
++	"strings"
++)
++
++// PlaitOS: plan the build from the memory that is free now, not from the machine's total.
++//
++// Soong sizes its parallelism from total RAM ("32 GB or less: 2 memory-heavy jobs"), whatever else is running. On a
++// 30 GB desktop that already holds 10+ GB (and swaps idle pages out to zram), a full ROM build then drove memory and
++// swap past the 90% swap line at which systemd-oomd kills the whole build, four times in a row (2026-11-15).
++//
++// The budget is what the build may use while the machine stays under a ceiling (88% by default, just under oomd's
++// 90%): available RAM minus (100-ceiling)% of the total, minus an optional extra reserve. From it come the default
++// -j (about 2.5 GiB per job), the number of memory-heavy jobs (about 10 GiB each, at most Soong's usual 2), and a
++// cap on Go's heap for soong_build's analysis. An explicit -j, NINJA_HIGHMEM_NUM_JOBS or GOMEMLIMIT always wins.
++//
++//   PLAIT_MEM_BUDGET=off          switch all of this off (back to stock Soong)
++//   PLAIT_MEM_CEILING_PCT=88      the ceiling, in percent of total RAM (50..98)
++//   PLAIT_MEM_RESERVE_GB=0        extra memory to leave to everything else, e.g. raised on each restart after a kill
++
++const (
++	gib                     = uint64(1024 * 1024 * 1024)
++	plaitDefaultCeilingPct  = 88
++	plaitMemPerJob          = gib * 5 / 2 // a typical compile/link job; heavier ones are in the highmem pool
++	plaitMemPerHighmemJob   = 10 * gib
++	plaitMinGoMemLimit      = 8 * gib
++	plaitMaxGoMemLimit      = 24 * gib
++	plaitGoMemLimitShare    = 85 // percent of the budget soong_build's heap may use
++	plaitMinParallel        = 2
++	plaitMaxHighmemParallel = 2
++	plaitUnknownBudget      = uint64(0)
++)
++
++// memoryBudget returns how much memory the build may use now, and false if it cannot be known (no RAM figures).
++// A known budget of 0 means there is no room beyond the reserve.
++func memoryBudget(total, available uint64, ceilingPct int, extraReserve uint64) (uint64, bool) {
++	if total == 0 || available == 0 {
++		return plaitUnknownBudget, false
++	}
++	if ceilingPct < 50 || ceilingPct > 98 {
++		ceilingPct = plaitDefaultCeilingPct
++	}
++	reserve := total*uint64(100-ceilingPct)/100 + extraReserve
++	if available <= reserve {
++		return 0, true
++	}
++	return available - reserve, true
++}
++
++func clampInt(v, lo, hi int) int {
++	if v < lo {
++		return lo
++	}
++	if v > hi {
++		return hi
++	}
++	return v
++}
++
++// memoryParallel is the default number of ninja jobs for a budget (never above cpus+2, Soong's default).
++func memoryParallel(budget uint64, cpus int) int {
++	return clampInt(int(budget/plaitMemPerJob), plaitMinParallel, cpus+2)
++}
++
++// memoryHighmemParallel is the number of memory-heavy jobs for a budget, at most Soong's own limit for small machines.
++func memoryHighmemParallel(budget uint64) int {
++	return clampInt(int(budget/plaitMemPerHighmemJob), 1, plaitMaxHighmemParallel)
++}
++
++// memoryGoLimit is the Go heap limit for soong_build's analysis for a budget.
++func memoryGoLimit(budget uint64) uint64 {
++	limit := budget / 100 * plaitGoMemLimitShare
++	if limit < plaitMinGoMemLimit {
++		limit = plaitMinGoMemLimit
++	}
++	if limit > plaitMaxGoMemLimit {
++		limit = plaitMaxGoMemLimit
++	}
++	return limit
++}
++
++// parseGoMemLimit reads a GOMEMLIMIT value ("18GiB", "512MiB", "1073741824", ...); 0 for off/unparseable.
++func parseGoMemLimit(s string) uint64 {
++	s = strings.TrimSpace(s)
++	if s == "" || s == "off" {
++		return 0
++	}
++	mult := uint64(1)
++	for _, u := range []struct {
++		suffix string
++		mult   uint64
++	}{{"TiB", gib * 1024}, {"GiB", gib}, {"MiB", 1024 * 1024}, {"KiB", 1024}, {"B", 1}} {
++		if strings.HasSuffix(s, u.suffix) {
++			mult = u.mult
++			s = strings.TrimSuffix(s, u.suffix)
++			break
++		}
++	}
++	n, err := strconv.ParseUint(strings.TrimSpace(s), 10, 64)
++	if err != nil {
++		return 0
++	}
++	return n * mult
++}
++
++// effectiveGoMemLimit combines a GOMEMLIMIT already in the environment with the budget's: the smaller one wins.
++func effectiveGoMemLimit(existing string, fromBudget uint64) uint64 {
++	if e := parseGoMemLimit(existing); e != 0 && e < fromBudget {
++		return e
++	}
++	return fromBudget
++}
+diff --git a/ui/build/memory_budget_test.go b/ui/build/memory_budget_test.go
+new file mode 100644
+index 0000000..9dce6a0
+--- /dev/null
++++ b/ui/build/memory_budget_test.go
+@@ -0,0 +1,71 @@
++package build
++
++import "testing"
++
++func TestBudget(t *testing.T) {
++	total := 30 * gib
++	// Idle machine: 25 GiB free -> 25 - 12% of 30 (3.6) = 21.4 GiB
++	b, ok := memoryBudget(total, 25*gib, 88, 0)
++	if !ok || b < 21*gib || b > 22*gib {
++		t.Fatalf("budget %v %v", b/gib, ok)
++	}
++	if p := memoryParallel(b, 12); p != 8 {
++		t.Errorf("parallel %d", p)
++	}
++	if h := memoryHighmemParallel(b); h != 2 {
++		t.Errorf("highmem %d", h)
++	}
++	if g := memoryGoLimit(b); g < 18*gib || g > 19*gib {
++		t.Errorf("go limit %d GiB", g/gib)
++	}
++	// The failing situation: 6 GiB free -> 6 - 3.6 = 2.4 GiB
++	b2, _ := memoryBudget(total, 6*gib, 88, 0)
++	if memoryParallel(b2, 12) != 2 || memoryHighmemParallel(b2) != 1 {
++		t.Errorf("tight: %d %d", memoryParallel(b2, 12), memoryHighmemParallel(b2))
++	}
++	if memoryGoLimit(b2) != 8*gib {
++		t.Errorf("floor %d", memoryGoLimit(b2)/gib)
++	}
++	// No room at all is "known, zero"; no figures is "unknown"
++	if b3, ok := memoryBudget(total, 2*gib, 88, 0); !ok || b3 != 0 {
++		t.Errorf("none %v %v", b3, ok)
++	}
++	if _, ok := memoryBudget(0, 5*gib, 88, 0); ok {
++		t.Errorf("unknown total")
++	}
++	if _, ok := memoryBudget(total, 0, 88, 0); ok {
++		t.Errorf("unknown available")
++	}
++	// Extra reserve (raised on restarts) shrinks it; a silly ceiling falls back to the default
++	b4, _ := memoryBudget(total, 25*gib, 88, 8*gib)
++	if b4 >= b || b4 < 13*gib {
++		t.Errorf("reserve %d", b4/gib)
++	}
++	b5, _ := memoryBudget(total, 25*gib, 5, 0)
++	if b5 != b {
++		t.Errorf("bad ceiling not defaulted")
++	}
++	// Huge machine: capped at cpus+2 jobs and 2 highmem jobs, Go limit capped
++	big, _ := memoryBudget(256*gib, 250*gib, 88, 0)
++	if memoryParallel(big, 12) != 14 || memoryHighmemParallel(big) != 2 || memoryGoLimit(big) != 24*gib {
++		t.Errorf("big")
++	}
++}
++
++func TestGoMemLimit(t *testing.T) {
++	for in, want := range map[string]uint64{"18GiB": 18 * gib, "512MiB": 512 << 20, "1073741824": gib, "": 0, "off": 0, "x": 0, "2GiB ": 2 * gib} {
++		if got := parseGoMemLimit(in); got != want {
++			t.Errorf("%q -> %d want %d", in, got, want)
++		}
++	}
++	// The smaller of an existing limit and the budget's wins
++	if effectiveGoMemLimit("12GiB", 19*gib) != 12*gib {
++		t.Error("existing smaller")
++	}
++	if effectiveGoMemLimit("30GiB", 19*gib) != 19*gib {
++		t.Error("budget smaller")
++	}
++	if effectiveGoMemLimit("", 19*gib) != 19*gib {
++		t.Error("none")
++	}
++}
+-- 
+2.56.0
+

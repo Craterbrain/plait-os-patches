@@ -1,0 +1,184 @@
+From b7122940957884c1e4a2416955f91fabb8e0a9b1 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 20:49:50 -0600
+Subject: [PATCH 29/75] PlaitOS: adapt network traffic monitor to GrapheneOS
+
+- Layout and transitions use com.android.systemui.statusbar.NetworkTraffic
+- Settings are plain Settings.Secure plait_network_traffic_* keys, read for
+  the current user (mode 0 = off, the default), instead of LineageSettings
+- No MAINLINE_NETWORK_STACK: per-interface TrafficStats need no permission
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ packages/SystemUI/res/layout/status_bar.xml   |  6 +-
+ .../statusbar/LineageStatusBarItemHolder.java |  2 -
+ .../systemui/statusbar/NetworkTraffic.java    | 59 +++++++++++--------
+ .../phone/PhoneStatusBarTransitions.java      |  3 +-
+ 4 files changed, 37 insertions(+), 33 deletions(-)
+
+diff --git a/packages/SystemUI/res/layout/status_bar.xml b/packages/SystemUI/res/layout/status_bar.xml
+index 8edcd1ba4..a13e79794 100644
+--- a/packages/SystemUI/res/layout/status_bar.xml
++++ b/packages/SystemUI/res/layout/status_bar.xml
+@@ -124,7 +124,7 @@
+                         android:gravity="center"
+                         android:paddingStart="4dp">
+ 
+-                        <org.lineageos.internal.statusbar.NetworkTraffic
++                        <com.android.systemui.statusbar.NetworkTraffic
+                             android:id="@+id/network_traffic_start"
+                             android:layout_width="wrap_content"
+                             android:layout_height="match_parent"
+@@ -175,7 +175,7 @@
+                     android:gravity="center"
+                     android:paddingLeft="2dp">
+ 
+-                    <org.lineageos.internal.statusbar.NetworkTraffic
++                    <com.android.systemui.statusbar.NetworkTraffic
+                         android:id="@+id/network_traffic_end"
+                         android:layout_width="wrap_content"
+                         android:layout_height="match_parent"
+@@ -215,7 +215,7 @@
+             android:layoutDirection="ltr"
+             android:gravity="center">
+ 
+-            <org.lineageos.internal.statusbar.NetworkTraffic
++            <com.android.systemui.statusbar.NetworkTraffic
+                 android:id="@+id/network_traffic_center"
+                 android:layout_width="wrap_content"
+                 android:layout_height="match_parent"
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/LineageStatusBarItemHolder.java b/packages/SystemUI/src/com/android/systemui/statusbar/LineageStatusBarItemHolder.java
+index c2053fa57..ea343b6ca 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/LineageStatusBarItemHolder.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/LineageStatusBarItemHolder.java
+@@ -27,8 +27,6 @@ import com.android.systemui.plugins.DarkIconDispatcher;
+ import com.android.systemui.plugins.DarkIconDispatcher.DarkReceiver;
+ import com.android.systemui.res.R;
+ 
+-import org.lineageos.internal.statusbar.LineageStatusBarItem;
+-
+ import java.util.ArrayList;
+ 
+ public class LineageStatusBarItemHolder extends RelativeLayout
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/NetworkTraffic.java b/packages/SystemUI/src/com/android/systemui/statusbar/NetworkTraffic.java
+index 0134a3d55..afc2d2dfe 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/NetworkTraffic.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/NetworkTraffic.java
+@@ -26,14 +26,13 @@ import android.os.Handler;
+ import android.os.Message;
+ import android.os.SystemClock;
+ import android.os.UserHandle;
++import android.provider.Settings;
+ import android.util.AttributeSet;
+ import android.util.Log;
+ import android.util.TypedValue;
+ import android.view.View;
+ import android.widget.TextView;
+ 
+-import lineageos.providers.LineageSettings;
+-
+ import com.android.systemui.res.R;
+ 
+ import java.util.ArrayList;
+@@ -45,6 +44,14 @@ public class NetworkTraffic extends TextView {
+ 
+     private static final boolean DEBUG = false;
+ 
++    // Settings.Secure keys (written by Plait Settings); mode 0 = off, the default
++    private static final String NETWORK_TRAFFIC_MODE = "plait_network_traffic_mode";
++    private static final String NETWORK_TRAFFIC_POSITION = "plait_network_traffic_position";
++    private static final String NETWORK_TRAFFIC_AUTOHIDE = "plait_network_traffic_autohide";
++    private static final String NETWORK_TRAFFIC_HIDE_ARROWS = "plait_network_traffic_hide_arrows";
++    private static final String NETWORK_TRAFFIC_UNITS = "plait_network_traffic_units";
++    private static final String NETWORK_TRAFFIC_SHOW_UNITS = "plait_network_traffic_show_units";
++
+     // This must match the interface prefix in Connectivity's clatd.c.
+     private static final String CLAT_PREFIX = "v4-";
+ 
+@@ -431,23 +438,23 @@ public class NetworkTraffic extends TextView {
+ 
+         void observe() {
+             ContentResolver resolver = mContext.getContentResolver();
+-            resolver.registerContentObserver(LineageSettings.Secure.getUriFor(
+-                    LineageSettings.Secure.NETWORK_TRAFFIC_MODE),
++            resolver.registerContentObserver(Settings.Secure.getUriFor(
++                    NETWORK_TRAFFIC_MODE),
+                     false, this, UserHandle.USER_ALL);
+-            resolver.registerContentObserver(LineageSettings.Secure.getUriFor(
+-                    LineageSettings.Secure.NETWORK_TRAFFIC_POSITION),
++            resolver.registerContentObserver(Settings.Secure.getUriFor(
++                    NETWORK_TRAFFIC_POSITION),
+                     false, this, UserHandle.USER_ALL);
+-            resolver.registerContentObserver(LineageSettings.Secure.getUriFor(
+-                    LineageSettings.Secure.NETWORK_TRAFFIC_AUTOHIDE),
++            resolver.registerContentObserver(Settings.Secure.getUriFor(
++                    NETWORK_TRAFFIC_AUTOHIDE),
+                     false, this, UserHandle.USER_ALL);
+-            resolver.registerContentObserver(LineageSettings.Secure.getUriFor(
+-                    LineageSettings.Secure.NETWORK_TRAFFIC_HIDE_ARROWS),
++            resolver.registerContentObserver(Settings.Secure.getUriFor(
++                    NETWORK_TRAFFIC_HIDE_ARROWS),
+                     false, this, UserHandle.USER_ALL);
+-            resolver.registerContentObserver(LineageSettings.Secure.getUriFor(
+-                    LineageSettings.Secure.NETWORK_TRAFFIC_UNITS),
++            resolver.registerContentObserver(Settings.Secure.getUriFor(
++                    NETWORK_TRAFFIC_UNITS),
+                     false, this, UserHandle.USER_ALL);
+-            resolver.registerContentObserver(LineageSettings.Secure.getUriFor(
+-                    LineageSettings.Secure.NETWORK_TRAFFIC_SHOW_UNITS),
++            resolver.registerContentObserver(Settings.Secure.getUriFor(
++                    NETWORK_TRAFFIC_SHOW_UNITS),
+                     false, this, UserHandle.USER_ALL);
+         }
+ 
+@@ -468,18 +475,18 @@ public class NetworkTraffic extends TextView {
+     private void updateSettings() {
+         ContentResolver resolver = mContext.getContentResolver();
+ 
+-        mMode = LineageSettings.Secure.getInt(resolver,
+-                LineageSettings.Secure.NETWORK_TRAFFIC_MODE, 0);
+-        mPosition = LineageSettings.Secure.getInt(resolver,
+-                LineageSettings.Secure.NETWORK_TRAFFIC_POSITION, POSITION_CENTER);
+-        mAutoHide = LineageSettings.Secure.getInt(resolver,
+-                LineageSettings.Secure.NETWORK_TRAFFIC_AUTOHIDE, 0) == 1;
+-        mHideArrows = LineageSettings.Secure.getInt(resolver,
+-                LineageSettings.Secure.NETWORK_TRAFFIC_HIDE_ARROWS, 0) == 1;
+-        mUnits = LineageSettings.Secure.getInt(resolver,
+-                LineageSettings.Secure.NETWORK_TRAFFIC_UNITS, UNITS_KILOBYTES);
+-        mShowUnits = LineageSettings.Secure.getInt(resolver,
+-                LineageSettings.Secure.NETWORK_TRAFFIC_SHOW_UNITS, SHOW_UNITS_ON);
++        mMode = Settings.Secure.getIntForUser(resolver,
++                NETWORK_TRAFFIC_MODE, 0, UserHandle.USER_CURRENT);
++        mPosition = Settings.Secure.getIntForUser(resolver,
++                NETWORK_TRAFFIC_POSITION, POSITION_CENTER, UserHandle.USER_CURRENT);
++        mAutoHide = Settings.Secure.getIntForUser(resolver,
++                NETWORK_TRAFFIC_AUTOHIDE, 0, UserHandle.USER_CURRENT) == 1;
++        mHideArrows = Settings.Secure.getIntForUser(resolver,
++                NETWORK_TRAFFIC_HIDE_ARROWS, 0, UserHandle.USER_CURRENT) == 1;
++        mUnits = Settings.Secure.getIntForUser(resolver,
++                NETWORK_TRAFFIC_UNITS, UNITS_KILOBYTES, UserHandle.USER_CURRENT);
++        mShowUnits = Settings.Secure.getIntForUser(resolver,
++                NETWORK_TRAFFIC_SHOW_UNITS, SHOW_UNITS_ON, UserHandle.USER_CURRENT);
+ 
+         manageNetworkCallbacks();
+ 
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarTransitions.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarTransitions.java
+index da75464b7..6b5a24c80 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarTransitions.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarTransitions.java
+@@ -23,10 +23,9 @@ import android.content.res.Resources;
+ import android.view.View;
+ 
+ import com.android.systemui.res.R;
++import com.android.systemui.statusbar.NetworkTraffic;
+ import com.android.systemui.shared.statusbar.phone.BarTransitions;
+ 
+-import org.lineageos.internal.statusbar.NetworkTraffic;
+-
+ public final class PhoneStatusBarTransitions extends BarTransitions {
+     private static final float ICON_ALPHA_WHEN_NOT_OPAQUE = 1;
+     private static final float ICON_ALPHA_WHEN_LIGHTS_OUT_BATTERY_CLOCK = 0.5f;
+-- 
+2.56.0
+

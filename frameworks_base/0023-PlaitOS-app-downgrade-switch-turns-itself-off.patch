@@ -1,0 +1,209 @@
+From 4e8ffef69776452dd214331e04e78f52f1244d49 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 20:42:21 -0600
+Subject: [PATCH 23/75] PlaitOS: app downgrade switch turns itself off
+
+plait_pm_downgrade_allowed is meant for a one-off install, so it doesn't stay on:
+- once a downgrade gets past the version check because of it
+- an hour after it was switched on
+- at boot (the hour can't be measured across a reboot)
+
+PlaitDowngradeTimeout watches the setting from PackageManagerService.systemReady()
+and does the writes on the package handler, never under mPm.mLock.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../server/pm/InstallPackageHelper.java       | 39 ++++++++--
+ .../server/pm/PackageManagerService.java      |  7 ++
+ .../server/pm/PlaitDowngradeTimeout.java      | 71 +++++++++++++++++++
+ 3 files changed, 113 insertions(+), 4 deletions(-)
+ create mode 100644 services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java
+
+diff --git a/services/core/java/com/android/server/pm/InstallPackageHelper.java b/services/core/java/com/android/server/pm/InstallPackageHelper.java
+index ae100e065..ed38a020e 100644
+--- a/services/core/java/com/android/server/pm/InstallPackageHelper.java
++++ b/services/core/java/com/android/server/pm/InstallPackageHelper.java
+@@ -245,8 +245,6 @@ final class InstallPackageHelper {
+     private final IncrementalManager mIncrementalManager;
+     private final ApexManager mApexManager;
+     private final Context mContext;
+-    /** Settings.Global key (written by PlaitOS settings): allow installing lower app versions. */
+-    private static final String PLAIT_PM_DOWNGRADE_ALLOWED = "plait_pm_downgrade_allowed";
+     private final PackageAbiHelper mPackageAbiHelper;
+     private final SharedLibrariesImpl mSharedLibraries;
+     private final PackageManagerServiceInjector mInjector;
+@@ -3030,9 +3028,11 @@ final class InstallPackageHelper {
+         String packageName = pkgLite.packageName;
+         // PlaitOS: app downgrades switched on in Settings (off by default). Read before taking
+         // mPm.mLock, as a settings read goes through the settings provider. System apps still
+-        // can't go below their preloaded version, and APEX downgrades stay blocked.
++        // can't go below their preloaded version, and APEX downgrades stay blocked. The switch
++        // turns itself off once used (see PlaitDowngradeTimeout).
+         final boolean plaitDowngradeAllowed = android.provider.Settings.Global.getInt(
+-                mContext.getContentResolver(), PLAIT_PM_DOWNGRADE_ALLOWED, 0) == 1;
++                mContext.getContentResolver(), PlaitDowngradeTimeout.SETTING, 0) == 1;
++        boolean plaitDowngradeUsed = false;
+         synchronized (mPm.mLock) {
+             PackageSetting dataOwnerPs = mPm.mSettings.getPackageLPr(packageName);
+             if (dataOwnerPs == null) {
+@@ -3081,6 +3081,10 @@ final class InstallPackageHelper {
+             // some users. Wwe should do the downgrade check. E.g. DELETE_KEEP_DATA and
+             // archived apps
+             if (dataOwnerPkg == null) {
++                plaitDowngradeUsed = plaitDowngradeAllowed
++                        && !PackageManagerServiceUtils.isDowngradePermitted(installFlags,
++                                dataOwnerPs.isDebuggable())
++                        && isPlaitDowngrade(dataOwnerPs, pkgLite);
+                 if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,
+                         dataOwnerPs.isDebuggable()) && !plaitDowngradeAllowed) {
+                     // The data exists on some users and downgrade is not permitted; a lower
+@@ -3098,6 +3102,10 @@ final class InstallPackageHelper {
+                 // dataOwnerPs.getPkg() is not null on system apps case. Don't need to consider
+                 // system apps case like below.
+             } else if (dataOwnerPkg != null && !dataOwnerPkg.isSdkLibrary()) {
++                plaitDowngradeUsed = plaitDowngradeAllowed
++                        && !PackageManagerServiceUtils.isDowngradePermitted(installFlags,
++                                dataOwnerPkg.isDebuggable())
++                        && isPlaitDowngrade(dataOwnerPkg, pkgLite);
+                 if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,
+                         dataOwnerPkg.isDebuggable()) && !plaitDowngradeAllowed) {
+                     // Downgrade is not permitted; a lower version of the app will not be allowed
+@@ -3134,9 +3142,32 @@ final class InstallPackageHelper {
+                 }
+             }
+         }
++        final PlaitDowngradeTimeout plaitDowngradeTimeout = mPm.mPlaitDowngradeTimeout;
++        if (plaitDowngradeUsed && plaitDowngradeTimeout != null) {
++            plaitDowngradeTimeout.onDowngradeAllowed(packageName);
++        }
+         return Pair.create(PackageManager.INSTALL_SUCCEEDED, null);
+     }
+ 
++    /** PlaitOS: whether installing [after] over [before] lowers the version. */
++    private static boolean isPlaitDowngrade(PackageSetting before, PackageInfoLite after) {
++        try {
++            PackageManagerServiceUtils.checkDowngrade(before, after);
++            return false;
++        } catch (PackageManagerException e) {
++            return true;
++        }
++    }
++
++    private static boolean isPlaitDowngrade(AndroidPackage before, PackageInfoLite after) {
++        try {
++            PackageManagerServiceUtils.checkDowngrade(before, after);
++            return false;
++        } catch (PackageManagerException e) {
++            return true;
++        }
++    }
++
+     private Pair<Integer, String> verifyReplacingVersionCodeForApex(PackageInfoLite pkgLite,
+             long requiredInstalledVersionCode, int installFlags) {
+         String packageName = pkgLite.packageName;
+diff --git a/services/core/java/com/android/server/pm/PackageManagerService.java b/services/core/java/com/android/server/pm/PackageManagerService.java
+index 201d99aa9..8c080c51a 100644
+--- a/services/core/java/com/android/server/pm/PackageManagerService.java
++++ b/services/core/java/com/android/server/pm/PackageManagerService.java
+@@ -591,6 +591,8 @@ public class PackageManagerService implements PackageSender, TestUtilityService
+     static final int DEFAULT_NATIVE_LIBRARY_FILE_ACCESS_MODE = 0755;
+ 
+     final Handler mHandler;
++    // Set in systemReady(); null before that
++    volatile PlaitDowngradeTimeout mPlaitDowngradeTimeout;
+     final Handler mBackgroundHandler;
+ 
+     final ProcessLoggingHandler mProcessLoggingHandler;
+@@ -4527,6 +4529,11 @@ public class PackageManagerService implements PackageSender, TestUtilityService
+ 
+         mSystemReady = true;
+ 
++        final PlaitDowngradeTimeout plaitDowngradeTimeout =
++                new PlaitDowngradeTimeout(mContext, mHandler);
++        plaitDowngradeTimeout.systemReady();
++        mPlaitDowngradeTimeout = plaitDowngradeTimeout;
++
+         // Initialize Application Shared Memory isDeviceUpgrading flag.
+         if (isDeviceUpgradingUsesSharedMemory()) {
+             ApplicationSharedMemory.getInstance().setIsDeviceUpgrading(isDeviceUpgrading());
+diff --git a/services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java b/services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java
+new file mode 100644
+index 000000000..2b71bef63
+--- /dev/null
++++ b/services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java
+@@ -0,0 +1,71 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.server.pm;
++
++import android.content.ContentResolver;
++import android.content.Context;
++import android.database.ContentObserver;
++import android.os.Handler;
++import android.provider.Settings;
++import android.util.Slog;
++
++/**
++ * Keeps the "allow app downgrades" switch (Settings.Global plait_pm_downgrade_allowed) short-lived:
++ * it turns itself off an hour after being switched on, once it has let a downgrade through, and at
++ * every boot.
++ */
++final class PlaitDowngradeTimeout {
++    private static final String TAG = "PlaitDowngradeTimeout";
++
++    static final String SETTING = "plait_pm_downgrade_allowed";
++    private static final long TIMEOUT_MS = 60 * 60 * 1000L;
++
++    private final Context mContext;
++    private final Handler mHandler;
++    private final Runnable mTurnOff = () -> turnOff("timed out");
++
++    PlaitDowngradeTimeout(Context context, Handler handler) {
++        mContext = context;
++        mHandler = handler;
++    }
++
++    /** Called from PackageManagerService.systemReady(), once the settings provider is up. */
++    void systemReady() {
++        final ContentResolver resolver = mContext.getContentResolver();
++        // The hour can't be measured across a reboot, so a reboot always ends it
++        if (isEnabled(resolver)) {
++            turnOff("reboot");
++        }
++        resolver.registerContentObserver(Settings.Global.getUriFor(SETTING), false,
++                new ContentObserver(mHandler) {
++                    @Override
++                    public void onChange(boolean selfChange) {
++                        mHandler.removeCallbacks(mTurnOff);
++                        if (isEnabled(resolver)) {
++                            mHandler.postDelayed(mTurnOff, TIMEOUT_MS);
++                        }
++                    }
++                });
++    }
++
++    /** A downgrade got past the version check because of the switch; it is now used up. */
++    void onDowngradeAllowed(String packageName) {
++        Slog.i(TAG, "Downgrade of " + packageName + " allowed by " + SETTING);
++        mHandler.post(() -> turnOff("used"));
++    }
++
++    private static boolean isEnabled(ContentResolver resolver) {
++        return Settings.Global.getInt(resolver, SETTING, 0) == 1;
++    }
++
++    private void turnOff(String why) {
++        mHandler.removeCallbacks(mTurnOff);
++        if (isEnabled(mContext.getContentResolver())) {
++            Slog.i(TAG, "Turning off " + SETTING + " (" + why + ")");
++            Settings.Global.putInt(mContext.getContentResolver(), SETTING, 0);
++        }
++    }
++}
+-- 
+2.56.0
+

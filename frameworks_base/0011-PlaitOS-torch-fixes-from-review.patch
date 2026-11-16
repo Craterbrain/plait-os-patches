@@ -1,0 +1,71 @@
+From 12203826530f2465c293b209c2f4ebe356f612ae Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 18:22:01 -0600
+Subject: [PATCH 11/75] PlaitOS: torch fixes from review
+
+- A screen-off power press now always wakes the screen unless it may become the torch long
+  press; before, it did not wake at all when no long-press behavior was configured
+- Resolve the rear flash camera id in the torch callback, so a torch turned on from Quick
+  Settings is tracked before the first long press (the id was only set on first toggle)
+---
+ .../server/policy/PhoneWindowManager.java     | 26 +++++++++++++------
+ 1 file changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 9cd0bb718..35a3dfc10 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -1137,13 +1137,14 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         if (!mPowerKeyHandled) {
+             mResolvedLongPressOnPowerBehavior = getResolvedLongPressOnPowerBehavior();
+             if (!interactive) {
+-                if ((event.getFlags() & KeyEvent.FLAG_LONG_PRESS) != 0) {
++                // Only defer the wake (to key up) when this press may become the torch long press;
++                // every other press wakes the screen right away, as in AOSP.
++                final boolean mayBeTorch = (event.getFlags() & KeyEvent.FLAG_LONG_PRESS) == 0
++                        && mSupportLongPressPowerWhenNonInteractive
++                        && hasLongPressOnPowerBehavior()
++                        && mResolvedLongPressOnPowerBehavior == LONG_PRESS_POWER_TORCH;
++                if (!mayBeTorch) {
+                     wakeUpFromWakeKey(event);
+-                } else if (mSupportLongPressPowerWhenNonInteractive &&
+-                        hasLongPressOnPowerBehavior()) {
+-                    if (mResolvedLongPressOnPowerBehavior != LONG_PRESS_POWER_TORCH) {
+-                        wakeUpFromWakeKey(event);
+-                    }
+                 }
+             }
+         } else {
+@@ -6741,10 +6742,19 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         return mRearFlashCameraId;
+     }
+ 
++    /** The rear flash camera, looked up on first use so torch changes made elsewhere (QS) are tracked too. */
++    private String rearFlashCameraIdOrNull() {
++        try {
++            return getRearFlashCameraId();
++        } catch (CameraAccessException e) {
++            return null;
++        }
++    }
++
+     private class TorchModeCallback extends CameraManager.TorchCallback {
+         @Override
+         public void onTorchModeChanged(String cameraId, boolean enabled) {
+-            if (!cameraId.equals(mRearFlashCameraId)) return;
++            if (!cameraId.equals(rearFlashCameraIdOrNull())) return;
+             mTorchEnabled = enabled;
+             if (!mTorchEnabled) {
+                 cancelTorchOff();
+@@ -6753,7 +6763,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+ 
+         @Override
+         public void onTorchModeUnavailable(String cameraId) {
+-            if (!cameraId.equals(mRearFlashCameraId)) return;
++            if (!cameraId.equals(rearFlashCameraIdOrNull())) return;
+             mTorchEnabled = false;
+             cancelTorchOff();
+         }
+-- 
+2.56.0
+

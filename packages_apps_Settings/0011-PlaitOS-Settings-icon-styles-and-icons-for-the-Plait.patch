@@ -1,0 +1,2137 @@
+From bf48a332f6d0cf0d4f52e88fa0b912296fcf57a6 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 09:40:27 -0600
+Subject: [PATCH 11/13] PlaitOS: Settings icon styles and icons for the PlaitOS
+ rows
+
+- PlaitIconStyler (new code, inspired by crDroid's "Settings style"
+  options): restyles row icons on every page and the home page tiles in one
+  of seven styles (stock, colored or gradient background with a white
+  symbol, accent or colored outline, colored or accent symbol), in a circle
+  or rounded square, with stable per-row or random colors. Hooked where
+  crDroid applies its own: SettingsPreferenceFragment.addPreferencesFromResource,
+  the end of DashboardFragment's refresh and DashboardFeatureProviderImpl's
+  tile icons. Style 0 (the default) leaves Settings exactly stock; app and
+  account icons (bitmaps) are never restyled
+- Options on the PlaitOS page, Misc tab > Settings style
+  (plait_settings_icon_style, _corner_style, _random_colors; System);
+  changing the style redraws the screen
+- Every PlaitOS row gets an icon; the drawables come from crDroid's
+  packages_apps_crDroidSettings (Apache-2.0), copied as ic_plait_*
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ res/drawable/ic_plait_ambient.xml             |  27 +++
+ res/drawable/ic_plait_answer_call.xml         |  27 +++
+ res/drawable/ic_plait_battery.xml             |  27 +++
+ res/drawable/ic_plait_battery_charging.xml    |  27 +++
+ res/drawable/ic_plait_battery_plus.xml        |  27 +++
+ res/drawable/ic_plait_brightness.xml          |  27 +++
+ res/drawable/ic_plait_brightness_auto.xml     |  27 +++
+ res/drawable/ic_plait_brightness_thumb.xml    |  28 +++
+ res/drawable/ic_plait_call_ring.xml           |  27 +++
+ res/drawable/ic_plait_clock.xml               |  27 +++
+ .../ic_plait_compact_notifications.xml        |  27 +++
+ res/drawable/ic_plait_controls_icon.xml       |  27 +++
+ res/drawable/ic_plait_double_tap.xml          |  27 +++
+ res/drawable/ic_plait_download.xml            |  27 +++
+ res/drawable/ic_plait_flashlight.xml          |  27 +++
+ res/drawable/ic_plait_grid_view.xml           |  27 +++
+ res/drawable/ic_plait_headsup.xml             |  27 +++
+ res/drawable/ic_plait_kill.xml                |  27 +++
+ res/drawable/ic_plait_lock_outline.xml        |  27 +++
+ res/drawable/ic_plait_music.xml               |  27 +++
+ res/drawable/ic_plait_navbar_layout.xml       |  27 +++
+ res/drawable/ic_plait_network.xml             |  27 +++
+ res/drawable/ic_plait_pocket.xml              |  27 +++
+ res/drawable/ic_plait_qs_tile.xml             |  27 +++
+ res/drawable/ic_plait_restart.xml             |  30 +++
+ res/drawable/ic_plait_settings_powermenu.xml  |  27 +++
+ res/drawable/ic_plait_settings_sound.xml      |  27 +++
+ res/drawable/ic_plait_smart_pixels.xml        |  27 +++
+ res/drawable/ic_plait_sysbar_back.xml         |  29 +++
+ res/drawable/ic_plait_sysbar_home.xml         |  28 +++
+ res/drawable/ic_plait_sysbar_recent.xml       |  28 +++
+ res/drawable/ic_plait_tile_medium.xml         |  27 +++
+ res/drawable/ic_plait_timelapse_cr.xml        |  27 +++
+ res/drawable/ic_plait_timer.xml               |  27 +++
+ res/drawable/ic_plait_timer_outline.xml       |  27 +++
+ res/drawable/ic_plait_timetable.xml           |  27 +++
+ res/drawable/ic_plait_traffic.xml             |  27 +++
+ res/values/plait_arrays.xml                   |  20 ++
+ res/values/plait_strings.xml                  |   7 +
+ res/xml/button_navigation_settings.xml        |   3 +
+ res/xml/configure_notification_settings.xml   |   2 +
+ res/xml/display_settings.xml                  |   2 +
+ res/xml/gestures.xml                          |   1 +
+ res/xml/plait_buttons.xml                     |   3 +
+ res/xml/plait_misc.xml                        |  24 +++
+ res/xml/plait_network_traffic.xml             |   6 +
+ res/xml/plait_peek_display.xml                |   4 +
+ res/xml/plait_qs_layout.xml                   |   6 +
+ res/xml/plait_quick_settings.xml              |   4 +
+ res/xml/plait_status_bar.xml                  |   8 +
+ res/xml/power_menu_settings.xml               |   4 +
+ res/xml/security_lockscreen_settings.xml      |   6 +
+ res/xml/sound_settings.xml                    |   2 +
+ .../settings/SettingsPreferenceFragment.java  |   2 +
+ .../DashboardFeatureProviderImpl.java         |  10 +
+ .../settings/dashboard/DashboardFragment.java |   2 +
+ .../settings/plait/PlaitControllers.kt        |  19 ++
+ .../android/settings/plait/PlaitIconStyler.kt | 176 ++++++++++++++++++
+ .../android/settings/plait/PlaitSettings.kt   |   4 +
+ 59 files changed, 1322 insertions(+)
+ create mode 100644 res/drawable/ic_plait_ambient.xml
+ create mode 100644 res/drawable/ic_plait_answer_call.xml
+ create mode 100644 res/drawable/ic_plait_battery.xml
+ create mode 100644 res/drawable/ic_plait_battery_charging.xml
+ create mode 100644 res/drawable/ic_plait_battery_plus.xml
+ create mode 100644 res/drawable/ic_plait_brightness.xml
+ create mode 100644 res/drawable/ic_plait_brightness_auto.xml
+ create mode 100644 res/drawable/ic_plait_brightness_thumb.xml
+ create mode 100644 res/drawable/ic_plait_call_ring.xml
+ create mode 100644 res/drawable/ic_plait_clock.xml
+ create mode 100644 res/drawable/ic_plait_compact_notifications.xml
+ create mode 100644 res/drawable/ic_plait_controls_icon.xml
+ create mode 100644 res/drawable/ic_plait_double_tap.xml
+ create mode 100644 res/drawable/ic_plait_download.xml
+ create mode 100644 res/drawable/ic_plait_flashlight.xml
+ create mode 100644 res/drawable/ic_plait_grid_view.xml
+ create mode 100644 res/drawable/ic_plait_headsup.xml
+ create mode 100644 res/drawable/ic_plait_kill.xml
+ create mode 100644 res/drawable/ic_plait_lock_outline.xml
+ create mode 100644 res/drawable/ic_plait_music.xml
+ create mode 100644 res/drawable/ic_plait_navbar_layout.xml
+ create mode 100644 res/drawable/ic_plait_network.xml
+ create mode 100644 res/drawable/ic_plait_pocket.xml
+ create mode 100644 res/drawable/ic_plait_qs_tile.xml
+ create mode 100644 res/drawable/ic_plait_restart.xml
+ create mode 100644 res/drawable/ic_plait_settings_powermenu.xml
+ create mode 100644 res/drawable/ic_plait_settings_sound.xml
+ create mode 100644 res/drawable/ic_plait_smart_pixels.xml
+ create mode 100644 res/drawable/ic_plait_sysbar_back.xml
+ create mode 100644 res/drawable/ic_plait_sysbar_home.xml
+ create mode 100644 res/drawable/ic_plait_sysbar_recent.xml
+ create mode 100644 res/drawable/ic_plait_tile_medium.xml
+ create mode 100644 res/drawable/ic_plait_timelapse_cr.xml
+ create mode 100644 res/drawable/ic_plait_timer.xml
+ create mode 100644 res/drawable/ic_plait_timer_outline.xml
+ create mode 100644 res/drawable/ic_plait_timetable.xml
+ create mode 100644 res/drawable/ic_plait_traffic.xml
+ create mode 100644 src/com/android/settings/plait/PlaitIconStyler.kt
+
+diff --git a/res/drawable/ic_plait_ambient.xml b/res/drawable/ic_plait_ambient.xml
+new file mode 100644
+index 0000000..59e8cfd
+--- /dev/null
++++ b/res/drawable/ic_plait_ambient.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_ambient.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_answer_call.xml b/res/drawable/ic_plait_answer_call.xml
+new file mode 100644
+index 0000000..1ef7091
+--- /dev/null
++++ b/res/drawable/ic_plait_answer_call.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_answer_call.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M4,3A1,1 0 0,0 3,4A17,17 0 0,0 20,21A1,1 0 0,0 21,20V16.5A1,1 0 0,0 20,15.5C18.75,15.5 17.55,15.3 16.43,14.93C16.08,14.82 15.69,14.9 15.41,15.17L13.21,17.37C10.38,15.93 8.06,13.62 6.62,10.78L8.82,8.57C9.1,8.31 9.18,7.92 9.07,7.57C8.7,6.45 8.5,5.25 8.5,4A1,1 0 0,0 7.5,3H4M19,11V9.5H15.5L21,4L20,3L14.5,8.5V5H13V11H19Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_battery.xml b/res/drawable/ic_plait_battery.xml
+new file mode 100644
+index 0000000..a84efd7
+--- /dev/null
++++ b/res/drawable/ic_plait_battery.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_battery.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017-2018 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M16.67,4H15V2H9V4H7.33A1.33,1.33 0 0,0 6,5.33V20.67C6,21.4 6.6,22 7.33,22H16.67A1.33,1.33 0 0,0 18,20.67V5.33C18,4.6 17.4,4 16.67,4Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_battery_charging.xml b/res/drawable/ic_plait_battery_charging.xml
+new file mode 100644
+index 0000000..a3a38e4
+--- /dev/null
++++ b/res/drawable/ic_plait_battery_charging.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_battery_charging.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017-2019 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M16.67,4H15V2H9V4H7.33A1.33,1.33 0 0,0 6,5.33V20.66C6,21.4 6.6,22 7.33,22H16.66C17.4,22 18,21.4 18,20.67V5.33C18,4.6 17.4,4 16.67,4M11,20V14.5H9L13,7V12.5H15" />
++</vector>
+diff --git a/res/drawable/ic_plait_battery_plus.xml b/res/drawable/ic_plait_battery_plus.xml
+new file mode 100644
+index 0000000..e22f722
+--- /dev/null
++++ b/res/drawable/ic_plait_battery_plus.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_battery_plus.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2019 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M16.67,4C17.4,4 18,4.6 18,5.33V20.67A1.33,1.33 0 0,1 16.67,22H7.33C6.6,22 6,21.4 6,20.67V5.33A1.33,1.33 0 0,1 7.33,4H9V2H15V4H16.67M16,14V12H13V9H11V12H8V14H11V17H13V14H16Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_brightness.xml b/res/drawable/ic_plait_brightness.xml
+new file mode 100644
+index 0000000..413dd57
+--- /dev/null
++++ b/res/drawable/ic_plait_brightness.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_brightness.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8M12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_brightness_auto.xml b/res/drawable/ic_plait_brightness_auto.xml
+new file mode 100644
+index 0000000..881420e
+--- /dev/null
++++ b/res/drawable/ic_plait_brightness_auto.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_brightness_auto.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M14.3,16L13.6,14H10.4L9.7,16H7.8L11,7H13L16.2,16H14.3M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69M10.85,12.65H13.15L12,9L10.85,12.65Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_brightness_thumb.xml b/res/drawable/ic_plait_brightness_thumb.xml
+new file mode 100644
+index 0000000..ad4a478
+--- /dev/null
++++ b/res/drawable/ic_plait_brightness_thumb.xml
+@@ -0,0 +1,28 @@
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_brightness_thumb.xml), Apache-2.0. -->
++<!--
++Copyright (C) 2014 The Android Open Source Project
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++    you may not use this file except in compliance with the License.
++    You may obtain a copy of the License at
++
++         http://www.apache.org/licenses/LICENSE-2.0
++
++    Unless required by applicable law or agreed to in writing, software
++    distributed under the License is distributed on an "AS IS" BASIS,
++    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++    See the License for the specific language governing permissions and
++    limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="28.0dp"
++        android:height="28.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0">
++    <path
++        android:pathData="m18.250000,12.000000a6.250000,6.250000 0.000000,1.000000 1.000000,-12.500000 0.000000,6.250000 6.250000,0.000000 1.000000,1.000000 12.500000,0.000000z"
++        android:fillColor="?android:attr/colorPrimary" />
++    <path
++        android:fillColor="?android:attr/colorControlNormal"
++        android:pathData="M20.000000,8.700000L20.000000,4.000000L15.300000,4.000000L12.000000,0.700000 8.700000,4.000000L4.000000,4.000000L4.000000,8.700000L0.700000,12.000000 4.000000,15.300000L4.000000,20.000000L8.700000,20.000000L12.000000,23.299999 15.300000,20.000000L20.000000,20.000000L20.000000,15.300000L23.299999,12.000000 20.000000,8.700000zM12.000000,18.000000C8.700000,18.000000 6.000000,15.300000 6.000000,12.000000 6.000000,8.700000 8.700000,6.000000 12.000000,6.000000c3.300000,0.000000 6.000000,2.700000 6.000000,6.000000 0.000000,3.300000 -2.700000,6.000000 -6.000000,6.000000zM12.000000,8.000000c-2.200000,0.000000 -4.000000,1.800000 -4.000000,4.000000 0.000000,2.200000 1.800000,4.000000 4.000000,4.000000 2.200000,0.000000 4.000000,-1.800000 4.000000,-4.000000 0.000000,-2.200000 -1.800000,-4.000000 -4.000000,-4.000000z"/>
++</vector>
+diff --git a/res/drawable/ic_plait_call_ring.xml b/res/drawable/ic_plait_call_ring.xml
+new file mode 100644
+index 0000000..a1c51a7
+--- /dev/null
++++ b/res/drawable/ic_plait_call_ring.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_call_ring.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M15,12H17A5,5 0 0,0 12,7V9A3,3 0 0,1 15,12M19,12H21C21,7 16.97,3 12,3V5C15.86,5 19,8.13 19,12M20,15.5C18.75,15.5 17.55,15.3 16.43,14.93C16.08,14.82 15.69,14.9 15.41,15.18L13.21,17.38C10.38,15.94 8.06,13.62 6.62,10.79L8.82,8.59C9.1,8.31 9.18,7.92 9.07,7.57C8.7,6.45 8.5,5.25 8.5,4A1,1 0 0,0 7.5,3H4A1,1 0 0,0 3,4A17,17 0 0,0 20,21A1,1 0 0,0 21,20V16.5A1,1 0 0,0 20,15.5Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_clock.xml b/res/drawable/ic_plait_clock.xml
+new file mode 100644
+index 0000000..90a9ca1
+--- /dev/null
++++ b/res/drawable/ic_plait_clock.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_clock.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_compact_notifications.xml b/res/drawable/ic_plait_compact_notifications.xml
+new file mode 100644
+index 0000000..d32f59d
+--- /dev/null
++++ b/res/drawable/ic_plait_compact_notifications.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_compact_notifications.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2026 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M3,19h6v-7H3V19zM3,5v6h6V5H3zM10,19h11v-2H10V19zM10,15h11v-2H10V15zM10,5v2h11V5H10zM10,11h11V9H10V11z" />
++</vector>
+diff --git a/res/drawable/ic_plait_controls_icon.xml b/res/drawable/ic_plait_controls_icon.xml
+new file mode 100644
+index 0000000..0136a7f
+--- /dev/null
++++ b/res/drawable/ic_plait_controls_icon.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_controls_icon.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2022 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12,3L4,9v12h16L20,9l-8,-6zM18,19h-3v-6L9,13v6L6,19v-9l6,-4.5 6,4.5v9z" />
++</vector>
+diff --git a/res/drawable/ic_plait_double_tap.xml b/res/drawable/ic_plait_double_tap.xml
+new file mode 100644
+index 0000000..abe3b68
+--- /dev/null
++++ b/res/drawable/ic_plait_double_tap.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_double_tap.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M10,9A1,1 0 0,1 11,8A1,1 0 0,1 12,9V13.47L13.21,13.6L18.15,15.79C18.68,16.03 19,16.56 19,17.14V21.5C18.97,22.32 18.32,22.97 17.5,23H11C10.62,23 10.26,22.85 10,22.57L5.1,18.37L5.84,17.6C6.03,17.39 6.3,17.28 6.58,17.28H6.8L10,19V9M11,5A4,4 0 0,1 15,9C15,10.5 14.2,11.77 13,12.46V11.24C13.61,10.69 14,9.89 14,9A3,3 0 0,0 11,6A3,3 0 0,0 8,9C8,9.89 8.39,10.69 9,11.24V12.46C7.8,11.77 7,10.5 7,9A4,4 0 0,1 11,5M11,3A6,6 0 0,1 17,9C17,10.7 16.29,12.23 15.16,13.33L14.16,12.88C15.28,11.96 16,10.56 16,9A5,5 0 0,0 11,4A5,5 0 0,0 6,9C6,11.05 7.23,12.81 9,13.58V14.66C6.67,13.83 5,11.61 5,9A6,6 0 0,1 11,3Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_download.xml b/res/drawable/ic_plait_download.xml
+new file mode 100644
+index 0000000..0d85ff3
+--- /dev/null
++++ b/res/drawable/ic_plait_download.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_download.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2018 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_flashlight.xml b/res/drawable/ic_plait_flashlight.xml
+new file mode 100644
+index 0000000..bae90b9
+--- /dev/null
++++ b/res/drawable/ic_plait_flashlight.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_flashlight.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M9,10L6,5H18L15,10H9M18,4H6V2H18V4M9,22V11H15V22H9M12,13A1,1 0 0,0 11,14A1,1 0 0,0 12,15A1,1 0 0,0 13,14A1,1 0 0,0 12,13Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_grid_view.xml b/res/drawable/ic_plait_grid_view.xml
+new file mode 100644
+index 0000000..0314ba4
+--- /dev/null
++++ b/res/drawable/ic_plait_grid_view.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_grid_view.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M3,11H11V3H3M3,21H11V13H3M13,21H21V13H13M13,3V11H21V3" />
++</vector>
+diff --git a/res/drawable/ic_plait_headsup.xml b/res/drawable/ic_plait_headsup.xml
+new file mode 100644
+index 0000000..f96619e
+--- /dev/null
++++ b/res/drawable/ic_plait_headsup.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_headsup.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M11.5,22C11.64,22 11.77,22 11.9,21.96C12.55,21.82 13.09,21.38 13.34,20.78C13.44,20.54 13.5,20.27 13.5,20H9.5A2,2 0 0,0 11.5,22M18,10.5C18,7.43 15.86,4.86 13,4.18V3.5A1.5,1.5 0 0,0 11.5,2A1.5,1.5 0 0,0 10,3.5V4.18C7.13,4.86 5,7.43 5,10.5V16L3,18V19H20V18L18,16M19.97,10H21.97C21.82,6.79 20.24,3.97 17.85,2.15L16.42,3.58C18.46,5 19.82,7.35 19.97,10M6.58,3.58L5.15,2.15C2.76,3.97 1.18,6.79 1,10H3C3.18,7.35 4.54,5 6.58,3.58Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_kill.xml b/res/drawable/ic_plait_kill.xml
+new file mode 100644
+index 0000000..e5f4533
+--- /dev/null
++++ b/res/drawable/ic_plait_kill.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_kill.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2019 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android" 
++        android:height="24.0dp" 
++        android:width="24.0dp" 
++        android:viewportWidth="24.0" 
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">>
++    <path 
++        android:fillColor="#FFFFFFFF" 
++        android:pathData="M13 2.03V4.05C17.39 4.59 20.5 8.58 19.96 12.97C19.5 16.61 16.64 19.5 13 19.93V21.93C18.5 21.38 22.5 16.5 21.95 11C21.5 6.25 17.73 2.5 13 2.03M11 2.06C9.05 2.25 7.19 3 5.67 4.26L7.1 5.74C8.22 4.84 9.57 4.26 11 4.06V2.06M4.26 5.67C3 7.19 2.25 9.04 2.05 11H4.05C4.24 9.58 4.8 8.23 5.69 7.1L4.26 5.67M2.06 13C2.26 14.96 3.03 16.81 4.27 18.33L5.69 16.9C4.81 15.77 4.24 14.42 4.06 13H2.06M7.1 18.37L5.67 19.74C7.18 21 9.04 21.79 11 22V20C9.58 19.82 8.23 19.25 7.1 18.37M14.59 8L12 10.59L9.41 8L8 9.41L10.59 12L8 14.59L9.41 16L12 13.41L14.59 16L16 14.59L13.41 12L16 9.41L14.59 8Z" />
++</vector>
+\ No newline at end of file
+diff --git a/res/drawable/ic_plait_lock_outline.xml b/res/drawable/ic_plait_lock_outline.xml
+new file mode 100644
+index 0000000..230e0db
+--- /dev/null
++++ b/res/drawable/ic_plait_lock_outline.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_lock_outline.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12,17C10.89,17 10,16.1 10,15C10,13.89 10.89,13 12,13A2,2 0 0,1 14,15A2,2 0 0,1 12,17M18,20V10H6V20H18M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V10C4,8.89 4.89,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_music.xml b/res/drawable/ic_plait_music.xml
+new file mode 100644
+index 0000000..b2ac6be
+--- /dev/null
++++ b/res/drawable/ic_plait_music.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_music.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M21,3V15.5A3.5,3.5 0 0,1 17.5,19A3.5,3.5 0 0,1 14,15.5A3.5,3.5 0 0,1 17.5,12C18.04,12 18.55,12.12 19,12.34V6.47L9,8.6V17.5A3.5,3.5 0 0,1 5.5,21A3.5,3.5 0 0,1 2,17.5A3.5,3.5 0 0,1 5.5,14C6.04,14 6.55,14.12 7,14.34V6L21,3Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_navbar_layout.xml b/res/drawable/ic_plait_navbar_layout.xml
+new file mode 100644
+index 0000000..997935e
+--- /dev/null
++++ b/res/drawable/ic_plait_navbar_layout.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_navbar_layout.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2021 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2M6,16V20H18V16H6Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_network.xml b/res/drawable/ic_plait_network.xml
+new file mode 100644
+index 0000000..e31b7e9
+--- /dev/null
++++ b/res/drawable/ic_plait_network.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_network.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2019 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M1,21H21V1" />
++</vector>
+diff --git a/res/drawable/ic_plait_pocket.xml b/res/drawable/ic_plait_pocket.xml
+new file mode 100644
+index 0000000..2e5380d
+--- /dev/null
++++ b/res/drawable/ic_plait_pocket.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_pocket.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12V4.5A2.5,2.5 0 0,1 4.5,2H19.5A2.5,2.5 0 0,1 22,4.5V12M15.88,8.25L12,12.13L8.12,8.24C7.53,7.65 6.58,7.65 6,8.24C5.41,8.82 5.41,9.77 6,10.36L10.93,15.32C11.5,15.9 12.47,15.9 13.06,15.32L18,10.37C18.59,9.78 18.59,8.83 18,8.25C17.42,7.66 16.47,7.66 15.88,8.25Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_qs_tile.xml b/res/drawable/ic_plait_qs_tile.xml
+new file mode 100644
+index 0000000..b6ce253
+--- /dev/null
++++ b/res/drawable/ic_plait_qs_tile.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_qs_tile.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M4,2C2.89,2 2,2.89 2,4V14H4V4H14V2H4M8,6C6.89,6 6,6.89 6,8V18H8V8H18V6H8M12,10C10.89,10 10,10.89 10,12V20C10,21.11 10.89,22 12,22H20C21.11,22 22,21.11 22,20V12C22,10.89 21.11,10 20,10H12Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_restart.xml b/res/drawable/ic_plait_restart.xml
+new file mode 100644
+index 0000000..d71d62e
+--- /dev/null
++++ b/res/drawable/ic_plait_restart.xml
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_restart.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017-2018 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M10.61,17.83C7.97,17.2 6.0,14.83 6.0,12.0c0.0,-0.71 0.11,-1.34 0.35,-1.93c0.2,-0.51 -0.05,-1.09 -0.56,-1.3c-0.52,-0.21 -1.1,0.05 -1.3,0.56C4.16,10.16 4.0,11.03 4.0,12.0c0.0,3.87 2.76,7.1 6.42,7.84c0.3,0.06 0.58,-0.19 0.58,-0.5l0.0,-1.03C11.0,18.08 10.83,17.88 10.61,17.83z"/>
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12.01,4.0L12.01,1.9c0.0,-0.45 -0.54,-0.67 -0.86,-0.36L7.77,4.93c-0.39,0.39 -0.39,1.02 0.0,1.41l3.39,3.39c0.31,0.31 0.85,0.09 0.85,-0.35L12.01,6.0C15.32,6.01 18.0,8.69 18.0,12.0c0.0,2.83 -1.97,5.2 -4.61,5.83C13.17,17.88 13.0,18.08 13.0,18.31l0.0,1.03c0.0,0.31 0.28,0.56 0.58,0.5C17.24,19.1 20.0,15.87 20.0,12.0C20.0,7.59 16.42,4.01 12.01,4.0z"/>
++</vector>
+diff --git a/res/drawable/ic_plait_settings_powermenu.xml b/res/drawable/ic_plait_settings_powermenu.xml
+new file mode 100644
+index 0000000..d5d8929
+--- /dev/null
++++ b/res/drawable/ic_plait_settings_powermenu.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_settings_powermenu.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2016 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M7,24h2v-2L7,22v2zM11,24h2v-2h-2v2zM13,2h-2v10h2L13,2zM16.56,4.44l-1.45,1.45C16.84,6.94 18,8.83 18,11c0,3.31 -2.69,6 -6,6s-6,-2.69 -6,-6c0,-2.17 1.16,-4.06 2.88,-5.12L7.44,4.44C5.36,5.88 4,8.28 4,11c0,4.42 3.58,8 8,8s8,-3.58 8,-8c0,-2.72 -1.36,-5.12 -3.44,-6.56zM15,24h2v-2h-2v2z"/>
++</vector>
+diff --git a/res/drawable/ic_plait_settings_sound.xml b/res/drawable/ic_plait_settings_sound.xml
+new file mode 100644
+index 0000000..ff40175
+--- /dev/null
++++ b/res/drawable/ic_plait_settings_sound.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_settings_sound.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2016 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M3.0,9.0l0.0,6.0l4.0,0.0l5.0,5.0L12.0,4.0L7.0,9.0L3.0,9.0zm13.5,3.0c0.0,-1.77 -1.02,-3.29 -2.5,-4.03l0.0,8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14.0,3.23l0.0,2.06c2.8,0.86 5.0,3.54 5.0,6.71s-2.11,5.85 -5.0,6.71l0.0,2.06c4.01,-0.91 7.0,-4.49 7.0,-8.77s-2.99,-7.86 -7.0,-8.77z"/>
++</vector>
+diff --git a/res/drawable/ic_plait_smart_pixels.xml b/res/drawable/ic_plait_smart_pixels.xml
+new file mode 100644
+index 0000000..d7be362
+--- /dev/null
++++ b/res/drawable/ic_plait_smart_pixels.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_smart_pixels.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2018 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M10,4V8H14V4H10M16,4V8H20V4H16M16,10V14H20V10H16M16,16V20H20V16H16M14,20V16H10V20H14M8,20V16H4V20H8M8,14V10H4V14H8M8,8V4H4V8H8M10,14H14V10H10V14M4,2H20A2,2 0 0,1 22,4V20A2,2 0 0,1 20,22H4C2.92,22 2,21.1 2,20V4A2,2 0 0,1 4,2Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_sysbar_back.xml b/res/drawable/ic_plait_sysbar_back.xml
+new file mode 100644
+index 0000000..0119b0d
+--- /dev/null
++++ b/res/drawable/ic_plait_sysbar_back.xml
+@@ -0,0 +1,29 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_sysbar_back.xml), Apache-2.0. -->
++<!--
++  ~ Copyright 2021 The Android Open Source Project
++  ~
++  ~ Licensed under the Apache License, Version 2.0 (the "License");
++  ~ you may not use this file except in compliance with the License.
++  ~ You may obtain a copy of the License at
++  ~
++  ~      http://www.apache.org/licenses/LICENSE-2.0
++  ~
++  ~ Unless required by applicable law or agreed to in writing, software
++  ~ distributed under the License is distributed on an "AS IS" BASIS,
++  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++  ~ See the License for the specific language governing permissions and
++  ~ limitations under the License.
++  -->
++
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="20dp"
++    android:height="20dp"
++    android:autoMirrored="true"
++    android:viewportWidth="20"
++    android:viewportHeight="20">
++
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M15.5417 1.66669C15.1833 1.66669 14.8417 1.76669 14.5333 1.94169L3.21667 8.74169C2.775 9.00002 2.5 9.48335 2.5 10C2.5 10.5167 2.775 11 3.21667 11.2584L14.5333 18.05C14.8417 18.2334 15.1833 18.325 15.5417 18.325C16.625 18.325 17.5 17.45 17.5 16.3667V3.62502C17.5 2.54169 16.625 1.66669 15.5417 1.66669Z" />
++</vector>
+\ No newline at end of file
+diff --git a/res/drawable/ic_plait_sysbar_home.xml b/res/drawable/ic_plait_sysbar_home.xml
+new file mode 100644
+index 0000000..6c2dfd0
+--- /dev/null
++++ b/res/drawable/ic_plait_sysbar_home.xml
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_sysbar_home.xml), Apache-2.0. -->
++<!--
++  ~ Copyright 2021 The Android Open Source Project
++  ~
++  ~ Licensed under the Apache License, Version 2.0 (the "License");
++  ~ you may not use this file except in compliance with the License.
++  ~ You may obtain a copy of the License at
++  ~
++  ~      http://www.apache.org/licenses/LICENSE-2.0
++  ~
++  ~ Unless required by applicable law or agreed to in writing, software
++  ~ distributed under the License is distributed on an "AS IS" BASIS,
++  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++  ~ See the License for the specific language governing permissions and
++  ~ limitations under the License.
++  -->
++
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="20dp"
++    android:height="20dp"
++    android:viewportWidth="20"
++    android:viewportHeight="20">
++
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M10.0001 18.3334C5.40008 18.3334 1.66675 14.6 1.66675 10C1.66675 5.40002 5.40008 1.66669 10.0001 1.66669C14.6001 1.66669 18.3334 5.40002 18.3334 10C18.3334 14.6 14.6001 18.3334 10.0001 18.3334Z" />
++</vector>
+\ No newline at end of file
+diff --git a/res/drawable/ic_plait_sysbar_recent.xml b/res/drawable/ic_plait_sysbar_recent.xml
+new file mode 100644
+index 0000000..ca7e8a8
+--- /dev/null
++++ b/res/drawable/ic_plait_sysbar_recent.xml
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_sysbar_recent.xml), Apache-2.0. -->
++<!--
++  ~ Copyright 2021 The Android Open Source Project
++  ~
++  ~ Licensed under the Apache License, Version 2.0 (the "License");
++  ~ you may not use this file except in compliance with the License.
++  ~ You may obtain a copy of the License at
++  ~
++  ~      http://www.apache.org/licenses/LICENSE-2.0
++  ~
++  ~ Unless required by applicable law or agreed to in writing, software
++  ~ distributed under the License is distributed on an "AS IS" BASIS,
++  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++  ~ See the License for the specific language governing permissions and
++  ~ limitations under the License.
++  -->
++
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="20dp"
++    android:height="20dp"
++    android:viewportWidth="20"
++    android:viewportHeight="20">
++
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M4.47634 2.5H15.5241C16.6164 2.5 17.5002 3.38382 17.5002 4.4761V15.5239C17.5002 16.6162 16.6164 17.5 15.5241 17.5H4.47634C3.38407 17.5 2.50024 16.6162 2.50024 15.5239V4.4761C2.50024 3.38382 3.38407 2.5 4.47634 2.5Z" />
++</vector>
+\ No newline at end of file
+diff --git a/res/drawable/ic_plait_tile_medium.xml b/res/drawable/ic_plait_tile_medium.xml
+new file mode 100644
+index 0000000..8629a45
+--- /dev/null
++++ b/res/drawable/ic_plait_tile_medium.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_tile_medium.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2026 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="960"
++        android:viewportHeight="960"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M120,760L120,520L440,520L440,760L120,760ZM520,760L520,520L840,520L840,760L520,760ZM120,440L120,200L840,200L840,440L120,440ZM200,680L360,680L360,600L200,600L200,680ZM600,680L760,680L760,600L600,600L600,680ZM280,640L280,640L280,640L280,640ZM680,640L680,640L680,640L680,640Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_timelapse_cr.xml b/res/drawable/ic_plait_timelapse_cr.xml
+new file mode 100644
+index 0000000..8998964
+--- /dev/null
++++ b/res/drawable/ic_plait_timelapse_cr.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_timelapse_cr.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2019 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M16.24,7.76C15.07,6.58 13.53,6 12,6V12L7.76,16.24C10.1,18.58 13.9,18.58 16.24,16.24C18.59,13.9 18.59,10.1 16.24,7.76Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_timer.xml b/res/drawable/ic_plait_timer.xml
+new file mode 100644
+index 0000000..0716080
+--- /dev/null
++++ b/res/drawable/ic_plait_timer.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_timer.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2026 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M15,1H9v2h6V1zM11,14h2V8h-2v6zM19.03,7.39l1.42,-1.42c-0.43,-0.51 -0.9,-0.99 -1.41,-1.41l-1.42,1.42C16.07,4.74 14.12,4 12,4c-4.97,0 -9,4.03 -9,9s4.02,9 9,9 9,-4.03 9,-9c0,-2.12 -0.74,-4.07 -1.97,-5.61zM12,20c-3.87,0 -7,-3.13 -7,-7s3.13,-7 7,-7 7,3.13 7,7 -3.13,7 -7,7z" />
++</vector>
+diff --git a/res/drawable/ic_plait_timer_outline.xml b/res/drawable/ic_plait_timer_outline.xml
+new file mode 100644
+index 0000000..ac5175b
+--- /dev/null
++++ b/res/drawable/ic_plait_timer_outline.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_timer_outline.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2021 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M19.03,7.39L20.45,5.97C20,5.46 19.55,5 19.04,4.56L17.62,6C16.07,4.74 14.12,4 12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22C17,22 21,17.97 21,13C21,10.88 20.26,8.93 19.03,7.39M11,14H13V8H11M15,1H9V3H15V1Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_timetable.xml b/res/drawable/ic_plait_timetable.xml
+new file mode 100644
+index 0000000..4958b3a
+--- /dev/null
++++ b/res/drawable/ic_plait_timetable.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_timetable.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2018 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M14,12H15.5V14.82L17.94,16.23L17.19,17.53L14,15.69V12M4,2H18A2,2 0 0,1 20,4V10.1C21.24,11.36 22,13.09 22,15A7,7 0 0,1 15,22C13.09,22 11.36,21.24 10.1,20H4A2,2 0 0,1 2,18V4A2,2 0 0,1 4,2M4,15V18H8.67C8.24,17.09 8,16.07 8,15H4M4,8H10V5H4V8M18,8V5H12V8H18M4,13H8.29C8.63,11.85 9.26,10.82 10.1,10H4V13M15,10.15A4.85,4.85 0 0,0 10.15,15C10.15,17.68 12.32,19.85 15,19.85A4.85,4.85 0 0,0 19.85,15C19.85,12.32 17.68,10.15 15,10.15Z" />
++</vector>
+diff --git a/res/drawable/ic_plait_traffic.xml b/res/drawable/ic_plait_traffic.xml
+new file mode 100644
+index 0000000..37928d4
+--- /dev/null
++++ b/res/drawable/ic_plait_traffic.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- From crDroid packages_apps_crDroidSettings (res/drawable/ic_traffic.xml), Apache-2.0. -->
++<!--
++     Copyright (C) 2017 crDroid Android Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++        android:width="24.0dp"
++        android:height="24.0dp"
++        android:viewportWidth="24.0"
++        android:viewportHeight="24.0"
++        android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M12,9A2,2 0 0,1 10,7C10,5.89 10.9,5 12,5C13.11,5 14,5.89 14,7A2,2 0 0,1 12,9M12,14A2,2 0 0,1 10,12C10,10.89 10.9,10 12,10C13.11,10 14,10.89 14,12A2,2 0 0,1 12,14M12,19A2,2 0 0,1 10,17C10,15.89 10.9,15 12,15C13.11,15 14,15.89 14,17A2,2 0 0,1 12,19M20,10H17V8.86C18.72,8.41 20,6.86 20,5H17V4A1,1 0 0,0 16,3H8A1,1 0 0,0 7,4V5H4C4,6.86 5.28,8.41 7,8.86V10H4C4,11.86 5.28,13.41 7,13.86V15H4C4,16.86 5.28,18.41 7,18.86V20A1,1 0 0,0 8,21H16A1,1 0 0,0 17,20V18.86C18.72,18.41 20,16.86 20,15H17V13.86C18.72,13.41 20,11.86 20,10Z" />
++</vector>
+diff --git a/res/values/plait_arrays.xml b/res/values/plait_arrays.xml
+index 29a4e5e..bea946d 100644
+--- a/res/values/plait_arrays.xml
++++ b/res/values/plait_arrays.xml
+@@ -99,6 +99,26 @@
+         <item>1000</item><item>2000</item><item>3000</item><item>5000</item><item>8000</item><item>10000</item>
+     </string-array>
+ 
++    <!-- Settings icon style (PlaitIconStyler.Style order) -->
++    <string-array name="plait_settings_icon_style_entries">
++        <item>Material expressive (stock)</item>
++        <item>Colored background, white icon</item>
++        <item>Gradient background, white icon</item>
++        <item>Accent outline and icon</item>
++        <item>Colored outline and icon</item>
++        <item>Colored icon only</item>
++        <item>Accent icon only</item>
++    </string-array>
++    <string-array name="plait_settings_icon_style_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item><item>5</item><item>6</item>
++    </string-array>
++    <string-array name="plait_settings_icon_corner_entries">
++        <item>Circle</item><item>Rounded square</item>
++    </string-array>
++    <string-array name="plait_settings_icon_corner_values" translatable="false">
++        <item>0</item><item>1</item>
++    </string-array>
++
+     <!-- Clock position (0 right, 1 center, 2 left = stock) -->
+     <string-array name="plait_clock_position_entries">
+         <item>Left</item><item>Center</item><item>Right</item>
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+index d4abc29..1536755 100644
+--- a/res/values/plait_strings.xml
++++ b/res/values/plait_strings.xml
+@@ -109,6 +109,13 @@
+     <string name="plait_tuner_title">System UI Tuner</string>
+     <string name="plait_tuner_summary">More status bar and system UI options</string>
+ 
++    <!-- Settings style (inspired by crDroid's Settings style options) -->
++    <string name="plait_settings_style_category">Settings style</string>
++    <string name="plait_settings_icon_style_title">Icon style</string>
++    <string name="plait_settings_icon_corner_title">Icon shape</string>
++    <string name="plait_settings_icon_random_title">Random colors</string>
++    <string name="plait_settings_icon_random_summary">A new color for each icon every time a page opens, instead of one color per row</string>
++
+     <!-- Shared values -->
+     <string name="plait_default_entry">Default</string>
+     <string name="plait_off">Off</string>
+diff --git a/res/xml/button_navigation_settings.xml b/res/xml/button_navigation_settings.xml
+index 4254f92..ecb01df 100644
+--- a/res/xml/button_navigation_settings.xml
++++ b/res/xml/button_navigation_settings.xml
+@@ -44,18 +44,21 @@
+         android:title="@string/plait_category">
+         <ListPreference
+             android:key="plait_home_long_press_action"
++            android:icon="@drawable/ic_plait_sysbar_home"
+             android:title="@string/plait_home_long_press_title"
+             android:entries="@array/plait_key_action_entries"
+             android:entryValues="@array/plait_key_action_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <ListPreference
+             android:key="plait_back_long_press_action"
++            android:icon="@drawable/ic_plait_sysbar_back"
+             android:title="@string/plait_back_long_press_title"
+             android:entries="@array/plait_key_action_entries"
+             android:entryValues="@array/plait_key_action_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <ListPreference
+             android:key="plait_recents_long_press_action"
++            android:icon="@drawable/ic_plait_sysbar_recent"
+             android:title="@string/plait_recents_long_press_title"
+             android:entries="@array/plait_key_action_entries"
+             android:entryValues="@array/plait_key_action_values"
+diff --git a/res/xml/configure_notification_settings.xml b/res/xml/configure_notification_settings.xml
+index 0f8ed9e..1a4c150 100644
+--- a/res/xml/configure_notification_settings.xml
++++ b/res/xml/configure_notification_settings.xml
+@@ -233,12 +233,14 @@
+         android:title="@string/plait_category">
+         <ListPreference
+             android:key="plait_heads_up_timeout"
++            android:icon="@drawable/ic_plait_headsup"
+             android:title="@string/plait_heads_up_timeout_title"
+             android:entries="@array/plait_heads_up_timeout_entries"
+             android:entryValues="@array/plait_heads_up_timeout_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <SwitchPreferenceCompat
+             android:key="plait_notification_kill_app_button"
++            android:icon="@drawable/ic_plait_kill"
+             android:title="@string/plait_kill_button_title"
+             android:summary="@string/plait_kill_button_summary"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+diff --git a/res/xml/display_settings.xml b/res/xml/display_settings.xml
+index 6c6792e..97a55b6 100644
+--- a/res/xml/display_settings.xml
++++ b/res/xml/display_settings.xml
+@@ -243,11 +243,13 @@
+         android:title="@string/plait_category">
+         <SwitchPreferenceCompat
+             android:key="plait_smart_pixel_filter_enabled"
++            android:icon="@drawable/ic_plait_smart_pixels"
+             android:title="@string/plait_smart_pixels_title"
+             android:summary="@string/plait_smart_pixels_summary"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+         <ListPreference
+             android:key="plait_smart_pixel_filter_percent"
++            android:icon="@drawable/ic_plait_grid_view"
+             android:title="@string/plait_smart_pixels_percent_title"
+             android:entries="@array/plait_smart_pixels_percent_entries"
+             android:entryValues="@array/plait_smart_pixels_percent_values"
+diff --git a/res/xml/gestures.xml b/res/xml/gestures.xml
+index 265ebb2..768a9ba 100644
+--- a/res/xml/gestures.xml
++++ b/res/xml/gestures.xml
+@@ -90,6 +90,7 @@
+     <!-- PlaitOS -->
+     <SwitchPreferenceCompat
+         android:key="plait_double_tap_to_sleep"
++        android:icon="@drawable/ic_plait_double_tap"
+         android:title="@string/plait_double_tap_to_sleep_title"
+         android:summary="@string/plait_double_tap_to_sleep_summary"
+         settings:controller="com.android.settings.plait.PlaitSwitchController" />
+diff --git a/res/xml/plait_buttons.xml b/res/xml/plait_buttons.xml
+index ab79fe2..fee4665 100644
+--- a/res/xml/plait_buttons.xml
++++ b/res/xml/plait_buttons.xml
+@@ -7,16 +7,19 @@
+     android:title="@string/plait_tab_buttons">
+     <SwitchPreferenceCompat
+         android:key="plait_volbtn_music_controls"
++        android:icon="@drawable/ic_plait_music"
+         android:title="@string/plait_volume_music_title"
+         android:summary="@string/plait_volume_music_summary"
+         settings:controller="com.android.settings.plait.PlaitSwitchController" />
+     <PreferenceCategory android:key="plait_answer_call_category" android:title="@string/plait_answer_call_category">
+         <SwitchPreferenceCompat
+             android:key="plait_volume_answer_call"
++            android:icon="@drawable/ic_plait_answer_call"
+             android:title="@string/plait_volume_answer_title"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+         <SwitchPreferenceCompat
+             android:key="plait_home_answer_call"
++            android:icon="@drawable/ic_plait_call_ring"
+             android:title="@string/plait_home_answer_title"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+     </PreferenceCategory>
+diff --git a/res/xml/plait_misc.xml b/res/xml/plait_misc.xml
+index 405b1d0..f9a4cd7 100644
+--- a/res/xml/plait_misc.xml
++++ b/res/xml/plait_misc.xml
+@@ -7,14 +7,38 @@
+     android:title="@string/plait_tab_misc">
+     <SwitchPreferenceCompat
+         android:key="plait_pm_downgrade_allowed"
++        android:icon="@drawable/ic_plait_download"
+         android:title="@string/plait_downgrade_title"
+         android:summary="@string/plait_downgrade_summary"
+         settings:controller="com.android.settings.plait.PlaitPrimaryUserSwitchController" />
+     <Preference
+         android:key="plait_system_ui_tuner"
++        android:icon="@drawable/ic_plait_controls_icon"
+         android:title="@string/plait_tuner_title"
+         android:summary="@string/plait_tuner_summary">
+         <intent android:targetPackage="com.android.systemui"
+             android:targetClass="com.android.systemui.tuner.TunerActivity" />
+     </Preference>
++    <PreferenceCategory android:key="plait_settings_style_category" android:title="@string/plait_settings_style_category">
++        <ListPreference
++            android:key="plait_settings_icon_style"
++            android:icon="@drawable/ic_plait_controls_icon"
++            android:title="@string/plait_settings_icon_style_title"
++            android:entries="@array/plait_settings_icon_style_entries"
++            android:entryValues="@array/plait_settings_icon_style_values"
++            settings:controller="com.android.settings.plait.PlaitIconStyleController" />
++        <ListPreference
++            android:key="plait_settings_icon_corner_style"
++            android:icon="@drawable/ic_plait_tile_medium"
++            android:title="@string/plait_settings_icon_corner_title"
++            android:entries="@array/plait_settings_icon_corner_entries"
++            android:entryValues="@array/plait_settings_icon_corner_values"
++            settings:controller="com.android.settings.plait.PlaitIconStyleController" />
++        <SwitchPreferenceCompat
++            android:key="plait_settings_icon_random_colors"
++            android:icon="@drawable/ic_plait_grid_view"
++            android:title="@string/plait_settings_icon_random_title"
++            android:summary="@string/plait_settings_icon_random_summary"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    </PreferenceCategory>
+ </PreferenceScreen>
+diff --git a/res/xml/plait_network_traffic.xml b/res/xml/plait_network_traffic.xml
+index 627192a..826c117 100644
+--- a/res/xml/plait_network_traffic.xml
++++ b/res/xml/plait_network_traffic.xml
+@@ -7,32 +7,38 @@
+     android:title="@string/plait_network_traffic_title">
+     <ListPreference
+         android:key="plait_network_traffic_mode"
++        android:icon="@drawable/ic_plait_traffic"
+         android:title="@string/plait_network_traffic_mode_title"
+         android:entries="@array/plait_network_traffic_mode_entries"
+         android:entryValues="@array/plait_network_traffic_mode_values"
+         settings:controller="com.android.settings.plait.PlaitListController" />
+     <ListPreference
+         android:key="plait_network_traffic_position"
++        android:icon="@drawable/ic_plait_navbar_layout"
+         android:title="@string/plait_network_traffic_position_title"
+         android:entries="@array/plait_network_traffic_position_entries"
+         android:entryValues="@array/plait_network_traffic_position_values"
+         settings:controller="com.android.settings.plait.PlaitListController" />
+     <SwitchPreferenceCompat
+         android:key="plait_network_traffic_autohide"
++        android:icon="@drawable/ic_plait_timer_outline"
+         android:title="@string/plait_network_traffic_autohide_title"
+         settings:controller="com.android.settings.plait.PlaitSwitchController" />
+     <SwitchPreferenceCompat
+         android:key="plait_network_traffic_hide_arrows"
++        android:icon="@drawable/ic_plait_traffic"
+         android:title="@string/plait_network_traffic_arrows_title"
+         settings:controller="com.android.settings.plait.PlaitSwitchController" />
+     <ListPreference
+         android:key="plait_network_traffic_units"
++        android:icon="@drawable/ic_plait_network"
+         android:title="@string/plait_network_traffic_units_title"
+         android:entries="@array/plait_network_traffic_units_entries"
+         android:entryValues="@array/plait_network_traffic_units_values"
+         settings:controller="com.android.settings.plait.PlaitListController" />
+     <ListPreference
+         android:key="plait_network_traffic_show_units"
++        android:icon="@drawable/ic_plait_network"
+         android:title="@string/plait_network_traffic_show_units_title"
+         android:entries="@array/plait_network_traffic_show_units_entries"
+         android:entryValues="@array/plait_network_traffic_show_units_values"
+diff --git a/res/xml/plait_peek_display.xml b/res/xml/plait_peek_display.xml
+index cd2de25..1598000 100644
+--- a/res/xml/plait_peek_display.xml
++++ b/res/xml/plait_peek_display.xml
+@@ -7,17 +7,20 @@
+     android:title="@string/plait_peek_title">
+     <SwitchPreferenceCompat
+         android:key="plait_peek_display"
++        android:icon="@drawable/ic_plait_ambient"
+         android:title="@string/plait_peek_title"
+         android:summary="@string/plait_peek_summary"
+         settings:controller="com.android.settings.plait.PeekDisplaySwitchController" />
+     <SwitchPreferenceCompat
+         android:key="plait_peek_breathing"
++        android:icon="@drawable/ic_plait_timelapse_cr"
+         android:title="@string/plait_peek_breathing_title"
+         android:summary="@string/plait_peek_breathing_summary"
+         android:dependency="plait_peek_display"
+         settings:controller="com.android.settings.plait.PlaitSwitchController" />
+     <ListPreference
+         android:key="plait_peek_breathing_interval"
++        android:icon="@drawable/ic_plait_timer"
+         android:title="@string/plait_peek_interval_title"
+         android:entries="@array/plait_peek_interval_entries"
+         android:entryValues="@array/plait_peek_interval_values"
+@@ -25,6 +28,7 @@
+         settings:controller="com.android.settings.plait.PlaitListController" />
+     <ListPreference
+         android:key="plait_peek_breathing_duration"
++        android:icon="@drawable/ic_plait_timer_outline"
+         android:title="@string/plait_peek_duration_title"
+         android:entries="@array/plait_peek_duration_entries"
+         android:entryValues="@array/plait_peek_duration_values"
+diff --git a/res/xml/plait_qs_layout.xml b/res/xml/plait_qs_layout.xml
+index 353bd28..5b1db5b 100644
+--- a/res/xml/plait_qs_layout.xml
++++ b/res/xml/plait_qs_layout.xml
+@@ -8,18 +8,21 @@
+     <PreferenceCategory android:key="plait_qs_portrait" android:title="@string/plait_qs_portrait_category">
+         <ListPreference
+             android:key="plait_qs_tiles_columns"
++            android:icon="@drawable/ic_plait_tile_medium"
+             android:title="@string/plait_qs_columns_title"
+             android:entries="@array/plait_qs_count_entries"
+             android:entryValues="@array/plait_qs_count_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <ListPreference
+             android:key="plait_qs_tiles_rows"
++            android:icon="@drawable/ic_plait_tile_medium"
+             android:title="@string/plait_qs_rows_title"
+             android:entries="@array/plait_qs_count_entries"
+             android:entryValues="@array/plait_qs_count_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <ListPreference
+             android:key="plait_qqs_tiles_rows"
++            android:icon="@drawable/ic_plait_tile_medium"
+             android:title="@string/plait_qqs_rows_title"
+             android:entries="@array/plait_qs_count_entries"
+             android:entryValues="@array/plait_qs_count_values"
+@@ -28,18 +31,21 @@
+     <PreferenceCategory android:key="plait_qs_landscape" android:title="@string/plait_qs_landscape_category">
+         <ListPreference
+             android:key="plait_qs_tiles_columns_landscape"
++            android:icon="@drawable/ic_plait_tile_medium"
+             android:title="@string/plait_qs_columns_title"
+             android:entries="@array/plait_qs_count_entries"
+             android:entryValues="@array/plait_qs_count_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <ListPreference
+             android:key="plait_qs_tiles_rows_landscape"
++            android:icon="@drawable/ic_plait_tile_medium"
+             android:title="@string/plait_qs_rows_title"
+             android:entries="@array/plait_qs_count_entries"
+             android:entryValues="@array/plait_qs_count_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <ListPreference
+             android:key="plait_qqs_tiles_rows_landscape"
++            android:icon="@drawable/ic_plait_tile_medium"
+             android:title="@string/plait_qqs_rows_title"
+             android:entries="@array/plait_qs_count_entries"
+             android:entryValues="@array/plait_qs_count_values"
+diff --git a/res/xml/plait_quick_settings.xml b/res/xml/plait_quick_settings.xml
+index 97d8b64..f3e9113 100644
+--- a/res/xml/plait_quick_settings.xml
++++ b/res/xml/plait_quick_settings.xml
+@@ -7,24 +7,28 @@
+     android:title="@string/plait_tab_quick_settings">
+     <ListPreference
+         android:key="plait_status_bar_quick_qs_pulldown"
++        android:icon="@drawable/ic_plait_qs_tile"
+         android:title="@string/plait_quick_pulldown_title"
+         android:entries="@array/plait_quick_pulldown_entries"
+         android:entryValues="@array/plait_quick_pulldown_values"
+         settings:controller="com.android.settings.plait.PlaitListController" />
+     <ListPreference
+         android:key="plait_qs_show_brightness_slider"
++        android:icon="@drawable/ic_plait_brightness_auto"
+         android:title="@string/plait_brightness_slider_title"
+         android:entries="@array/plait_brightness_slider_entries"
+         android:entryValues="@array/plait_brightness_slider_values"
+         settings:controller="com.android.settings.plait.PlaitListController" />
+     <ListPreference
+         android:key="plait_qs_brightness_slider_position"
++        android:icon="@drawable/ic_plait_brightness_thumb"
+         android:title="@string/plait_brightness_slider_position_title"
+         android:entries="@array/plait_brightness_slider_position_entries"
+         android:entryValues="@array/plait_brightness_slider_position_values"
+         settings:controller="com.android.settings.plait.PlaitListController" />
+     <Preference
+         android:key="plait_qs_layout"
++        android:icon="@drawable/ic_plait_grid_view"
+         android:title="@string/plait_qs_layout_title"
+         android:summary="@string/plait_qs_layout_summary"
+         android:fragment="com.android.settings.plait.PlaitQsLayoutFragment" />
+diff --git a/res/xml/plait_status_bar.xml b/res/xml/plait_status_bar.xml
+index 6be53d3..6dae6b9 100644
+--- a/res/xml/plait_status_bar.xml
++++ b/res/xml/plait_status_bar.xml
+@@ -9,12 +9,14 @@
+     <PreferenceCategory android:key="plait_clock_category" android:title="@string/plait_clock_category">
+         <ListPreference
+             android:key="plait_status_bar_clock"
++            android:icon="@drawable/ic_plait_clock"
+             android:title="@string/plait_clock_position_title"
+             android:entries="@array/plait_clock_position_entries"
+             android:entryValues="@array/plait_clock_position_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <SwitchPreferenceCompat
+             android:key="clock_seconds"
++            android:icon="@drawable/ic_plait_timer"
+             android:title="@string/plait_clock_seconds_title"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+     </PreferenceCategory>
+@@ -22,12 +24,14 @@
+     <PreferenceCategory android:key="plait_battery_category" android:title="@string/plait_battery_category">
+         <ListPreference
+             android:key="plait_status_bar_battery_style"
++            android:icon="@drawable/ic_plait_battery"
+             android:title="@string/plait_battery_style_title"
+             android:entries="@array/plait_battery_style_entries"
+             android:entryValues="@array/plait_battery_style_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <ListPreference
+             android:key="plait_status_bar_battery_percent"
++            android:icon="@drawable/ic_plait_battery_plus"
+             android:title="@string/plait_battery_percent_title"
+             android:entries="@array/plait_battery_percent_entries"
+             android:entryValues="@array/plait_battery_percent_values"
+@@ -37,16 +41,19 @@
+     <PreferenceCategory android:key="plait_status_bar_more_category" android:title="@string/plait_category">
+         <Preference
+             android:key="plait_network_traffic"
++            android:icon="@drawable/ic_plait_traffic"
+             android:title="@string/plait_network_traffic_title"
+             android:summary="@string/plait_network_traffic_summary"
+             android:fragment="com.android.settings.plait.PlaitNetworkTrafficFragment" />
+         <SwitchPreferenceCompat
+             android:key="plait_status_bar_brightness_control"
++            android:icon="@drawable/ic_plait_brightness"
+             android:title="@string/plait_brightness_control_title"
+             android:summary="@string/plait_brightness_control_summary"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+         <SwitchPreferenceCompat
+             android:key="plait_status_bar_brightness_control_lockscreen"
++            android:icon="@drawable/ic_plait_lock_outline"
+             android:title="@string/plait_brightness_control_lockscreen_title"
+             android:dependency="plait_status_bar_brightness_control"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+@@ -55,6 +62,7 @@
+     <PreferenceCategory android:key="plait_icons_category" android:title="@string/plait_icons_category">
+         <Preference
+             android:key="plait_status_bar_icons"
++            android:icon="@drawable/ic_plait_compact_notifications"
+             android:title="@string/plait_status_bar_icons_title"
+             android:summary="@string/plait_status_bar_icons_summary">
+             <intent android:targetPackage="com.android.systemui"
+diff --git a/res/xml/power_menu_settings.xml b/res/xml/power_menu_settings.xml
+index d6b7309..25f2c75 100644
+--- a/res/xml/power_menu_settings.xml
++++ b/res/xml/power_menu_settings.xml
+@@ -56,11 +56,13 @@
+         android:title="@string/plait_category">
+         <SwitchPreferenceCompat
+             android:key="plait_torch_long_press_power"
++            android:icon="@drawable/ic_plait_flashlight"
+             android:title="@string/plait_torch_title"
+             android:summary="@string/plait_torch_summary"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+         <ListPreference
+             android:key="plait_torch_long_press_power_timeout"
++            android:icon="@drawable/ic_plait_timer"
+             android:title="@string/plait_torch_timeout_title"
+             android:entries="@array/plait_torch_timeout_entries"
+             android:entryValues="@array/plait_torch_timeout_values"
+@@ -68,11 +70,13 @@
+             settings:controller="com.android.settings.plait.PlaitListController" />
+         <SwitchPreferenceCompat
+             android:key="plait_advanced_reboot"
++            android:icon="@drawable/ic_plait_restart"
+             android:title="@string/plait_advanced_reboot_title"
+             android:summary="@string/plait_advanced_reboot_summary"
+             settings:controller="com.android.settings.plait.PlaitPrimaryUserSwitchController" />
+         <MultiSelectListPreference
+             android:key="plait_power_menu_actions"
++            android:icon="@drawable/ic_plait_settings_powermenu"
+             android:title="@string/plait_power_menu_actions_title"
+             android:entries="@array/plait_power_menu_action_entries"
+             android:entryValues="@array/plait_power_menu_action_values"
+diff --git a/res/xml/security_lockscreen_settings.xml b/res/xml/security_lockscreen_settings.xml
+index 5ef1423..c4e3a59 100644
+--- a/res/xml/security_lockscreen_settings.xml
++++ b/res/xml/security_lockscreen_settings.xml
+@@ -154,30 +154,36 @@
+         android:title="@string/plait_category">
+         <Preference
+             android:key="plait_peek_display_entry"
++            android:icon="@drawable/ic_plait_ambient"
+             android:title="@string/plait_peek_title"
+             android:summary="@string/plait_peek_summary"
+             android:fragment="com.android.settings.plait.PlaitPeekDisplayFragment" />
+         <ListPreference
+             android:key="plait_doze_always_on_auto_mode"
++            android:icon="@drawable/ic_plait_timetable"
+             android:title="@string/plait_aod_schedule_title"
+             android:entries="@array/plait_aod_schedule_entries"
+             android:entryValues="@array/plait_aod_schedule_values"
+             settings:controller="com.android.settings.plait.AodScheduleModeController" />
+         <Preference
+             android:key="plait_doze_always_on_auto_time_from"
++            android:icon="@drawable/ic_plait_clock"
+             android:title="@string/plait_aod_from_title"
+             settings:controller="com.android.settings.plait.AodScheduleTimeController" />
+         <Preference
+             android:key="plait_doze_always_on_auto_time_till"
++            android:icon="@drawable/ic_plait_clock"
+             android:title="@string/plait_aod_till_title"
+             settings:controller="com.android.settings.plait.AodScheduleTimeController" />
+         <SwitchPreferenceCompat
+             android:key="plait_doze_on_charge"
++            android:icon="@drawable/ic_plait_battery_charging"
+             android:title="@string/plait_doze_on_charge_title"
+             android:summary="@string/plait_doze_on_charge_summary"
+             settings:controller="com.android.settings.plait.AodAvailableSwitchController" />
+         <SwitchPreferenceCompat
+             android:key="plait_pocket_judge"
++            android:icon="@drawable/ic_plait_pocket"
+             android:title="@string/plait_pocket_title"
+             android:summary="@string/plait_pocket_summary"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+diff --git a/res/xml/sound_settings.xml b/res/xml/sound_settings.xml
+index ce3fcea..f2c18e5 100644
+--- a/res/xml/sound_settings.xml
++++ b/res/xml/sound_settings.xml
+@@ -270,10 +270,12 @@
+         android:title="@string/plait_category">
+         <SwitchPreferenceCompat
+             android:key="plait_volume_panel_left"
++            android:icon="@drawable/ic_plait_settings_sound"
+             android:title="@string/plait_volume_left_title"
+             settings:controller="com.android.settings.plait.PlaitSwitchController" />
+         <ListPreference
+             android:key="volume_dialog_dismiss_timeout"
++            android:icon="@drawable/ic_plait_timer_outline"
+             android:title="@string/plait_volume_timeout_title"
+             android:entries="@array/plait_volume_timeout_entries"
+             android:entryValues="@array/plait_volume_timeout_values"
+diff --git a/src/com/android/settings/SettingsPreferenceFragment.java b/src/com/android/settings/SettingsPreferenceFragment.java
+index b3f1dd2..18379fb 100644
+--- a/src/com/android/settings/SettingsPreferenceFragment.java
++++ b/src/com/android/settings/SettingsPreferenceFragment.java
+@@ -186,6 +186,8 @@ public abstract class SettingsPreferenceFragment extends InstrumentedPreferenceF
+     public void addPreferencesFromResource(@XmlRes int preferencesResId) {
+         super.addPreferencesFromResource(preferencesResId);
+         checkAvailablePrefs(getPreferenceScreen());
++        // PlaitOS: icon style (stock unless chosen on the PlaitOS page)
++        com.android.settings.plait.PlaitIconStyler.styleIcons(getPreferenceScreen(), getContext());
+     }
+ 
+     @VisibleForTesting
+diff --git a/src/com/android/settings/dashboard/DashboardFeatureProviderImpl.java b/src/com/android/settings/dashboard/DashboardFeatureProviderImpl.java
+index 0b24bcb..3d4c605 100644
+--- a/src/com/android/settings/dashboard/DashboardFeatureProviderImpl.java
++++ b/src/com/android/settings/dashboard/DashboardFeatureProviderImpl.java
+@@ -529,6 +529,14 @@ public class DashboardFeatureProviderImpl implements DashboardFeatureProvider {
+             }
+             // Handle homepage icons
+             if (TextUtils.equals(tile.getCategory(), CategoryKey.CATEGORY_HOMEPAGE)) {
++                // PlaitOS: with an icon style chosen, the plain icon gets that style instead of
++                // the expressive or tinted treatment (account icons are left as they are)
++                if (com.android.settings.plait.PlaitIconStyler.isActive(mContext)) {
++                    preference.setIcon(iconDrawable);
++                    com.android.settings.plait.PlaitIconStyler.styleIcon(preference,
++                            preference.getContext());
++                    return;
++                }
+                 if (SettingsThemeHelper.isExpressiveTheme(mContext)) {
+                     preference.setIcon(getExpressiveHomepageIcon(tile, iconDrawable, iconPackage));
+                     return;
+@@ -548,6 +556,8 @@ public class DashboardFeatureProviderImpl implements DashboardFeatureProvider {
+                 ((AdaptiveIcon) iconDrawable).setBackgroundColor(mContext, tile);
+             }
+             preference.setIcon(iconDrawable);
++            com.android.settings.plait.PlaitIconStyler.styleIcon(preference,
++                    preference.getContext());
+         }, new Handler(Looper.getMainLooper()));
+     }
+ 
+diff --git a/src/com/android/settings/dashboard/DashboardFragment.java b/src/com/android/settings/dashboard/DashboardFragment.java
+index b55de4b..abad205 100644
+--- a/src/com/android/settings/dashboard/DashboardFragment.java
++++ b/src/com/android/settings/dashboard/DashboardFragment.java
+@@ -645,6 +645,8 @@ public abstract class DashboardFragment extends SettingsPreferenceFragment
+             Log.d(tag, "Stop waiting observers");
+             pendingObservers.forEach(DynamicDataObserver::updateUi);
+         }
++        // PlaitOS: icon style for rows added or changed by the refresh (stock unless chosen)
++        com.android.settings.plait.PlaitIconStyler.styleIcons(getPreferenceScreen(), getContext());
+     }
+ 
+     @Override
+diff --git a/src/com/android/settings/plait/PlaitControllers.kt b/src/com/android/settings/plait/PlaitControllers.kt
+index f95191e..ad14ffc 100644
+--- a/src/com/android/settings/plait/PlaitControllers.kt
++++ b/src/com/android/settings/plait/PlaitControllers.kt
+@@ -241,3 +241,22 @@ private fun aodAvailability(context: Context): Int =
+     } else {
+         BasePreferenceController.UNSUPPORTED_ON_DEVICE
+     }
++
++/**
++ * Icon style and shape: like any list, then restart the Settings screen so every icon on it is
++ * redrawn in the new style (rows are styled when a page is built).
++ */
++class PlaitIconStyleController(context: Context, key: String) : PlaitListController(context, key) {
++    private var activity: android.app.Activity? = null
++
++    override fun displayPreference(screen: PreferenceScreen) {
++        super.displayPreference(screen)
++        var c: Context? = screen.context
++        while (c is android.content.ContextWrapper && c !is android.app.Activity) c = c.baseContext
++        activity = c as? android.app.Activity
++    }
++
++    override fun onValueChanged(value: Int) {
++        activity?.recreate()
++    }
++}
+diff --git a/src/com/android/settings/plait/PlaitIconStyler.kt b/src/com/android/settings/plait/PlaitIconStyler.kt
+new file mode 100644
+index 0000000..c799380
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitIconStyler.kt
+@@ -0,0 +1,176 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait
++
++import android.content.Context
++import android.content.res.Configuration
++import android.graphics.Color
++import android.graphics.drawable.AdaptiveIconDrawable
++import android.graphics.drawable.BitmapDrawable
++import android.graphics.drawable.Drawable
++import android.graphics.drawable.GradientDrawable
++import android.graphics.drawable.LayerDrawable
++import android.os.UserHandle
++import android.provider.Settings
++import androidx.preference.Preference
++import androidx.preference.PreferenceGroup
++import kotlin.math.abs
++import kotlin.random.Random
++
++/**
++ * Settings icon styles, inspired by crDroid's "Settings style" options (icon style, corner style,
++ * random colors). Applied to the rows of every Settings page and to the home page tiles. Style 0
++ * leaves Settings exactly as stock.
++ *
++ * Settings.System keys (written from the PlaitOS page): plait_settings_icon_style (0-6, see
++ * [Style]), plait_settings_icon_corner_style (0 circle, 1 rounded square),
++ * plait_settings_icon_random_colors (0/1).
++ */
++object PlaitIconStyler {
++
++    enum class Style {
++        STOCK,
++        COLORED_BACKGROUND,
++        GRADIENT_BACKGROUND,
++        ACCENT_OUTLINE,
++        COLORED_OUTLINE,
++        COLORED_ICON,
++        ACCENT_ICON,
++    }
++
++    const val KEY_STYLE = "plait_settings_icon_style"
++    const val KEY_CORNER = "plait_settings_icon_corner_style"
++    const val KEY_RANDOM = "plait_settings_icon_random_colors"
++
++    /** Material 3 tones that read on light and dark backgrounds with a white symbol. */
++    private val PALETTE =
++        intArrayOf(
++            0xFF1E88E5.toInt(), // blue
++            0xFF43A047.toInt(), // green
++            0xFFE53935.toInt(), // red
++            0xFFFB8C00.toInt(), // orange
++            0xFF8E24AA.toInt(), // purple
++            0xFF00ACC1.toInt(), // cyan
++            0xFFD81B60.toInt(), // pink
++            0xFF3949AB.toInt(), // indigo
++            0xFF00897B.toInt(), // teal
++            0xFFFDD835.toInt(), // yellow
++            0xFF6D4C41.toInt(), // brown
++            0xFF546E7A.toInt(), // blue grey
++        )
++
++    /** Marks an icon this class made, so a refresh doesn't wrap it again. */
++    private class StyledIcon(layers: Array<Drawable>) : LayerDrawable(layers)
++
++    private fun style(context: Context): Style =
++        Style.entries.getOrElse(
++            Settings.System.getIntForUser(context.contentResolver, KEY_STYLE, 0,
++                UserHandle.USER_CURRENT)
++        ) { Style.STOCK }
++
++    /** Whether a non-stock style is chosen. */
++    @JvmStatic
++    fun isActive(context: Context?): Boolean = context != null && style(context) != Style.STOCK
++
++    /** Styles every row icon on [group] and its subgroups. */
++    @JvmStatic
++    fun styleIcons(group: PreferenceGroup?, context: Context?) {
++        if (group == null || context == null || style(context) == Style.STOCK) return
++        for (i in 0 until group.preferenceCount) {
++            val p = group.getPreference(i)
++            if (p is PreferenceGroup) styleIcons(p, context) else styleIcon(p, context)
++        }
++    }
++
++    /** Styles one row's icon (home page tiles get theirs after they load). */
++    @JvmStatic
++    fun styleIcon(preference: Preference, context: Context?) {
++        if (context == null) return
++        val style = style(context)
++        if (style == Style.STOCK) return
++        val icon = preference.icon ?: return
++        // App and account icons keep their own artwork; only symbol icons are restyled
++        if (icon is StyledIcon || icon is BitmapDrawable || icon is AdaptiveIconDrawable) return
++        val color = colorFor(preference.key, context)
++        val accent = accent(context)
++        preference.icon = styled(icon.mutate(), style, color, accent, context)
++    }
++
++    private fun styled(icon: Drawable, style: Style, color: Int, accent: Int, context: Context):
++        Drawable {
++        val density = context.resources.displayMetrics.density
++        val size = (36 * density).toInt()
++        val inset = (8 * density).toInt()
++        val circle = Settings.System.getIntForUser(context.contentResolver, KEY_CORNER, 0,
++            UserHandle.USER_CURRENT) == 0
++        fun shape() =
++            GradientDrawable().apply {
++                if (circle) shape = GradientDrawable.OVAL
++                else cornerRadius = size * 0.28f
++                setSize(size, size)
++            }
++        return when (style) {
++            Style.STOCK -> icon
++            Style.COLORED_BACKGROUND -> {
++                icon.setTint(Color.WHITE)
++                layered(shape().apply { setColor(color) }, icon, size, inset)
++            }
++            Style.GRADIENT_BACKGROUND -> {
++                icon.setTint(Color.WHITE)
++                val bg = shape().apply {
++                    colors = intArrayOf(lighten(color), color)
++                    orientation = GradientDrawable.Orientation.TL_BR
++                }
++                layered(bg, icon, size, inset)
++            }
++            Style.ACCENT_OUTLINE -> {
++                icon.setTint(accent)
++                val bg = shape().apply {
++                    setColor(Color.TRANSPARENT)
++                    setStroke((1.5f * density).toInt(), accent)
++                }
++                layered(bg, icon, size, inset)
++            }
++            Style.COLORED_OUTLINE -> {
++                icon.setTint(color)
++                val bg = shape().apply {
++                    setColor(Color.TRANSPARENT)
++                    setStroke((1.5f * density).toInt(), color)
++                }
++                layered(bg, icon, size, inset)
++            }
++            Style.COLORED_ICON -> icon.apply { setTint(color) }
++            Style.ACCENT_ICON -> icon.apply { setTint(accent) }
++        }
++    }
++
++    private fun layered(bg: Drawable, icon: Drawable, size: Int, inset: Int): Drawable =
++        StyledIcon(arrayOf(bg, icon)).apply {
++            setLayerSize(0, size, size)
++            setLayerInset(1, inset, inset, inset, inset)
++        }
++
++    /** A stable color per row (same row, same color), or a random one when chosen. */
++    private fun colorFor(key: String?, context: Context): Int {
++        val random = Settings.System.getIntForUser(context.contentResolver, KEY_RANDOM, 0,
++            UserHandle.USER_CURRENT) != 0
++        val index = if (random || key == null) Random.nextInt(PALETTE.size)
++                    else abs(key.hashCode() % PALETTE.size)
++        return PALETTE[index]
++    }
++
++    private fun accent(context: Context): Int {
++        val night = (context.resources.configuration.uiMode and
++            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
++        return context.getColor(
++            if (night) android.R.color.system_accent1_200 else android.R.color.system_accent1_600)
++    }
++
++    private fun lighten(color: Int): Int {
++        fun ch(c: Int) = c + ((255 - c) * 0.35f).toInt()
++        return Color.rgb(ch(Color.red(color)), ch(Color.green(color)), ch(Color.blue(color)))
++    }
++}
+diff --git a/src/com/android/settings/plait/PlaitSettings.kt b/src/com/android/settings/plait/PlaitSettings.kt
+index da8a812..c2ef8d7 100644
+--- a/src/com/android/settings/plait/PlaitSettings.kt
++++ b/src/com/android/settings/plait/PlaitSettings.kt
+@@ -85,6 +85,10 @@ object PlaitSettings {
+             "plait_smart_pixel_filter_percent" to Key(SECURE, 25),
+             // Misc
+             "plait_pm_downgrade_allowed" to Key(GLOBAL, 0),
++            // Settings style (PlaitIconStyler)
++            "plait_settings_icon_style" to Key(SYSTEM, 0),
++            "plait_settings_icon_corner_style" to Key(SYSTEM, 0),
++            "plait_settings_icon_random_colors" to Key(SYSTEM, 0),
+         )
+ 
+     /** Stock keys that PlaitOS rows also show; reset leaves them alone. */
+-- 
+2.56.0
+

@@ -1,0 +1,92 @@
+From 77f4dace7ac895cfd118a1565fdccbeac73319e6 Mon Sep 17 00:00:00 2001
+From: ezio84 <brabus84@gmail.com>
+Date: Wed, 13 Jun 2018 21:24:55 -0700
+Subject: [PATCH 05/75] PhoneWindowManager: Allow torch and track skip during
+ ambient display
+
+This allows long press power button for torch and long press
+volume buttons for track skip to work during ambient display.
+
+Co-authored-by: razorloves <razorloves@gmail.com>
+Co-authored-by: Sam Mortimer <sam@mortimer.me.uk>
+Change-Id: I2463579e056364652b549524bc9775da4fa35b1f
+
+[PlaitOS: ported from LineageOS frameworks_base lineage-24.0]
+---
+ .../server/policy/PhoneWindowManager.java     | 35 +++++++++++++------
+ 1 file changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index d8b328d68..a8b99a214 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -1147,7 +1147,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         if (!handled) {
+             if ((event.getFlags() & KeyEvent.FLAG_LONG_PRESS) == 0) {
+                 // See if we deferred screen wake because long press power for torch is enabled
+-                if (mResolvedLongPressOnPowerBehavior == LONG_PRESS_POWER_TORCH && !isScreenOn()) {
++                if (mResolvedLongPressOnPowerBehavior == LONG_PRESS_POWER_TORCH &&
++                        (!isScreenOn() || isDozeMode())) {
+                     wakeUpFromWakeKey(event);
+                 }
+             }
+@@ -1649,11 +1650,24 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         }
+     }
+ 
++    private boolean isDozeMode() {
++        IDreamManager dreamManager = getDreamManager();
++
++        try {
++            if (dreamManager != null && dreamManager.isDreaming()) {
++                return true;
++            }
++        } catch (RemoteException e) {
++            Slog.e(TAG, "RemoteException when checking if dreaming", e);
++        }
++        return false;
++    }
++
+     private int getResolvedLongPressOnPowerBehavior() {
+         if (FactoryTest.isLongPressOnPowerOffEnabled()) {
+             return LONG_PRESS_POWER_SHUT_OFF_NO_CONFIRM;
+         }
+-        if (mTorchLongPressPowerEnabled && (!isScreenOn() || mTorchEnabled)) {
++        if (mTorchLongPressPowerEnabled && (!isScreenOn() || isDozeMode() || mTorchEnabled)) {
+             return LONG_PRESS_POWER_TORCH;
+         }
+ 
+@@ -5178,6 +5192,13 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             return false;
+         }
+ 
++        final boolean isDozing = isDozeMode();
++
++        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP)
++                && isDozing) {
++            return false;
++        }
++
+         // Send events to keyguard while the screen is on and it's showing.
+         if (isKeyguardShowingAndNotOccluded()) {
+             return true;
+@@ -5187,14 +5208,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         if (isDefaultDisplay) {
+             // Send events to a dozing dream since the dream is in control of the state of the
+             // screen.
+-            IDreamManager dreamManager = getDreamManager();
+-
+-            try {
+-                if (dreamManager != null && dreamManager.isDreaming()) {
+-                    return true;
+-                }
+-            } catch (RemoteException e) {
+-                Slog.e(TAG, "RemoteException when checking if dreaming", e);
++            if (isDozing) {
++                return true;
+             }
+         }
+ 
+-- 
+2.56.0
+

@@ -1,0 +1,156 @@
+From 6cb8b96c71956a97d0a30c17f31986b0d9b29653 Mon Sep 17 00:00:00 2001
+From: darkobas <darkobas@gmail.com>
+Date: Mon, 7 Oct 2019 20:31:48 +0200
+Subject: [PATCH 52/75] base: Add Doze-on-charge customization [1/2]
+
+@idoybh edits: Adapted to A11's settings backup
+[jhonboy121]: adapt to A12 changes in DozeParameters. Also in the og commit DOZE_ALWAYS_ON was being read from System namespace instead of Secure, fixed it here. Make use of SettingsProxy utlity classes for settings / getting values
+
+Change-Id: I831583fde68de15788e3d7ecab55d864726d140f
+
+Commit message #2:
+
+base: check whether device is charging when alwaysOnChargingEnabled is called
+
+* Using settings for this is quite redundant. And if you toggle aod on charge after plugging in then aod won't turn on unless you unplug and plug again (since DOZE_ON_CHARGE_NOW is set only if aod on charge is enabled and device is plugged in"
+
+Signed-off-by: jhonboy121 <alfredmathew05@gmail.com>
+
+Commit message #3:
+
+base: fix deadlock between activity manager and power manager
+
+* Using the battery manager intent to query plugged in status was the root cause of deadlock,
+  so inside power manager, user mIsPowered and setting value instead of using the intent based power status
+
+Signed-off-by: jhonboy121 <alfredmathew05@gmail.com>
+
+[jhonboy121]: adapted to A13
+
+Co-authored-by: jhonboy121 <alfredmathew05@gmail.com>
+Signed-off-by: jhonboy121 <alfredmathew05@gmail.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ .../display/AmbientDisplayConfiguration.java  | 34 ++++++++++++++++---
+ .../statusbar/phone/DozeParameters.java       |  6 ++--
+ .../server/power/PowerManagerService.java     |  4 ++-
+ 3 files changed, 35 insertions(+), 9 deletions(-)
+
+diff --git a/core/java/android/hardware/display/AmbientDisplayConfiguration.java b/core/java/android/hardware/display/AmbientDisplayConfiguration.java
+index 3dde2e46f..069a8503e 100644
+--- a/core/java/android/hardware/display/AmbientDisplayConfiguration.java
++++ b/core/java/android/hardware/display/AmbientDisplayConfiguration.java
+@@ -20,7 +20,10 @@ import static android.provider.Settings.Secure.SCREEN_OFF_UNLOCK_UDFPS_ENABLED;
+ 
+ import android.annotation.TestApi;
+ import android.content.Context;
++import android.content.Intent;
++import android.content.IntentFilter;
+ import android.hardware.biometrics.Flags;
++import android.os.BatteryManager;
+ import android.os.Build;
+ import android.os.SystemProperties;
+ import android.provider.Settings;
+@@ -40,7 +43,8 @@ import java.util.Map;
+  */
+ @TestApi
+ public class AmbientDisplayConfiguration {
+-    private static final String TAG = "AmbientDisplayConfig";
++    private static final IntentFilter sIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
++
+     private final Context mContext;
+     private final boolean mAlwaysOnByDefault;
+     private final boolean mPickupGestureEnabledByDefault;
+@@ -58,7 +62,8 @@ public class AmbientDisplayConfiguration {
+             Settings.Secure.DOZE_DOUBLE_TAP_GESTURE,
+             Settings.Secure.DOZE_WAKE_LOCK_SCREEN_GESTURE,
+             Settings.Secure.DOZE_WAKE_DISPLAY_GESTURE,
+-            Settings.Secure.DOZE_TAP_SCREEN_GESTURE
++            Settings.Secure.DOZE_TAP_SCREEN_GESTURE,
++            Settings.Secure.DOZE_ON_CHARGE
+     };
+ 
+     /** Non-user configurable doze settings */
+@@ -255,8 +260,29 @@ public class AmbientDisplayConfiguration {
+      */
+     @TestApi
+     public boolean alwaysOnEnabled(int user) {
+-        return boolSetting(Settings.Secure.DOZE_ALWAYS_ON, user, mAlwaysOnByDefault ? 1 : 0)
+-                && alwaysOnAvailable() && !accessibilityInversionEnabled(user);
++        return alwaysOnEnabledSetting(user) || alwaysOnChargingEnabled(user);
++    }
++
++    public boolean alwaysOnEnabledSetting(int user) {
++        final boolean alwaysOnEnabled = Settings.Secure.getIntForUser(
++                mContext.getContentResolver(), Settings.Secure.DOZE_ALWAYS_ON,
++                mAlwaysOnByDefault ? 1 : 0, user) == 1;
++        return alwaysOnEnabled && alwaysOnAvailable() && !accessibilityInversionEnabled(user);
++    }
++
++    public boolean alwaysOnChargingEnabledSetting(int user) {
++        return Settings.Secure.getIntForUser(mContext.getContentResolver(),
++            Settings.Secure.DOZE_ON_CHARGE, 0, user) == 1;
++    }
++
++    private boolean alwaysOnChargingEnabled(int user) {
++        if (alwaysOnChargingEnabledSetting(user)) {
++            final Intent intent = mContext.registerReceiver(null, sIntentFilter, Context.RECEIVER_NOT_EXPORTED);
++            if (intent != null) {
++                return intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0;
++            }
++        }
++        return false;
+     }
+ 
+     /**
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeParameters.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeParameters.java
+index 43a93d2d1..0d8106c00 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeParameters.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeParameters.java
+@@ -98,7 +98,6 @@ public class DozeParameters implements
+     private final SecureSettings mSecureSettings;
+     private final Optional<MinModeManager> mMinModeManager;
+ 
+-    private boolean mDozeAlwaysOn;
+     private boolean mControlScreenOffAnimation;
+     private boolean mIsQuickPickupEnabled;
+ 
+@@ -298,7 +297,8 @@ public class DozeParameters implements
+      * @return {@code true} if enabled and available.
+      */
+     public boolean getAlwaysOn() {
+-        return (mDozeAlwaysOn && !mBatteryController.isAodPowerSave()) || isMinModeActive();
++        return (mAmbientDisplayConfiguration.alwaysOnEnabled(mUserTracker.getUserId())
++                && !mBatteryController.isAodPowerSave()) || isMinModeActive();
+     }
+ 
+     /**
+@@ -454,8 +454,6 @@ public class DozeParameters implements
+ 
+     @Override
+     public void onTuningChanged(String key, String newValue) {
+-        mDozeAlwaysOn = mAmbientDisplayConfiguration.alwaysOnEnabled(mUserTracker.getUserId());
+-
+         if (key.equals(Settings.Secure.DOZE_ALWAYS_ON)) {
+             updateControlScreenOff();
+         }
+diff --git a/services/core/java/com/android/server/power/PowerManagerService.java b/services/core/java/com/android/server/power/PowerManagerService.java
+index af47e412d..1af0a1272 100644
+--- a/services/core/java/com/android/server/power/PowerManagerService.java
++++ b/services/core/java/com/android/server/power/PowerManagerService.java
+@@ -1702,7 +1702,9 @@ public final class PowerManagerService extends SystemService
+                 Settings.Global.STAY_ON_WHILE_PLUGGED_IN, BatteryManager.BATTERY_PLUGGED_AC);
+         mTheaterModeEnabled = Settings.Global.getInt(mContext.getContentResolver(),
+                 Settings.Global.THEATER_MODE_ON, 0) == 1;
+-        mAlwaysOnEnabled = mAmbientDisplayConfiguration.alwaysOnEnabled(UserHandle.USER_CURRENT);
++        mAlwaysOnEnabled = mAmbientDisplayConfiguration.alwaysOnEnabledSetting(UserHandle.USER_CURRENT)
++            || (mAmbientDisplayConfiguration.alwaysOnChargingEnabledSetting(
++                    UserHandle.USER_CURRENT) && mIsPowered);
+ 
+         if (mSupportsDoubleTapWakeConfig) {
+             boolean doubleTapWakeEnabled = Settings.Secure.getIntForUser(resolver,
+-- 
+2.56.0
+

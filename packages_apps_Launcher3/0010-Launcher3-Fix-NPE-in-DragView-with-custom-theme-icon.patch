@@ -1,0 +1,43 @@
+From b62cd9f766e0060b4a7d5d96f91baae8841b9214 Mon Sep 17 00:00:00 2001
+From: Pranav Vashi <neobuddy89@gmail.com>
+Date: Mon, 2 Feb 2026 22:41:52 +0530
+Subject: [PATCH 10/15] Launcher3: Fix NPE in DragView with custom theme icon
+
+Log:
+
+02-02 22:16:49.647 E/AndroidRuntime(9285): FATAL EXCEPTION: launcher-loader
+02-02 22:16:49.647 E/AndroidRuntime(9285): Process: com.android.launcher3, PID: 9285
+02-02 22:16:49.647 E/AndroidRuntime(9285): java.lang.NullPointerException: Attempt to invoke virtual method 'void android.graphics.drawable.AdaptiveIconDrawable.setBounds(android.graphics.Rect)' on a null object reference
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at com.android.launcher3.dragndrop.DragView.lambda$setItemInfo$3(DragView.java:277)
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at com.android.launcher3.dragndrop.DragView.$r8$lambda$lz2u9P3hDuzWk3clvFY-TozAcj4(DragView.java:0)
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at com.android.launcher3.dragndrop.DragView$$ExternalSyntheticLambda2.run(R8$$SyntheticClass:0)
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at android.os.Handler.handleCallback(Handler.java:1070)
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at android.os.Handler.dispatchMessage(Handler.java:125)
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at android.os.Looper.dispatchMessage(Looper.java:333)
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at android.os.Looper.loopOnce(Looper.java:263)
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at android.os.Looper.loop(Looper.java:367)
+02-02 22:16:49.647 E/AndroidRuntime(9285): 	at android.os.HandlerThread.run(HandlerThread.java:139)
+
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid packages_apps_Launcher3 17.0]
+---
+ src/com/android/launcher3/dragndrop/DragView.java | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/com/android/launcher3/dragndrop/DragView.java b/src/com/android/launcher3/dragndrop/DragView.java
+index 73d6772..7137206 100644
+--- a/src/com/android/launcher3/dragndrop/DragView.java
++++ b/src/com/android/launcher3/dragndrop/DragView.java
+@@ -277,7 +277,7 @@ public class DragView extends FrameLayout {
+             int h = mHeight;
+             var fullDrawable = mActivity.getActivityComponent().getIconLoader().getFullDrawable(
+                     info, w, h, themeManager.isIconThemeEnabled());
+-            if (fullDrawable != null) {
++            if (fullDrawable != null && fullDrawable.icon != null) {
+                 AdaptiveIconDrawable adaptiveIcon = fullDrawable.icon;
+                 int blurMargin = (int) getContext().getResources()
+                         .getDimension(R.dimen.blur_size_medium_outline) / 2;
+-- 
+2.56.0
+

@@ -1,0 +1,41 @@
+From 10a092e8fdd7ed9925e00ef5b0cd64a5910eb55c Mon Sep 17 00:00:00 2001
+From: Rizky Benggolo <travarilo@gmail.com>
+Date: Mon, 26 Dec 2022 23:39:38 +0700
+Subject: [PATCH 72/75] SettingsLib: Change collapsed header color to match
+ background color
+
+[neobuddy89: Updated for A15 material colors.]
+[neobuddy89: Updated for A16 expressive design.]
+
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ .../res/values-v36/styles_expressive.xml                      | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/packages/SettingsLib/CollapsingToolbarBaseActivity/res/values-v36/styles_expressive.xml b/packages/SettingsLib/CollapsingToolbarBaseActivity/res/values-v36/styles_expressive.xml
+index 344b336dc..55eb09b0b 100644
+--- a/packages/SettingsLib/CollapsingToolbarBaseActivity/res/values-v36/styles_expressive.xml
++++ b/packages/SettingsLib/CollapsingToolbarBaseActivity/res/values-v36/styles_expressive.xml
+@@ -23,7 +23,7 @@
+         <item name="expandedTitleMarginBottom">@dimen/settingslib_expressive_space_medium1</item>
+         <item name="maxLines">3</item>
+         <item name="scrimVisibleHeightTrigger">@dimen/settingslib_scrim_visible_height_trigger</item>
+-        <item name="contentScrim">@color/settingslib_materialColorSurfaceVariant</item>
++        <item name="contentScrim">@color/legacy_settingslib_materialColorSurfaceContainer</item>
+         <item name="statusBarScrim">@null</item>
+         <item name="scrimAnimationDuration">50</item>
+         <item name="collapsedTitleTextColor">@color/settingslib_materialColorOnSurface</item>
+@@ -32,7 +32,7 @@
+         <item name="extraMultilineHeightEnabled">true</item>
+     </style>
+     <style name="SettingsLibCollapsingToolbarLayoutStyle.Expressive">
+-        <item name="contentScrim">@color/settingslib_materialColorSurfaceContainer</item>
++        <item name="contentScrim">@color/legacy_settingslib_materialColorSurfaceContainer</item>
+     </style>
+ 
+     <style name="SettingsLibCollapsingToolbarTitle.Collapsed" parent="@style/TextAppearance.SettingsLib.TitleLarge.Emphasized">
+-- 
+2.56.0
+

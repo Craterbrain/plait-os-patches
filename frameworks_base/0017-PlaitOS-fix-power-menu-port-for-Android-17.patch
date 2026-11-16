@@ -1,0 +1,110 @@
+From b70559dc83c8cf8c4a9acadce6b3fd2d3d09bcb8 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 19:20:08 -0600
+Subject: [PATCH 17/75] PlaitOS: fix power menu port for Android 17
+
+- Android 17 has no partial screenshot type: the screenshot entry takes a
+  full screenshot only, as in AOSP (drops LineageOS's long-press region shot)
+- config_restartActionsList lives in SystemUI resources
+- the GrapheneOS safe-mode reboot passes the new reason argument
+- keep AOSP's rule that the default menu shows screenshot only with 2-button
+  navigation; it always shows once chosen in plait_power_menu_actions
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../GlobalActionsDialogLite.java              | 35 +++++++++----------
+ 1 file changed, 17 insertions(+), 18 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+index 481410d3d..8930b5dc6 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+@@ -22,8 +22,7 @@ import static android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
+ import static android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+ import static android.view.WindowManager.LayoutParams.TYPE_STATUS_BAR_SUB_PANEL;
+ import static android.view.WindowManager.ScreenshotSource.SCREENSHOT_GLOBAL_ACTIONS;
+-import static android.view.WindowManager.TAKE_SCREENSHOT_FULLSCREEN;
+-import static android.view.WindowManager.TAKE_SCREENSHOT_SELECTED_REGION;
++import static android.view.WindowManagerPolicyConstants.NAV_BAR_MODE_2BUTTON;
+ 
+ import static com.android.internal.widget.LockPatternUtils.StrongAuthTracker.SOME_AUTH_REQUIRED_AFTER_USER_REQUEST;
+ import static com.android.internal.widget.LockPatternUtils.StrongAuthTracker.STRONG_AUTH_NOT_REQUIRED;
+@@ -742,7 +741,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+ 
+     @VisibleForTesting
+     String[] getRestartActions() {
+-        return mResources.getStringArray(R.array.config_restartActionsList);
++        return mResources.getStringArray(com.android.systemui.res.R.array.config_restartActionsList);
+     }
+ 
+     @VisibleForTesting
+@@ -1332,18 +1331,19 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             if (ActivityManager.isUserAMonkey()) {
+                 return;
+             }
+-            mWindowManagerFuncs.reboot(true);
++            mWindowManagerFuncs.reboot(true, null);
+         }
+     }
+ 
+     @VisibleForTesting
+-    class ScreenshotAction extends SinglePressAction implements LongPressAction {
++    class ScreenshotAction extends SinglePressAction {
+         ScreenshotAction() {
+             super(com.android.systemui.res.R.drawable.ic_global_actions_screenshot,
+                     R.string.global_action_screenshot);
+         }
+ 
+-        private void takeScreenshot(int type) {
++        @Override
++        public void onPress() {
+             // Add a little delay before executing, to give the
+             // dialog a chance to go away before it takes a
+             // screenshot.
+@@ -1351,24 +1351,13 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             mHandler.postDelayed(new Runnable() {
+                 @Override
+                 public void run() {
+-                    mScreenshotHelper.takeScreenshot(type, SCREENSHOT_GLOBAL_ACTIONS, mHandler, null);
++                    mScreenshotHelper.takeScreenshot(SCREENSHOT_GLOBAL_ACTIONS, mHandler, null);
+                     mMetricsLogger.action(MetricsEvent.ACTION_SCREENSHOT_POWER_MENU);
+                     mUiEventLogger.log(GlobalActionsEvent.GA_SCREENSHOT_PRESS);
+                 }
+             }, mDialogPressDelay);
+         }
+ 
+-        @Override
+-        public void onPress() {
+-            takeScreenshot(TAKE_SCREENSHOT_FULLSCREEN);
+-        }
+-
+-        @Override
+-        public boolean onLongPress() {
+-            takeScreenshot(TAKE_SCREENSHOT_SELECTED_REGION);
+-            return true;
+-        }
+-
+         @Override
+         public boolean showDuringKeyguard() {
+             return true;
+@@ -1379,6 +1368,16 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             return false;
+         }
+ 
++        @Override
++        public boolean shouldShow() {
++            // Shown when chosen in Plait Settings; the GrapheneOS default menu keeps it to legacy
++            // nav, where it is not accessible through Recents
++            final String chosen = android.provider.Settings.Secure.getString(
++                    mContext.getContentResolver(), PLAIT_POWER_MENU_ACTIONS);
++            return (chosen != null && !chosen.isEmpty()) || NAV_BAR_MODE_2BUTTON
++                    == mContext.getResources().getInteger(
++                            com.android.internal.R.integer.config_navBarInteractionMode);
++        }
+     }
+ 
+     @VisibleForTesting
+-- 
+2.56.0
+

@@ -1,0 +1,72 @@
+From 7f85fed407a3e4ed4ac9df9dcce82276c5bfcdff Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 17:18:10 -0600
+Subject: [PATCH 01/75] PlaitOS: OverlayManager: shell may register plait*
+ overlays of colors, booleans, integers and dimensions
+
+---
+ .../server/om/OverlayManagerService.java      | 41 ++++++++++++++++++-
+ 1 file changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/services/core/java/com/android/server/om/OverlayManagerService.java b/services/core/java/com/android/server/om/OverlayManagerService.java
+index 1af17a8e5..fb3a5fd1d 100644
+--- a/services/core/java/com/android/server/om/OverlayManagerService.java
++++ b/services/core/java/com/android/server/om/OverlayManagerService.java
+@@ -965,6 +965,42 @@ public final class OverlayManagerService extends SystemService {
+             }
+         }
+ 
++        /** PlaitOS: a request from the shell user that only registers/removes "plait*" overlays made of plain numbers. */
++        private boolean isPlaitShellRequest(@NonNull final OverlayManagerTransaction.Request request) {
++            final String name = request.overlay.getOverlayName();
++            if (name == null || !name.startsWith("plait")) {
++                return false;
++            }
++            if (request.type == TYPE_UNREGISTER_FABRICATED) {
++                return true;
++            }
++            final FabricatedOverlayInternal fabricated = request.extras == null ? null
++                    : request.extras.getParcelable(
++                            OverlayManagerTransaction.Request.BUNDLE_FABRICATED_OVERLAY,
++                            android.os.FabricatedOverlayInternal.class);
++            if (fabricated == null || fabricated.entries == null) {
++                return false;
++            }
++            for (final android.os.FabricatedOverlayInternalEntry e : fabricated.entries) {
++                if (e.stringData != null || e.binaryData != null) {
++                    return false;
++                }
++                // TypedValue.TYPE_INT_COLOR_ARGB8 .. TYPE_INT_COLOR_RGB4
++                final boolean color = e.dataType >= 0x1c && e.dataType <= 0x1f;
++                // TypedValue.TYPE_DIMENSION, TYPE_INT_DEC, TYPE_INT_BOOLEAN
++                final boolean value = e.dataType == 0x05 || e.dataType == 0x10 || e.dataType == 0x12;
++                if (!color && !value) {
++                    return false;
++                }
++                // the framework's own booleans and integers choose behavior (config_*): colors only there
++                if (!color && ("android".equals(fabricated.targetPackageName)
++                        || e.resourceName == null || e.resourceName.contains("config_"))) {
++                    return false;
++                }
++            }
++            return true;
++        }
++
+         @GuardedBy("mLock")
+         private Set<UserPackage> executeRequestLocked(
+                 @NonNull final OverlayManagerTransaction.Request request)
+@@ -986,7 +1022,10 @@ public final class OverlayManagerService extends SystemService {
+                 // non privileged callers, a simple check against the shell UID is sufficient, since
+                 // that's the only exception from the other categories. This is enough while OMS
+                 // is not a public API, but this will have to be changed if it's ever exposed.
+-                if (callingUid == Process.SHELL_UID) {
++                // PlaitOS: the shell user (Plait Broker) may fabricate overlays named "plait*" made only of numbers
++                // (colors everywhere; booleans, integers and dimensions except for the framework and config_*
++                // values); numbers cannot point at files or strings, anything else stays refused.
++                if (callingUid == Process.SHELL_UID && !isPlaitShellRequest(request)) {
+                     EventLog.writeEvent(0x534e4554, "202768292", -1, "");
+                     throw new IllegalArgumentException("Non-root shell cannot fabricate overlays");
+                 }
+-- 
+2.56.0
+

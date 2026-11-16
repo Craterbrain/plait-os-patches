@@ -1,0 +1,46 @@
+From 77bd749a82ae25fadc6036606df045b5efdc4272 Mon Sep 17 00:00:00 2001
+From: Pranav Vashi <neobuddy89@gmail.com>
+Date: Thu, 28 Nov 2024 00:44:30 +0530
+Subject: [PATCH 3/3] iconloaderlib: Do not wrap themed icons
+
+Fixes: https://github.com/crdroidandroid/issue_tracker/issues/570
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_libs_systemui 17.0]
+---
+ .../com/android/launcher3/icons/BaseIconFactory.kt    | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/iconloaderlib/src/com/android/launcher3/icons/BaseIconFactory.kt b/iconloaderlib/src/com/android/launcher3/icons/BaseIconFactory.kt
+index 1692e49..bab721e 100644
+--- a/iconloaderlib/src/com/android/launcher3/icons/BaseIconFactory.kt
++++ b/iconloaderlib/src/com/android/launcher3/icons/BaseIconFactory.kt
+@@ -176,9 +176,14 @@ constructor(
+                     InsetDrawable(icon, inset, inset, inset, inset),
+                 )
+         }
+-        if (options.wrapNonAdaptiveIcon) tempIcon = wrapToAdaptiveIcon(tempIcon, options)
+ 
+-        val drawFullBleed = options.drawFullBleed ?: drawFullBleedIcons
++        val noWrapHintSet = (tempIcon.changingConfigurations and CONFIG_HINT_NO_WRAP) != 0
++        if (options.wrapNonAdaptiveIcon && !noWrapHintSet) {
++            tempIcon = wrapToAdaptiveIcon(tempIcon, options)
++        }
++
++        val drawFullBleed = if (noWrapHintSet) false
++            else options.drawFullBleed ?: drawFullBleedIcons
+         val bitmap = drawableToBitmap(tempIcon, drawFullBleed, options)
+         icon.bounds = oldBounds
+ 
+@@ -457,6 +462,8 @@ constructor(
+     companion object {
+         private const val DEFAULT_WRAPPER_BACKGROUND = Color.WHITE
+ 
++        const val CONFIG_HINT_NO_WRAP: Int = 0x1000000
++
+         // Ratio of icon visible area to full icon size for a square shaped icon
+         private const val MAX_SQUARE_AREA_FACTOR = 375.0 / 576
+ 
+-- 
+2.56.0
+

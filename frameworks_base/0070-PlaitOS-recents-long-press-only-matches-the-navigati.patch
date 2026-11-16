@@ -1,0 +1,67 @@
+From ccc72bedb63ad021ff8e6f2b2f65fbb18935bf27 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 08:40:57 -0600
+Subject: [PATCH 70/75] PlaitOS: recents long press only matches the navigation
+ bar's event
+
+Hardware key events also carry FLAG_FROM_SYSTEM, so a keyboard's own
+app-switch key, held or canceled, matched too and was swallowed. Match only
+events from the virtual keyboard with FLAG_VIRTUAL_HARD_KEY (as the
+navigation bar's buttons send them), and only while a recents action is
+chosen.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../server/policy/PhoneWindowManager.java     | 19 ++++++++++++++-----
+ 1 file changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 002800cf1..7a1890184 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -215,6 +215,7 @@ import android.view.DisplayInfo;
+ import android.view.HapticFeedbackConstants;
+ import android.view.IDisplayFoldListener;
+ import android.view.InputDevice;
++import android.view.KeyCharacterMap;
+ import android.view.KeyEvent;
+ import android.view.KeyboardShortcutGroup;
+ import android.view.MotionEvent;
+@@ -2064,10 +2065,16 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         }
+     }
+ 
+-    /** An event injected by SystemUI for a recents long press (see NavigationBar). */
++    /**
++     * An event injected by SystemUI for a recents long press (see NavigationBar): from the virtual
++     * keyboard with the virtual-key flag, as the navigation bar's buttons send them. Hardware keys
++     * also carry FLAG_FROM_SYSTEM, so a keyboard's own app-switch key never matches.
++     */
+     private static boolean isPlaitRecentsLongPressEvent(KeyEvent event) {
+         final int flags = event.getFlags();
+-        return (flags & KeyEvent.FLAG_FROM_SYSTEM) != 0
++        return event.getDeviceId() == KeyCharacterMap.VIRTUAL_KEYBOARD
++                && (flags & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0
++                && (flags & KeyEvent.FLAG_FROM_SYSTEM) != 0
+                 && (flags & (KeyEvent.FLAG_LONG_PRESS | KeyEvent.FLAG_CANCELED)) != 0;
+     }
+ 
+@@ -4726,9 +4733,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         // PlaitOS: the 3-button bar's recents long press, injected by SystemUI as an
+         // APP_SWITCH down flagged LONG_PRESS (and a canceled up). Consume both here, before the
+         // key gesture handling would open recents, and run the chosen action.
+-        if (keyCode == KeyEvent.KEYCODE_APP_SWITCH && isPlaitRecentsLongPressEvent(event)) {
+-            final PlaitKeyActions.Action recentsAction = mRecentsLongPressAction;
+-            if (down && recentsAction != PlaitKeyActions.Action.NOTHING) {
++        final PlaitKeyActions.Action recentsAction = mRecentsLongPressAction;
++        if (keyCode == KeyEvent.KEYCODE_APP_SWITCH
++                && recentsAction != PlaitKeyActions.Action.NOTHING
++                && isPlaitRecentsLongPressEvent(event)) {
++            if (down) {
+                 // SystemUI already played the long-press haptic on the button
+                 mHandler.post(() -> performPlaitKeyAction(recentsAction, null));
+             }
+-- 
+2.56.0
+

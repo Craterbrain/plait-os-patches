@@ -1,0 +1,43 @@
+From a3b830df4ab8506835a3731b0f60611527c51e4d Mon Sep 17 00:00:00 2001
+From: Pranav Vashi <neobuddy89@gmail.com>
+Date: Mon, 16 Nov 2026 00:54:46 +0530
+Subject: [PATCH 13/15] Launcher3: Wire icon-pack support into app open/close
+ transition animations
+
+* Inject ThirdPartyIconProvider in IconLoader so getFullDrawable()
+  now routes app icons through the icon pack resolver.
+
+Fixes: https://github.com/crdroidandroid/issue_tracker/issues/1191
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid packages_apps_Launcher3 17.0]
+---
+ src/com/android/launcher3/graphics/IconLoader.kt | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/com/android/launcher3/graphics/IconLoader.kt b/src/com/android/launcher3/graphics/IconLoader.kt
+index 71f54e8..75d00f3 100644
+--- a/src/com/android/launcher3/graphics/IconLoader.kt
++++ b/src/com/android/launcher3/graphics/IconLoader.kt
+@@ -33,8 +33,8 @@ import com.android.launcher3.dragndrop.FolderAdaptiveIcon
+ import com.android.launcher3.icons.BitmapInfo
+ import com.android.launcher3.icons.CacheableShortcutInfo.Companion.getIcon
+ import com.android.launcher3.icons.IconCache
+-import com.android.launcher3.icons.LauncherIconProvider
+ import com.android.launcher3.icons.LauncherIcons
++import com.android.launcher3.icons.ThirdPartyIconProvider
+ import com.android.launcher3.icons.cache.CacheLookupFlag
+ import com.android.launcher3.icons.cache.CachedObjectCachingLogic.loadFullResIcon
+ import com.android.launcher3.model.data.ItemInfo
+@@ -56,7 +56,7 @@ constructor(
+     private val themeManager: ThemeManager,
+     private val userCache: UserCache,
+     private val idp: InvariantDeviceProfile,
+-    private val iconProvider: LauncherIconProvider,
++    private val iconProvider: ThirdPartyIconProvider,
+ ) {
+ 
+     private val context: Context = activity.asContext()
+-- 
+2.56.0
+

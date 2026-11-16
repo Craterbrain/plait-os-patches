@@ -1,0 +1,125 @@
+From 4aa772095b1472cc71c30bb9622a6dc776099824 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:00:51 -0600
+Subject: [PATCH 47/75] PlaitOS: adapt QS tile layout to GrapheneOS
+
+The column and row counts read plain Settings.System plait_qs_tiles_* and
+plait_qqs_tiles_* keys (PlaitQsLayoutSettings) instead of new Settings API
+constants; unset = the stock resource values.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../data/repository/PlaitQsLayoutSettings.kt  | 19 +++++++++++++++++++
+ .../data/repository/QSColumnsRepository.kt    |  8 ++++----
+ .../repository/QSPaginatedRowsRepository.kt   |  8 ++++----
+ .../QuickQuickSettingsRowRepository.kt        |  8 ++++----
+ 4 files changed, 31 insertions(+), 12 deletions(-)
+ create mode 100644 packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/PlaitQsLayoutSettings.kt
+
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/PlaitQsLayoutSettings.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/PlaitQsLayoutSettings.kt
+new file mode 100644
+index 000000000..27cd945c2
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/PlaitQsLayoutSettings.kt
+@@ -0,0 +1,19 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.systemui.qs.panels.data.repository
++
++/**
++ * Settings.System keys for the Quick Settings grid (written by Plait Settings). Unset = the stock
++ * resource value, so the grid looks like GrapheneOS until a value is chosen.
++ */
++internal object PlaitQsLayoutSettings {
++    const val QS_TILES_COLUMNS = "plait_qs_tiles_columns"
++    const val QS_TILES_COLUMNS_LANDSCAPE = "plait_qs_tiles_columns_landscape"
++    const val QS_TILES_ROWS = "plait_qs_tiles_rows"
++    const val QS_TILES_ROWS_LANDSCAPE = "plait_qs_tiles_rows_landscape"
++    const val QQS_TILES_ROWS = "plait_qqs_tiles_rows"
++    const val QQS_TILES_ROWS_LANDSCAPE = "plait_qqs_tiles_rows_landscape"
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSColumnsRepository.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSColumnsRepository.kt
+index 29cdd4fb9..b3e71f701 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSColumnsRepository.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSColumnsRepository.kt
+@@ -47,8 +47,8 @@ constructor(
+ ) {
+     private fun settingsChanges(): Flow<Unit> = callbackFlow {
+         val uris: List<Uri> = listOf(
+-            Settings.System.getUriFor(Settings.System.QS_TILES_COLUMNS),
+-            Settings.System.getUriFor(Settings.System.QS_TILES_COLUMNS_LANDSCAPE)
++            Settings.System.getUriFor(PlaitQsLayoutSettings.QS_TILES_COLUMNS),
++            Settings.System.getUriFor(PlaitQsLayoutSettings.QS_TILES_COLUMNS_LANDSCAPE)
+         )
+         val observer = object : ContentObserver(null) {
+             override fun onChange(selfChange: Boolean, uri: Uri?) {
+@@ -62,8 +62,8 @@ constructor(
+ 
+     private fun readColumnsWithDefault(@IntegerRes defaultResId: Int): Int {
+         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+-        val key = if (isLandscape) Settings.System.QS_TILES_COLUMNS_LANDSCAPE
+-                  else Settings.System.QS_TILES_COLUMNS
++        val key = if (isLandscape) PlaitQsLayoutSettings.QS_TILES_COLUMNS_LANDSCAPE
++                  else PlaitQsLayoutSettings.QS_TILES_COLUMNS
+         val def = resources.getInteger(defaultResId)
+         return Settings.System.getIntForUser(
+             context.contentResolver, key, def, UserHandle.USER_CURRENT
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSPaginatedRowsRepository.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSPaginatedRowsRepository.kt
+index 114082b31..fcc59245b 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSPaginatedRowsRepository.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSPaginatedRowsRepository.kt
+@@ -47,8 +47,8 @@ constructor(
+ ) {
+     private fun settingsChanges(): Flow<Unit> = callbackFlow {
+         val uris: List<Uri> = listOf(
+-            Settings.System.getUriFor(Settings.System.QS_TILES_ROWS),
+-            Settings.System.getUriFor(Settings.System.QS_TILES_ROWS_LANDSCAPE)
++            Settings.System.getUriFor(PlaitQsLayoutSettings.QS_TILES_ROWS),
++            Settings.System.getUriFor(PlaitQsLayoutSettings.QS_TILES_ROWS_LANDSCAPE)
+         )
+         val observer = object : ContentObserver(null) {
+             override fun onChange(selfChange: Boolean, uri: Uri?) {
+@@ -62,8 +62,8 @@ constructor(
+ 
+     private fun readRows(): Int {
+         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+-        val key = if (isLandscape) Settings.System.QS_TILES_ROWS_LANDSCAPE
+-                  else Settings.System.QS_TILES_ROWS
++        val key = if (isLandscape) PlaitQsLayoutSettings.QS_TILES_ROWS_LANDSCAPE
++                  else PlaitQsLayoutSettings.QS_TILES_ROWS
+         val def = resources.getInteger(R.integer.quick_settings_paginated_grid_num_rows)
+         return Settings.System.getIntForUser(
+             context.contentResolver, key, def, UserHandle.USER_CURRENT
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QuickQuickSettingsRowRepository.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QuickQuickSettingsRowRepository.kt
+index 268aeda20..332ad8524 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QuickQuickSettingsRowRepository.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QuickQuickSettingsRowRepository.kt
+@@ -45,8 +45,8 @@ class QuickQuickSettingsRowRepository @Inject constructor(
+ ) {
+     private fun settingsChanges(): Flow<Unit> = callbackFlow {
+         val uris: List<Uri> = listOf(
+-            Settings.System.getUriFor(Settings.System.QQS_TILES_ROWS),
+-            Settings.System.getUriFor(Settings.System.QQS_TILES_ROWS_LANDSCAPE)
++            Settings.System.getUriFor(PlaitQsLayoutSettings.QQS_TILES_ROWS),
++            Settings.System.getUriFor(PlaitQsLayoutSettings.QQS_TILES_ROWS_LANDSCAPE)
+         )
+         val observer = object : ContentObserver(/* handler */ null) {
+             override fun onChange(selfChange: Boolean, uri: Uri?) {
+@@ -60,8 +60,8 @@ class QuickQuickSettingsRowRepository @Inject constructor(
+ 
+     private fun readRows(): Int {
+         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+-        val key = if (isLandscape) Settings.System.QQS_TILES_ROWS_LANDSCAPE
+-                  else Settings.System.QQS_TILES_ROWS
++        val key = if (isLandscape) PlaitQsLayoutSettings.QQS_TILES_ROWS_LANDSCAPE
++                  else PlaitQsLayoutSettings.QQS_TILES_ROWS
+         val def = resources.getInteger(R.integer.quick_qs_paginated_grid_num_rows)
+         return Settings.System.getIntForUser(
+             context.contentResolver, key, def, UserHandle.USER_CURRENT
+-- 
+2.56.0
+

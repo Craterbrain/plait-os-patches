@@ -1,0 +1,67 @@
+From 1b985e30eb012e2a8174e30442df0952245a1baf Mon Sep 17 00:00:00 2001
+From: rmp22 <195054967+rmp22@users.noreply.github.com>
+Date: Mon, 4 Aug 2025 14:06:58 +0800
+Subject: [PATCH 02/13] Settings: Use legacy material background color
+
+Change-Id: Ibef07b33633ed7d6db40865bfbeb9a547ef2c11e
+Co-authored-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid packages_apps_Settings 16.0]
+---
+ res/values-night/themes.xml      | 2 +-
+ res/values/themes.xml            | 4 ++--
+ res/values/themes_expressive.xml | 2 +-
+ 3 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/res/values-night/themes.xml b/res/values-night/themes.xml
+index fde46aa..c07e33e 100644
+--- a/res/values-night/themes.xml
++++ b/res/values-night/themes.xml
+@@ -20,7 +20,7 @@
+     <style name="Theme.Settings.Home" parent="Theme.Settings.HomeBase">
+         <item name="colorPrimary">@*android:color/primary_device_default_settings</item>
+         <item name="colorPrimaryDark">@*android:color/primary_dark_device_default_settings</item>
+-        <item name="android:colorBackground">@android:color/system_surface_container_dark</item>
++        <item name="android:colorBackground">@color/legacy_settingslib_materialColorSurfaceContainer</item>
+         <!-- Homepage should follow device default design, the values is same as device default theme.-->
+         <item name="android:navigationBarColor">@android:color/black</item>
+         <item name="android:statusBarColor">?attr/colorPrimaryDark</item>
+diff --git a/res/values/themes.xml b/res/values/themes.xml
+index cdcec35..abdd109 100644
+--- a/res/values/themes.xml
++++ b/res/values/themes.xml
+@@ -204,7 +204,7 @@
+         <!-- Homepage should follow device default design, the values is same as device default theme.-->
+         <item name="android:navigationBarColor">@android:color/white</item>
+         <item name="android:statusBarColor">?attr/colorPrimaryDark</item>
+-        <item name="android:colorBackground">@color/settingslib_materialColorSurfaceContainerLow</item>
++        <item name="android:colorBackground">@color/legacy_settingslib_materialColorSurfaceContainer</item>
+     </style>
+ 
+     <style name="Theme.Settings.Home.NoAnimation">
+@@ -251,7 +251,7 @@
+     </style>
+ 
+     <style name="SettingsSudThemeGlif.Light" parent="@style/SudThemeGlif.Light">
+-        <item name="android:background">@color/settingslib_materialColorSurfaceContainerLowest</item>
++        <item name="android:background">@color/legacy_settingslib_materialColorSurfaceContainer</item>
+     </style>
+ 
+     <style name="Theme.DeviceDefault.DayNight.NoEdgeToEdge" parent="@android:style/Theme.DeviceDefault.DayNight">
+diff --git a/res/values/themes_expressive.xml b/res/values/themes_expressive.xml
+index 7d089b1..3c81f57 100644
+--- a/res/values/themes_expressive.xml
++++ b/res/values/themes_expressive.xml
+@@ -90,7 +90,7 @@
+     </style>
+ 
+     <style name="Theme.Settings.Home.Expressive" parent="Theme.Settings.Expressive.NoActionBar">
+-        <item name="android:colorBackground">@color/settingslib_materialColorSurfaceContainer</item>
++        <item name="android:colorBackground">@color/legacy_settingslib_materialColorSurfaceContainer</item>
+     </style>
+ 
+     <style name="Theme.LockSettings.Expressive" parent="Theme.SubSettings.Expressive">
+-- 
+2.56.0
+

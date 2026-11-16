@@ -1,0 +1,494 @@
+From 433a766cb20da841d68818cce53f74a6b66acabf Mon Sep 17 00:00:00 2001
+From: Pranav Vashi <neobuddy89@gmail.com>
+Date: Sun, 28 Aug 2022 14:25:01 +0530
+Subject: [PATCH 46/75] SystemUI: Add QS tile layout settings [1/2]
+
+* Updated for A16 QS Refactor + Split shade layout.
+* Renamed settings since we want to reset this for A15 -> A16 upgrade users.
+
+This was originally based on work by maxwen for OmniRom
+
+Ref:
+https://github.com/omnirom/android_frameworks_base_old/commit/ad6124ad13a3c04f1b7d5d136c054b2e0062b9dd
+https://github.com/omnirom/android_frameworks_base_old/commit/b4d26258e3cc301aac9492a316fc5fd196aa1c8e
+
+However, the same has been refined over years and completely changed. Below is the change history.
+
+Squashed:
+    From: maxwen <max.weninger@gmail.com>
+    Date: Thu, 23 Dec 2021 00:12:37 +0100
+    Subject: SystemUI: Add QS columns and tile feature
+
+    [1/2] SystemUI: qs columns count settings
+
+    and vertical qs tile layout settings (and resource config)
+
+    Change-Id: I5b519ad62d17fec16400229264c66cbbde2a2031
+
+    SystemUI: qs: dont use fixed 4 columns for landscape calculation
+
+    Change-Id: I7d0b0ee93b33a2f89503f3acdaa017cf482a87c3
+
+    SystemUI: use default dialogCornerRadius for qs customize title
+
+    just use the same as everywhere else in qs customize
+
+    Change-Id: I1ddd502376c89245f821dba3c869cbc258ea3e13
+
+    SystemUI: add resource quick_settings_num_columns_landscape
+
+    this is a little sneaky trick cause we want a way
+    to access the landscape default resource config
+
+    TODO if anyone know how to access a config specific
+    resource value in code please tell me
+
+    obviously this means that whenever the landscape resource
+    value is changed this value must be changed too
+
+    Change-Id: I24250e0df42790cafe826d7019ab2638217345c9
+
+    [1/2] SystemUI: qs hide label setting
+
+    Change-Id: Icf697b7251aed37a77630cdca906a9912f1d8ea2
+
+    From: minarypenguin <alexfinhart@gmail.com>
+    Date: Mon, 20 Jun 2022 04:51:23 +0800
+    Subject: SystemUI: Fix qs tile vertical layout scrolling
+
+    * singleLine forces scrollHorizontally, which doesnt go along with gravity="center"
+
+    From: strwbrry143 <alexfinhart@gmail.com>
+    Date: Sun, 7 Aug 2022 21:36:39 +0800
+    Subject: SystemUI: Tune QS tile dimensions
+
+    From: timjosten <timjosten@gmail.com>
+    Date: Sun, 21 Aug 2022 07:40:03 +0000
+    Subject: SystemUI: Improve vertical QS tile layout & animation
+
+    From: Pranav Vashi <neobuddy89@gmail.com>
+    Date: Sun, 28 Aug 2022 14:25:01 +0530
+    Subject: SystemUI: Update and fix QS tile layout settings
+
+    * Do not let every tom, dick and harry set max columns.
+    * On config changes and settings update, check if dynamic row and columns update.
+    * Update resources in tile layout when orientation changes to get proper tiles in landscape.
+    * Request layout changes whenever column update happens.
+    * Be smart in calculating how many max tiles should Quick QS show depending on no. of columns.
+    * Clean up init in QSTileViewImpl
+
+    From: minaripenguin <minaripenguin@users.noreply.github.com>
+    Date: Mon, 27 Nov 2023 10:27:12 +0800
+    Subject: SystemUI: Tune QS Panel bottom padding
+
+    Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+    From: Pranav Vashi <neobuddy89@gmail.com>
+    Date: Sun, 10 Dec 2023 08:35:49 +0530
+    Subject: SystemUI: Allow setting quick QS rows [1/2]
+
+    Change-Id: Ia658d04403ed5d47759c0372b862b34e3898507a
+    Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+    From: Pranav Vashi <neobuddy89@gmail.com>
+    Date: Thu, 21 Dec 2023 21:58:36 +0530
+    Subject: SystemUI: Do not marquee QS label text
+
+    Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+    From: Pranav Vashi <neobuddy89@gmail.com>
+    Date: Tue, 9 Apr 2024 19:30:00 +0530
+    Subject: SystemUI: Clean up for Tile layout
+
+    Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+    From: Pranav Vashi <neobuddy89@gmail.com>
+    Date: Sun, 18 Aug 2024 20:23:22 +0530
+    Subject: SystemUI: Allow setting QS rows [1/2]
+
+    * Extend our implementation of setting Quick QS rows.
+    * Add a check to ensure QS rows is always equal or greater than QQS rows to avoid janky animation.
+
+    Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+    From: Pranav Vashi <neobuddy89@gmail.com>
+    Date: Thu, 22 Aug 2024 00:12:19 +0530
+    Subject: SystemUI: Remove unnecessary updates for QS tiles layout
+
+    * These were added for QS tile columns & rows customisation. Customization works without these.
+      Appararently updateResources() in TileLayout is enough. We do not need requestLayout() again.
+
+    Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+Change-Id: I5900af574681958bba46c20e85ed342c3283cabd
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0 (83aec1d08). QSColumnsRepository
+and PaginatedGridViewModel applied by hand: Android 17 uses mapDirect and
+HydratedActivatable there; the Settings.System constants move to plain keys
+in the adapt commit]
+---
+ .../data/repository/QSColumnsRepository.kt    | 65 ++++++++++++---
+ .../repository/QSPaginatedRowsRepository.kt   | 80 +++++++++++++++++++
+ .../QuickQuickSettingsRowRepository.kt        | 56 +++++++++++--
+ .../interactor/QSPaginatedRowsInteractor.kt   | 37 +++++++++
+ .../QuickQuickSettingsRowInteractor.kt        |  2 +-
+ .../panels/ui/compose/PaginatedGridLayout.kt  |  2 +-
+ .../ui/viewmodel/PaginatedGridViewModel.kt    |  4 +
+ 7 files changed, 225 insertions(+), 21 deletions(-)
+ create mode 100644 packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSPaginatedRowsRepository.kt
+ create mode 100644 packages/SystemUI/src/com/android/systemui/qs/panels/domain/interactor/QSPaginatedRowsInteractor.kt
+
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSColumnsRepository.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSColumnsRepository.kt
+index 2ab93a4ef..29cdd4fb9 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSColumnsRepository.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSColumnsRepository.kt
+@@ -16,35 +16,78 @@
+ 
+ package com.android.systemui.qs.panels.data.repository
+ 
++import android.content.Context
++import android.content.res.Configuration
+ import android.content.res.Resources
++import android.database.ContentObserver
++import android.net.Uri
++import android.os.UserHandle
++import android.provider.Settings
++import androidx.annotation.IntegerRes
+ import com.android.systemui.common.ui.data.repository.ConfigurationRepository
+ import com.android.systemui.dagger.SysUISingleton
++import com.android.systemui.dagger.qualifiers.Application
+ import com.android.systemui.res.R
+ import com.android.systemui.shade.ShadeDisplayAware
+ import com.android.systemui.util.kotlin.emitOnStart
+ import com.android.systemui.util.kotlin.mapDirect
+ import javax.inject.Inject
++import kotlinx.coroutines.channels.awaitClose
+ import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.callbackFlow
++import kotlinx.coroutines.flow.merge
+ 
+ @SysUISingleton
+ class QSColumnsRepository
+ @Inject
+ constructor(
++    @Application private val context: Context,
+     @ShadeDisplayAware private val resources: Resources,
+-    @ShadeDisplayAware configurationRepository: ConfigurationRepository,
++    @ShadeDisplayAware private val configurationRepository: ConfigurationRepository,
+ ) {
+-    val splitShadeColumns: Flow<Int> =
+-        configurationRepository.onConfigurationChange.emitOnStart().mapDirect {
+-            resources.getInteger(R.integer.quick_settings_split_shade_num_columns)
+-        }
+-    val dualShadeColumns: Flow<Int> =
+-        configurationRepository.onConfigurationChange.emitOnStart().mapDirect {
+-            resources.getInteger(R.integer.quick_settings_dual_shade_num_columns)
++    private fun settingsChanges(): Flow<Unit> = callbackFlow {
++        val uris: List<Uri> = listOf(
++            Settings.System.getUriFor(Settings.System.QS_TILES_COLUMNS),
++            Settings.System.getUriFor(Settings.System.QS_TILES_COLUMNS_LANDSCAPE)
++        )
++        val observer = object : ContentObserver(null) {
++            override fun onChange(selfChange: Boolean, uri: Uri?) {
++                trySend(Unit)
++            }
+         }
++        val cr = context.contentResolver
++        uris.forEach { cr.registerContentObserver(it, /*notifyForDescendants*/ false, observer, UserHandle.USER_ALL) }
++        awaitClose { cr.unregisterContentObserver(observer) }
++    }
++
++    private fun readColumnsWithDefault(@IntegerRes defaultResId: Int): Int {
++        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
++        val key = if (isLandscape) Settings.System.QS_TILES_COLUMNS_LANDSCAPE
++                  else Settings.System.QS_TILES_COLUMNS
++        val def = resources.getInteger(defaultResId)
++        return Settings.System.getIntForUser(
++            context.contentResolver, key, def, UserHandle.USER_CURRENT
++        ).coerceAtLeast(1)
++    }
++
++    private fun reactiveColumns(@IntegerRes defaultResId: Int): Flow<Int> =
++        merge(configurationRepository.onConfigurationChange, settingsChanges())
++            .emitOnStart()
++            .mapDirect { readColumnsWithDefault(defaultResId) }
++
+     val columns: Flow<Int> =
+-        configurationRepository.onConfigurationChange.emitOnStart().mapDirect {
+-            resources.getInteger(R.integer.quick_settings_infinite_grid_num_columns)
+-        }
++        reactiveColumns(R.integer.quick_settings_infinite_grid_num_columns)
++
++    val splitShadeColumns: Flow<Int> =
++        reactiveColumns(R.integer.quick_settings_split_shade_num_columns)
++
++    val dualShadeColumns: Flow<Int> =
++        reactiveColumns(R.integer.quick_settings_dual_shade_num_columns)
++
+     val defaultColumns: Int =
+         resources.getInteger(R.integer.quick_settings_infinite_grid_num_columns)
++    val defaultSplitShadeColumns: Int =
++        resources.getInteger(R.integer.quick_settings_split_shade_num_columns)
++    val defaultDualShadeColumns: Int =
++        resources.getInteger(R.integer.quick_settings_dual_shade_num_columns)
+ }
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSPaginatedRowsRepository.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSPaginatedRowsRepository.kt
+new file mode 100644
+index 000000000..114082b31
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QSPaginatedRowsRepository.kt
+@@ -0,0 +1,80 @@
++/*
++ * Copyright (C) 2025 crDroid Android Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// QSPaginatedRowsRepository.kt
++package com.android.systemui.qs.panels.data.repository
++
++import android.content.Context
++import android.content.res.Configuration
++import android.content.res.Resources
++import android.database.ContentObserver
++import android.net.Uri
++import android.os.UserHandle
++import android.provider.Settings
++import com.android.systemui.common.ui.data.repository.ConfigurationRepository
++import com.android.systemui.dagger.SysUISingleton
++import com.android.systemui.dagger.qualifiers.Application
++import com.android.systemui.res.R
++import com.android.systemui.shade.ShadeDisplayAware
++import com.android.systemui.util.kotlin.emitOnStart
++import javax.inject.Inject
++import kotlinx.coroutines.channels.awaitClose
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.callbackFlow
++import kotlinx.coroutines.flow.mapLatest
++import kotlinx.coroutines.flow.merge
++
++@SysUISingleton
++class QSPaginatedRowsRepository
++@Inject
++constructor(
++    @Application private val context: Context,
++    @ShadeDisplayAware private val resources: Resources,
++    @ShadeDisplayAware private val configurationRepository: ConfigurationRepository,
++) {
++    private fun settingsChanges(): Flow<Unit> = callbackFlow {
++        val uris: List<Uri> = listOf(
++            Settings.System.getUriFor(Settings.System.QS_TILES_ROWS),
++            Settings.System.getUriFor(Settings.System.QS_TILES_ROWS_LANDSCAPE)
++        )
++        val observer = object : ContentObserver(null) {
++            override fun onChange(selfChange: Boolean, uri: Uri?) {
++                trySend(Unit)
++            }
++        }
++        val cr = context.contentResolver
++        uris.forEach { cr.registerContentObserver(it, false, observer, UserHandle.USER_ALL) }
++        awaitClose { cr.unregisterContentObserver(observer) }
++    }
++
++    private fun readRows(): Int {
++        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
++        val key = if (isLandscape) Settings.System.QS_TILES_ROWS_LANDSCAPE
++                  else Settings.System.QS_TILES_ROWS
++        val def = resources.getInteger(R.integer.quick_settings_paginated_grid_num_rows)
++        return Settings.System.getIntForUser(
++            context.contentResolver, key, def, UserHandle.USER_CURRENT
++        ).coerceAtLeast(1)
++    }
++
++    val rows: Flow<Int> =
++        merge(configurationRepository.onConfigurationChange, settingsChanges())
++            .emitOnStart()
++            .mapLatest { readRows() }
++
++    val defaultRows: Int =
++        resources.getInteger(R.integer.quick_settings_paginated_grid_num_rows)
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QuickQuickSettingsRowRepository.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QuickQuickSettingsRowRepository.kt
+index 636f703ac..268aeda20 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QuickQuickSettingsRowRepository.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/data/repository/QuickQuickSettingsRowRepository.kt
+@@ -16,24 +16,64 @@
+ 
+ package com.android.systemui.qs.panels.data.repository
+ 
++import android.content.Context
++import android.content.res.Configuration
+ import android.content.res.Resources
++import android.database.ContentObserver
++import android.net.Uri
++import android.os.UserHandle
++import android.provider.Settings
+ import com.android.systemui.common.ui.data.repository.ConfigurationRepository
+ import com.android.systemui.dagger.SysUISingleton
++import com.android.systemui.dagger.qualifiers.Application
+ import com.android.systemui.res.R
+ import com.android.systemui.shade.ShadeDisplayAware
+ import com.android.systemui.util.kotlin.emitOnStart
+ import javax.inject.Inject
+-import kotlinx.coroutines.flow.map
++import kotlinx.coroutines.channels.awaitClose
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.callbackFlow
++import kotlinx.coroutines.flow.distinctUntilChanged
++import kotlinx.coroutines.flow.mapLatest
++import kotlinx.coroutines.flow.merge
+ 
+ @SysUISingleton
+-class QuickQuickSettingsRowRepository
+-@Inject
+-constructor(
++class QuickQuickSettingsRowRepository @Inject constructor(
++    @Application private val context: Context,
+     @ShadeDisplayAware private val resources: Resources,
+-    @ShadeDisplayAware configurationRepository: ConfigurationRepository,
++    @ShadeDisplayAware private val configurationRepository: ConfigurationRepository,
+ ) {
+-    val rows =
+-        configurationRepository.onConfigurationChange.emitOnStart().map {
+-            resources.getInteger(R.integer.quick_qs_paginated_grid_num_rows)
++    private fun settingsChanges(): Flow<Unit> = callbackFlow {
++        val uris: List<Uri> = listOf(
++            Settings.System.getUriFor(Settings.System.QQS_TILES_ROWS),
++            Settings.System.getUriFor(Settings.System.QQS_TILES_ROWS_LANDSCAPE)
++        )
++        val observer = object : ContentObserver(/* handler */ null) {
++            override fun onChange(selfChange: Boolean, uri: Uri?) {
++                trySend(Unit)
++            }
+         }
++        val cr = context.contentResolver
++        uris.forEach { cr.registerContentObserver(it, /* notifyForDescendants */ false, observer, UserHandle.USER_ALL) }
++        awaitClose { cr.unregisterContentObserver(observer) }
++    }
++
++    private fun readRows(): Int {
++        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
++        val key = if (isLandscape) Settings.System.QQS_TILES_ROWS_LANDSCAPE
++                  else Settings.System.QQS_TILES_ROWS
++        val def = resources.getInteger(R.integer.quick_qs_paginated_grid_num_rows)
++        return Settings.System.getIntForUser(
++            context.contentResolver, key, def, UserHandle.USER_CURRENT
++        ).coerceAtLeast(1)
++    }
++
++    val rows: Flow<Int> =
++        merge(configurationRepository.onConfigurationChange, settingsChanges())
++            .emitOnStart()
++            .mapLatest { readRows() }
++            .distinctUntilChanged()
++
++    val defaultRows: Int =
++        resources.getInteger(R.integer.quick_qs_paginated_grid_num_rows)
+ }
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/domain/interactor/QSPaginatedRowsInteractor.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/domain/interactor/QSPaginatedRowsInteractor.kt
+new file mode 100644
+index 000000000..9444e3e26
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/domain/interactor/QSPaginatedRowsInteractor.kt
+@@ -0,0 +1,37 @@
++/*
++ * Copyright (C) 2025 crDroid Android Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.systemui.qs.panels.domain.interactor
++
++import com.android.systemui.dagger.SysUISingleton
++import com.android.systemui.dagger.qualifiers.Application
++import com.android.systemui.qs.panels.data.repository.QSPaginatedRowsRepository
++import javax.inject.Inject
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.flow.SharingStarted
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.stateIn
++
++@SysUISingleton
++class QSPaginatedRowsInteractor
++@Inject
++constructor(
++    @Application private val scope: CoroutineScope,
++    repo: QSPaginatedRowsRepository,
++) {
++    val rows: StateFlow<Int> =
++        repo.rows.stateIn(scope, SharingStarted.WhileSubscribed(), repo.defaultRows)
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/domain/interactor/QuickQuickSettingsRowInteractor.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/domain/interactor/QuickQuickSettingsRowInteractor.kt
+index 5f001df7a..3ef5f019c 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/panels/domain/interactor/QuickQuickSettingsRowInteractor.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/domain/interactor/QuickQuickSettingsRowInteractor.kt
+@@ -28,5 +28,5 @@ constructor(
+ ) {
+     val rows = quickQuickSettingsRowRepository.rows
+ 
+-    val defaultRows = 2
++    val defaultRows = quickQuickSettingsRowRepository.defaultRows
+ }
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/ui/compose/PaginatedGridLayout.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/ui/compose/PaginatedGridLayout.kt
+index b82d25972..0948d999b 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/panels/ui/compose/PaginatedGridLayout.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/ui/compose/PaginatedGridLayout.kt
+@@ -78,7 +78,7 @@ constructor(
+                 delegateGridLayout.viewModelFactory.create()
+             }
+ 
+-        val rows = integerResource(R.integer.quick_settings_paginated_grid_num_rows)
++        val rows = viewModel.rows
+         val pages =
+             remember(tiles, rows, *delegateGridViewModel.pageKeys) {
+                 delegateGridViewModel.splitIntoPages(tiles, rows)
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/panels/ui/viewmodel/PaginatedGridViewModel.kt b/packages/SystemUI/src/com/android/systemui/qs/panels/ui/viewmodel/PaginatedGridViewModel.kt
+index 55546054e..b1c020f65 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/panels/ui/viewmodel/PaginatedGridViewModel.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/panels/ui/viewmodel/PaginatedGridViewModel.kt
+@@ -22,6 +22,7 @@ import com.android.systemui.classifier.domain.interactor.FalsingInteractor
+ import com.android.systemui.development.ui.viewmodel.BuildNumberViewModel
+ import com.android.systemui.inputdevice.domain.interactor.PointerDeviceInteractor
+ import com.android.systemui.lifecycle.HydratedActivatable
++import com.android.systemui.qs.panels.domain.interactor.QSPaginatedRowsInteractor
+ import com.android.systemui.qs.panels.ui.viewmodel.toolbar.EditModeButtonViewModel
+ import dagger.assisted.AssistedFactory
+ import dagger.assisted.AssistedInject
+@@ -35,10 +36,13 @@ constructor(
+     val editModeButtonViewModelFactory: EditModeButtonViewModel.Factory,
+     private val falsingInteractor: FalsingInteractor,
+     pointerDeviceInteractor: PointerDeviceInteractor,
++    qsRowsInteractor: QSPaginatedRowsInteractor,
+ ) : IconTilesViewModel by iconTilesViewModel, HydratedActivatable() {
+ 
+     var inFirstPage by inFirstPageViewModel::inFirstPage
+ 
++    val rows: Int by qsRowsInteractor.rows.hydratedStateOf()
++
+     val showArrowsInPagerDots by
+         pointerDeviceInteractor.isAnyPointerDeviceConnected.hydratedStateOf(initialValue = false)
+ 
+-- 
+2.56.0
+

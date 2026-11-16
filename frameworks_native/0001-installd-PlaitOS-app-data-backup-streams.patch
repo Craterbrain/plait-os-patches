@@ -1,0 +1,1012 @@
+From fc6ee3abfe7dc7a5fdf025aea41e1eb0fe9ebf73 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 16:02:37 -0600
+Subject: [PATCH] installd: PlaitOS app data backup streams
+
+For PlaitOS's plait_backup service in system_server (Plait Backup, the
+app with Android-DataBackup's UI): stream an app's data out as
+zstd-compressed tar and restore it back, with the privileges installd
+already has for rollback snapshots, so no new SELinux domain or
+app_data_file access for anything else.
+
+- plaitBackupAppData: CE, DE, Android/data, obb or media of a package,
+  as entries "<pkg>/..." (Android-DataBackup's layout), cache and
+  code_cache left out, sockets/fifos/devices never included.
+- plaitRestoreAppData: replaces that data with an archive's. Every path
+  is walked one component at a time with openat + O_NOFOLLOW, entries
+  outside "<pkg>/", "..", absolute paths, hard links and devices are
+  refused or skipped, and everything is owned by the app (the tar's
+  owners are ignored), permission bits only. Labels are reset with
+  restorecon (per-app categories for CE/DE). Only app uids.
+- plaitBackupApks: the *.apk files of a code dir under /data/app.
+- plaitZstdDecompress: for APK archives, which system_server unpacks.
+
+All calls are system_server only (ENFORCE_UID(AID_SYSTEM)) and hold
+the package lock. SIGPIPE is blocked on the calling thread while
+streaming, so a reader that goes away is an error, not a crash.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ cmds/installd/Android.bp                      |   2 +
+ cmds/installd/InstalldNativeService.cpp       | 117 +++
+ cmds/installd/InstalldNativeService.h         |  13 +
+ cmds/installd/PlaitBackup.cpp                 | 703 ++++++++++++++++++
+ cmds/installd/PlaitBackup.h                   |  43 ++
+ .../installd/binder/android/os/IInstalld.aidl |  21 +
+ 6 files changed, 899 insertions(+)
+ create mode 100644 cmds/installd/PlaitBackup.cpp
+ create mode 100644 cmds/installd/PlaitBackup.h
+
+diff --git a/cmds/installd/Android.bp b/cmds/installd/Android.bp
+index 694d745..55289aa 100644
+--- a/cmds/installd/Android.bp
++++ b/cmds/installd/Android.bp
+@@ -38,6 +38,7 @@ cc_defaults {
+         "CacheTracker.cpp",
+         "CrateManager.cpp",
+         "InstalldNativeService.cpp",
++        "PlaitBackup.cpp",
+         "QuotaUtils.cpp",
+         "SysTrace.cpp",
+         "dexopt.cpp",
+@@ -65,6 +66,7 @@ cc_defaults {
+     ],
+     static_libs: [
+         "installd_flags_c_lib",
++        "libzstd", // PlaitOS: app data backups (PlaitBackup.cpp)
+         "libasync_safe",
+         "libext2_uuid",
+     ],
+diff --git a/cmds/installd/InstalldNativeService.cpp b/cmds/installd/InstalldNativeService.cpp
+index 21dbf89..4dc5199 100644
+--- a/cmds/installd/InstalldNativeService.cpp
++++ b/cmds/installd/InstalldNativeService.cpp
+@@ -74,6 +74,7 @@
+ #include "CacheTracker.h"
+ #include "CrateManager.h"
+ #include "MatchExtensionGen.h"
++#include "PlaitBackup.h"
+ #include "QuotaUtils.h"
+ #include "SysTrace.h"
+ 
+@@ -2053,6 +2054,122 @@ binder::Status InstalldNativeService::restoreAppDataSnapshot(
+     return res;
+ }
+ 
++// ---- PlaitOS backups (PlaitBackup.cpp) ----
++
++namespace {
++
++struct PlaitPart {
++    std::string parent;
++    gid_t gid;  // 0 = the app's own gid
++    mode_t newDirMode;
++    bool external;
++};
++
++bool plaitPart(const char* uuid, int32_t userId, int32_t part, PlaitPart* out) {
++    const std::string media = create_data_media_path(uuid, userId) + "/Android/";
++    switch (part) {
++        case android::os::IInstalld::PLAIT_PART_CE:
++            *out = {create_data_user_ce_path(uuid, userId), 0, 0700, false};
++            return true;
++        case android::os::IInstalld::PLAIT_PART_DE:
++            *out = {create_data_user_de_path(uuid, userId), 0, 0700, false};
++            return true;
++        case android::os::IInstalld::PLAIT_PART_EXT_DATA:
++            *out = {media + "data", AID_EXT_DATA_RW, 0770, true};
++            return true;
++        case android::os::IInstalld::PLAIT_PART_EXT_OBB:
++            *out = {media + "obb", AID_EXT_OBB_RW, 0770, true};
++            return true;
++        case android::os::IInstalld::PLAIT_PART_EXT_MEDIA:
++            *out = {media + "media", AID_MEDIA_RW, 0770, true};
++            return true;
++    }
++    return false;
++}
++
++}  // namespace
++
++binder::Status InstalldNativeService::plaitBackupAppData(const std::optional<std::string>& uuid,
++        const std::string& packageName, int32_t userId, int32_t part,
++        const android::os::ParcelFileDescriptor& out, bool* _aidl_return) {
++    ENFORCE_UID(AID_SYSTEM);
++    ENFORCE_VALID_USER(userId);
++    CHECK_ARGUMENT_UUID(uuid);
++    CHECK_ARGUMENT_PACKAGE_NAME(packageName);
++    LOCK_PACKAGE_USER();
++    PlaitPart p;
++    if (!plaitPart(uuid ? uuid->c_str() : nullptr, userId, part, &p)) {
++        return error("unknown backup part " + std::to_string(part));
++    }
++    std::string err;
++    int r = plait::writeTreeTarZst(out.get(), p.parent, packageName, /* skipCaches= */ true, &err);
++    if (r == -ENOENT) {
++        *_aidl_return = false;
++        return ok();
++    }
++    if (r != 0) return error(-r, "backup of " + packageName + " failed: " + err);
++    *_aidl_return = true;
++    return ok();
++}
++
++binder::Status InstalldNativeService::plaitRestoreAppData(const std::optional<std::string>& uuid,
++        const std::string& packageName, int32_t userId, int32_t appId, const std::string& seInfo,
++        int32_t part, const android::os::ParcelFileDescriptor& source) {
++    ENFORCE_UID(AID_SYSTEM);
++    ENFORCE_VALID_USER(userId);
++    CHECK_ARGUMENT_UUID(uuid);
++    CHECK_ARGUMENT_PACKAGE_NAME(packageName);
++    LOCK_PACKAGE_USER();
++    // Only real apps: never a shared system uid
++    if (appId < AID_APP_START || appId > AID_APP_END) {
++        return error("refusing to restore into appId " + std::to_string(appId));
++    }
++    const char* uuid_ = uuid ? uuid->c_str() : nullptr;
++    PlaitPart p;
++    if (!plaitPart(uuid_, userId, part, &p)) {
++        return error("unknown backup part " + std::to_string(part));
++    }
++    uid_t uid = multiuser_get_uid(userId, appId);
++    gid_t gid = p.gid ? p.gid : uid;
++    std::string err;
++    int r = plait::extractTreeTarZst(source.get(), p.parent, packageName, uid, gid, p.newDirMode,
++                                     /* skipCaches= */ true, &err);
++    if (r != 0) return error(-r, "restore of " + packageName + " failed: " + err);
++    if (!p.external) {
++        int flag = part == android::os::IInstalld::PLAIT_PART_CE ? FLAG_STORAGE_CE : FLAG_STORAGE_DE;
++        return restoreconAppDataLocked(uuid, packageName, userId, flag, appId, seInfo);
++    }
++    auto path = p.parent + "/" + packageName;
++    if (selinux_android_restorecon(path.c_str(), SELINUX_ANDROID_RESTORECON_RECURSE) < 0) {
++        return error("restorecon failed for " + path);
++    }
++    return ok();
++}
++
++binder::Status InstalldNativeService::plaitBackupApks(const std::string& codePath,
++        const android::os::ParcelFileDescriptor& out) {
++    ENFORCE_UID(AID_SYSTEM);
++    // An installed app's code dir only
++    char real[PATH_MAX];
++    if (realpath(codePath.c_str(), real) == nullptr ||
++        !android::base::StartsWith(std::string(real), "/data/app/")) {
++        return error("not an app code dir: " + codePath);
++    }
++    std::string err;
++    int r = plait::writeApksTarZst(out.get(), real, &err);
++    if (r != 0) return error(-r, "APK backup failed: " + err);
++    return ok();
++}
++
++binder::Status InstalldNativeService::plaitZstdDecompress(
++        const android::os::ParcelFileDescriptor& source, const android::os::ParcelFileDescriptor& out) {
++    ENFORCE_UID(AID_SYSTEM);
++    std::string err;
++    int r = plait::zstdDecompress(source.get(), out.get(), &err);
++    if (r != 0) return error(-r, err);
++    return ok();
++}
++
+ binder::Status InstalldNativeService::destroyAppDataSnapshot(
+         const std::optional<std::string>& volumeUuid, const std::string& packageName,
+         const int32_t userId, const int64_t ceSnapshotInode, const int32_t snapshotId,
+diff --git a/cmds/installd/InstalldNativeService.h b/cmds/installd/InstalldNativeService.h
+index 3f06f89..84b1dff 100644
+--- a/cmds/installd/InstalldNativeService.h
++++ b/cmds/installd/InstalldNativeService.h
+@@ -222,6 +222,19 @@ public:
+                                      const std::optional<std::string>& outputPath,
+                                      int32_t* _aidl_return);
+ 
++    // PlaitOS backups (PlaitBackup.cpp)
++    binder::Status plaitBackupAppData(const std::optional<std::string>& uuid,
++                                      const std::string& packageName, int32_t userId, int32_t part,
++                                      const android::os::ParcelFileDescriptor& out, bool* _aidl_return);
++    binder::Status plaitRestoreAppData(const std::optional<std::string>& uuid,
++                                       const std::string& packageName, int32_t userId, int32_t appId,
++                                       const std::string& seInfo, int32_t part,
++                                       const android::os::ParcelFileDescriptor& source);
++    binder::Status plaitBackupApks(const std::string& codePath,
++                                   const android::os::ParcelFileDescriptor& out);
++    binder::Status plaitZstdDecompress(const android::os::ParcelFileDescriptor& source,
++                                       const android::os::ParcelFileDescriptor& out);
++
+     binder::Status createFsveritySetupAuthToken(const android::os::ParcelFileDescriptor& authFd,
+                                                 int32_t uid,
+                                                 android::sp<IFsveritySetupAuthToken>* _aidl_return);
+diff --git a/cmds/installd/PlaitBackup.cpp b/cmds/installd/PlaitBackup.cpp
+new file mode 100644
+index 0000000..2f4f16e
+--- /dev/null
++++ b/cmds/installd/PlaitBackup.cpp
+@@ -0,0 +1,703 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++#include "PlaitBackup.h"
++
++#include <dirent.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <pthread.h>
++#include <signal.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#include <algorithm>
++#include <memory>
++#include <vector>
++
++#include <android-base/stringprintf.h>
++#include <android-base/unique_fd.h>
++#include <zstd.h>
++
++#include "utils.h"
++
++using android::base::StringPrintf;
++using android::base::unique_fd;
++
++namespace android {
++namespace installd {
++namespace plait {
++
++namespace {
++
++constexpr size_t kBlock = 512;
++constexpr size_t kChunk = 64 * 1024;
++constexpr size_t kMaxPath = 4096;
++constexpr size_t kMaxPax = 64 * 1024;
++constexpr int kZstdLevel = 3;
++
++// A reader that goes away (the app closed its end) must be an EPIPE error, not a SIGPIPE that kills installd.
++// Only this thread's mask changes, so nothing installd starts inherits SIG_IGN.
++class ScopedSigpipeBlock {
++  public:
++    ScopedSigpipeBlock() {
++        sigset_t set;
++        sigemptyset(&set);
++        sigaddset(&set, SIGPIPE);
++        pthread_sigmask(SIG_BLOCK, &set, &mOld);
++    }
++    ~ScopedSigpipeBlock() {
++        sigset_t set, pending;
++        sigemptyset(&set);
++        sigaddset(&set, SIGPIPE);
++        if (sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE)) {
++            struct timespec zero = {0, 0};
++            sigtimedwait(&set, nullptr, &zero);
++        }
++        pthread_sigmask(SIG_SETMASK, &mOld, nullptr);
++    }
++
++  private:
++    sigset_t mOld;
++};
++
++bool writeAll(int fd, const void* data, size_t size) {
++    const char* p = static_cast<const char*>(data);
++    while (size > 0) {
++        ssize_t n = TEMP_FAILURE_RETRY(write(fd, p, size));
++        if (n <= 0) return false;
++        p += n;
++        size -= n;
++    }
++    return true;
++}
++
++// ---- zstd streams ----
++
++class ZstdOut {
++  public:
++    explicit ZstdOut(int fd) : mFd(fd), mCtx(ZSTD_createCCtx()), mBuf(ZSTD_CStreamOutSize()) {
++        ZSTD_CCtx_setParameter(mCtx, ZSTD_c_compressionLevel, kZstdLevel);
++    }
++    ~ZstdOut() { ZSTD_freeCCtx(mCtx); }
++
++    bool write(const void* data, size_t size) { return feed(data, size, ZSTD_e_continue); }
++    bool finish() { return feed(nullptr, 0, ZSTD_e_end); }
++
++  private:
++    bool feed(const void* data, size_t size, ZSTD_EndDirective mode) {
++        ZSTD_inBuffer in = {data, size, 0};
++        while (true) {
++            ZSTD_outBuffer out = {mBuf.data(), mBuf.size(), 0};
++            size_t left = ZSTD_compressStream2(mCtx, &out, &in, mode);
++            if (ZSTD_isError(left)) return false;
++            if (out.pos > 0 && !writeAll(mFd, mBuf.data(), out.pos)) return false;
++            if (mode == ZSTD_e_end ? left == 0 : in.pos == in.size) return true;
++        }
++    }
++
++    int mFd;
++    ZSTD_CCtx* mCtx;
++    std::vector<char> mBuf;
++};
++
++class ZstdIn {
++  public:
++    explicit ZstdIn(int fd)
++        : mFd(fd), mCtx(ZSTD_createDCtx()), mIn(ZSTD_DStreamInSize()), mOut(ZSTD_DStreamOutSize()) {}
++    ~ZstdIn() { ZSTD_freeDCtx(mCtx); }
++
++    // Fills exactly size bytes; false at the end of the stream or on an error (see failed()).
++    bool readExact(void* dst, size_t size) {
++        char* d = static_cast<char*>(dst);
++        while (size > 0) {
++            if (mOutPos == mOutEnd && !refill()) return false;
++            size_t n = std::min(size, mOutEnd - mOutPos);
++            memcpy(d, mOut.data() + mOutPos, n);
++            mOutPos += n;
++            d += n;
++            size -= n;
++        }
++        return true;
++    }
++
++    // Up to size bytes; 0 at the end of the stream or on an error (see failed()).
++    size_t readSome(void* dst, size_t size) {
++        if (mOutPos == mOutEnd && !refill()) return 0;
++        size_t n = std::min(size, mOutEnd - mOutPos);
++        memcpy(dst, mOut.data() + mOutPos, n);
++        mOutPos += n;
++        return n;
++    }
++
++    bool skip(uint64_t size) {
++        char buf[kBlock * 8];
++        while (size > 0) {
++            size_t n = std::min<uint64_t>(size, sizeof(buf));
++            if (!readExact(buf, n)) return false;
++            size -= n;
++        }
++        return true;
++    }
++
++    bool failed() const { return mFailed; }
++
++  private:
++    bool refill() {
++        while (true) {
++            if (mInBuf.pos == mInBuf.size) {
++                ssize_t n = TEMP_FAILURE_RETRY(read(mFd, mIn.data(), mIn.size()));
++                if (n < 0) {
++                    mFailed = true;
++                    return false;
++                }
++                if (n == 0) return false;
++                mInBuf = {mIn.data(), static_cast<size_t>(n), 0};
++            }
++            ZSTD_outBuffer out = {mOut.data(), mOut.size(), 0};
++            size_t r = ZSTD_decompressStream(mCtx, &out, &mInBuf);
++            if (ZSTD_isError(r)) {
++                mFailed = true;
++                return false;
++            }
++            if (out.pos > 0) {
++                mOutPos = 0;
++                mOutEnd = out.pos;
++                return true;
++            }
++        }
++    }
++
++    int mFd;
++    ZSTD_DCtx* mCtx;
++    std::vector<char> mIn;
++    std::vector<char> mOut;
++    ZSTD_inBuffer mInBuf = {nullptr, 0, 0};
++    size_t mOutPos = 0;
++    size_t mOutEnd = 0;
++    bool mFailed = false;
++};
++
++// ---- tar writer (GNU format: ustar header, long names in ././@LongLink entries) ----
++
++void putOctal(char* field, size_t width, uint64_t value) {
++    (void)snprintf(field, width, "%0*llo", static_cast<int>(width - 1),
++             static_cast<unsigned long long>(value));
++}
++
++void putNumber(char* field, size_t width, uint64_t value) {
++    // Octal fits for anything under 8^(width-1); larger values use GNU base-256
++    if (value < (1ULL << (3 * (width - 1)))) {
++        putOctal(field, width, value);
++        return;
++    }
++    memset(field, 0, width);
++    field[0] = static_cast<char>(0x80);
++    for (size_t i = width - 1; i > 0 && value > 0; i--, value >>= 8) {
++        field[i] = static_cast<char>(value & 0xff);
++    }
++}
++
++class TarOut {
++  public:
++    explicit TarOut(ZstdOut* z) : mZ(z) {}
++
++    bool header(const std::string& name, char type, mode_t mode, uint64_t size, time_t mtime,
++                const std::string& link = "") {
++        if (name.size() >= 100 && !longEntry('L', name)) return false;
++        if (link.size() >= 100 && !longEntry('K', link)) return false;
++        char h[kBlock] = {};
++        memcpy(h, name.data(), std::min<size_t>(name.size(), 99));
++        putOctal(h + 100, 8, mode & 07777);
++        putOctal(h + 108, 8, 0);
++        putOctal(h + 116, 8, 0);
++        putNumber(h + 124, 12, size);
++        putOctal(h + 136, 12, mtime > 0 ? mtime : 0);
++        h[156] = type;
++        memcpy(h + 157, link.data(), std::min<size_t>(link.size(), 99));
++        memcpy(h + 257, "ustar  ", 8);  // GNU magic + version
++        memset(h + 148, ' ', 8);
++        unsigned sum = 0;
++        for (size_t i = 0; i < kBlock; i++) sum += static_cast<unsigned char>(h[i]);
++        (void)snprintf(h + 148, 8, "%06o", sum);
++        h[155] = ' ';
++        return mZ->write(h, kBlock);
++    }
++
++    bool data(const void* d, size_t n) { return mZ->write(d, n); }
++
++    bool pad(uint64_t size) {
++        static const char zeros[kBlock] = {};
++        size_t rem = size % kBlock;
++        return rem == 0 || mZ->write(zeros, kBlock - rem);
++    }
++
++    bool end() {
++        static const char zeros[kBlock * 2] = {};
++        return mZ->write(zeros, sizeof(zeros));
++    }
++
++  private:
++    bool longEntry(char type, const std::string& value) {
++        // NUL-terminated, as GNU tar writes it
++        if (!header("././@LongLink", type, 0644, value.size() + 1, 0)) return false;
++        if (!mZ->write(value.c_str(), value.size() + 1)) return false;
++        return pad(value.size() + 1);
++    }
++
++    ZstdOut* mZ;
++};
++
++bool isCacheName(const char* n) {
++    return strcmp(n, "cache") == 0 || strcmp(n, "code_cache") == 0;
++}
++
++int writeFile(TarOut* tar, int dirFd, const char* leaf, const std::string& path, const struct stat& st,
++              std::string* err) {
++    unique_fd fd(openat(dirFd, leaf, O_RDONLY | O_NOFOLLOW | O_CLOEXEC));
++    if (fd < 0) {
++        // Files that vanish while the app is running are skipped, not fatal
++        if (errno == ENOENT) return 0;
++        *err = StringPrintf("open %s: %s", path.c_str(), strerror(errno));
++        return -errno;
++    }
++    uint64_t size = st.st_size;
++    if (!tar->header(path, '0', st.st_mode, size, st.st_mtime)) return -EIO;
++    std::vector<char> buf(kChunk);
++    uint64_t done = 0;
++    while (done < size) {
++        ssize_t n = TEMP_FAILURE_RETRY(read(fd.get(), buf.data(), std::min<uint64_t>(kChunk, size - done)));
++        if (n < 0) {
++            *err = StringPrintf("read %s: %s", path.c_str(), strerror(errno));
++            return -errno;
++        }
++        if (n == 0) {
++            // Shrunk while reading: pad to the size in the header
++            std::fill(buf.begin(), buf.end(), 0);
++            n = std::min<uint64_t>(kChunk, size - done);
++        }
++        if (!tar->data(buf.data(), n)) return -EIO;
++        done += n;
++    }
++    return tar->pad(size) ? 0 : -EIO;
++}
++
++int walk(TarOut* tar, int dirFd, const std::string& rel, bool skipCachesHere, std::string* err) {
++    int dupFd = fcntl(dirFd, F_DUPFD_CLOEXEC, 0);
++    if (dupFd < 0) return -errno;
++    std::unique_ptr<DIR, decltype(&closedir)> dir(fdopendir(dupFd), closedir);
++    if (!dir) {
++        close(dupFd);
++        return -errno;
++    }
++    std::vector<std::string> names;
++    while (struct dirent* de = readdir(dir.get())) {
++        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
++        if (skipCachesHere && isCacheName(de->d_name)) continue;
++        names.emplace_back(de->d_name);
++    }
++    std::sort(names.begin(), names.end());
++    for (const auto& n : names) {
++        struct stat st;
++        if (fstatat(dirFd, n.c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0) continue;
++        std::string path = rel + "/" + n;
++        int r = 0;
++        if (S_ISDIR(st.st_mode)) {
++            unique_fd child(openat(dirFd, n.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++            if (child < 0) continue;
++            if (!tar->header(path + "/", '5', st.st_mode, 0, st.st_mtime)) return -EIO;
++            r = walk(tar, child.get(), path, false, err);
++        } else if (S_ISREG(st.st_mode)) {
++            r = writeFile(tar, dirFd, n.c_str(), path, st, err);
++        } else if (S_ISLNK(st.st_mode)) {
++            char target[kMaxPath];
++            ssize_t len = readlinkat(dirFd, n.c_str(), target, sizeof(target) - 1);
++            if (len < 0) continue;
++            if (!tar->header(path, '2', st.st_mode, 0, st.st_mtime, std::string(target, len))) {
++                return -EIO;
++            }
++        }
++        // Sockets, fifos and device nodes are runtime state, never part of a backup
++        if (r != 0) return r;
++    }
++    return 0;
++}
++
++// ---- tar reader ----
++
++uint64_t parseNumber(const char* field, size_t width) {
++    if (static_cast<unsigned char>(field[0]) & 0x80) {
++        uint64_t v = 0;
++        for (size_t i = 1; i < width; i++) v = (v << 8) | static_cast<unsigned char>(field[i]);
++        return v;
++    }
++    uint64_t v = 0;
++    for (size_t i = 0; i < width && field[i]; i++) {
++        if (field[i] == ' ') continue;
++        if (field[i] < '0' || field[i] > '7') break;
++        v = (v << 3) | (field[i] - '0');
++    }
++    return v;
++}
++
++std::string fieldString(const char* field, size_t width) {
++    return std::string(field, strnlen(field, width));
++}
++
++bool checksumOk(const char* h) {
++    unsigned sum = 0;
++    for (size_t i = 0; i < kBlock; i++) {
++        sum += (i >= 148 && i < 156) ? ' ' : static_cast<unsigned char>(h[i]);
++    }
++    return sum == parseNumber(h + 148, 8);
++}
++
++bool readString(ZstdIn* z, uint64_t size, size_t limit, std::string* out) {
++    if (size > limit) return false;
++    out->assign(size, '\0');
++    if (!z->readExact(out->data(), size)) return false;
++    size_t rem = size % kBlock;
++    if (rem && !z->skip(kBlock - rem)) return false;
++    out->resize(strnlen(out->c_str(), out->size()));
++    return true;
++}
++
++void parsePax(const std::string& data, std::string* path, std::string* link) {
++    size_t pos = 0;
++    while (pos < data.size()) {
++        size_t sp = data.find(' ', pos);
++        if (sp == std::string::npos) return;
++        size_t len = strtoul(data.c_str() + pos, nullptr, 10);
++        if (len == 0 || pos + len > data.size()) return;
++        std::string rec = data.substr(sp + 1, pos + len - sp - 2);  // without the trailing newline
++        size_t eq = rec.find('=');
++        if (eq != std::string::npos) {
++            std::string key = rec.substr(0, eq);
++            if (key == "path") *path = rec.substr(eq + 1);
++            if (key == "linkpath") *link = rec.substr(eq + 1);
++        }
++        pos += len;
++    }
++}
++
++// Splits an archive path into components; false for anything that could leave the tree.
++bool splitSafe(std::string path, std::vector<std::string>* parts) {
++    while (path.compare(0, 2, "./") == 0) path.erase(0, 2);
++    while (!path.empty() && path.back() == '/') path.pop_back();
++    if (path.empty() || path[0] == '/' || path.size() > kMaxPath) return false;
++    size_t start = 0;
++    while (true) {
++        size_t slash = path.find('/', start);
++        std::string c = path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
++        if (c.empty() || c == "." || c == ".." || c.size() > NAME_MAX) return false;
++        parts->push_back(c);
++        if (slash == std::string::npos) return true;
++        start = slash + 1;
++    }
++}
++
++class Extractor {
++  public:
++    Extractor(int rootFd, uid_t uid, gid_t gid, mode_t newDirMode)
++        : mRoot(rootFd), mUid(uid), mGid(gid), mNewDirMode(newDirMode) {}
++
++    // An fd for the directory holding parts[1..n-1]'s last element, creating missing dirs; -1 on error.
++    unique_fd parentOf(const std::vector<std::string>& parts) {
++        unique_fd cur(fcntl(mRoot, F_DUPFD_CLOEXEC, 0));
++        for (size_t i = 1; i + 1 < parts.size() && cur >= 0; i++) {
++            cur = openDir(cur.get(), parts[i]);
++        }
++        return cur;
++    }
++
++    unique_fd openDir(int dirFd, const std::string& name) {
++        unique_fd fd(openat(dirFd, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++        if (fd < 0 && errno == ENOENT) {
++            if (mkdirat(dirFd, name.c_str(), mNewDirMode) != 0 && errno != EEXIST) return unique_fd();
++            fd.reset(openat(dirFd, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++            if (fd >= 0 && (fchown(fd.get(), mUid, mGid) != 0 || fchmod(fd.get(), mNewDirMode) != 0)) {
++                return unique_fd();
++            }
++        }
++        return fd;
++    }
++
++    // Removes whatever is at name unless it is a directory (which is kept and reused).
++    bool clearNonDir(int dirFd, const std::string& name) {
++        struct stat st;
++        if (fstatat(dirFd, name.c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0) return errno == ENOENT;
++        if (S_ISDIR(st.st_mode)) return false;
++        return unlinkat(dirFd, name.c_str(), 0) == 0;
++    }
++
++    int mRoot;
++    uid_t mUid;
++    gid_t mGid;
++    mode_t mNewDirMode;
++};
++
++// Deletes everything in the dir except (when skipCaches) its cache and code_cache.
++int clearTree(int rootFd, bool skipCaches) {
++    int dupFd = fcntl(rootFd, F_DUPFD_CLOEXEC, 0);
++    if (dupFd < 0) return -errno;
++    std::unique_ptr<DIR, decltype(&closedir)> dir(fdopendir(dupFd), closedir);
++    if (!dir) {
++        close(dupFd);
++        return -errno;
++    }
++    std::vector<std::pair<std::string, bool>> entries;
++    while (struct dirent* de = readdir(dir.get())) {
++        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
++        if (skipCaches && isCacheName(de->d_name)) continue;
++        struct stat st;
++        if (fstatat(rootFd, de->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) continue;
++        entries.emplace_back(de->d_name, S_ISDIR(st.st_mode));
++    }
++    for (const auto& [name, isDir] : entries) {
++        if (isDir) {
++            if (delete_dir_contents_fd(rootFd, name.c_str()) != 0) return -EIO;
++            if (unlinkat(rootFd, name.c_str(), AT_REMOVEDIR) != 0) return -errno;
++        } else if (unlinkat(rootFd, name.c_str(), 0) != 0) {
++            return -errno;
++        }
++    }
++    return 0;
++}
++
++}  // namespace
++
++int writeTreeTarZst(int outFd, const std::string& parent, const std::string& name, bool skipCaches,
++                    std::string* err) {
++    unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
++    if (parentFd < 0) return errno == ENOENT ? -ENOENT : -errno;
++    unique_fd root(openat(parentFd.get(), name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++    if (root < 0) return errno == ENOENT ? -ENOENT : -errno;
++    struct stat st;
++    if (fstat(root.get(), &st) != 0) return -errno;
++    ScopedSigpipeBlock noSigpipe;
++    ZstdOut z(outFd);
++    TarOut tar(&z);
++    if (!tar.header(name + "/", '5', st.st_mode, 0, st.st_mtime)) return -EIO;
++    int r = walk(&tar, root.get(), name, skipCaches, err);
++    if (r != 0) return r;
++    if (!tar.end() || !z.finish()) {
++        *err = "write failed (reader gone?)";
++        return -EIO;
++    }
++    return 0;
++}
++
++int writeApksTarZst(int outFd, const std::string& dir, std::string* err) {
++    unique_fd dirFd(open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++    if (dirFd < 0) {
++        *err = StringPrintf("open %s: %s", dir.c_str(), strerror(errno));
++        return -errno;
++    }
++    int dupFd = fcntl(dirFd.get(), F_DUPFD_CLOEXEC, 0);
++    std::unique_ptr<DIR, decltype(&closedir)> d(fdopendir(dupFd), closedir);
++    if (!d) {
++        close(dupFd);
++        return -errno;
++    }
++    std::vector<std::string> apks;
++    while (struct dirent* de = readdir(d.get())) {
++        std::string n = de->d_name;
++        if (n.size() > 4 && n.compare(n.size() - 4, 4, ".apk") == 0) apks.push_back(n);
++    }
++    if (apks.empty()) {
++        *err = "no APKs in " + dir;
++        return -ENOENT;
++    }
++    std::sort(apks.begin(), apks.end());
++    ScopedSigpipeBlock noSigpipe;
++    ZstdOut z(outFd);
++    TarOut tar(&z);
++    for (const auto& n : apks) {
++        struct stat st;
++        if (fstatat(dirFd.get(), n.c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISREG(st.st_mode)) continue;
++        int r = writeFile(&tar, dirFd.get(), n.c_str(), n, st, err);
++        if (r != 0) return r;
++    }
++    if (!tar.end() || !z.finish()) {
++        *err = "write failed (reader gone?)";
++        return -EIO;
++    }
++    return 0;
++}
++
++int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
++                      mode_t newDirMode, bool skipCaches, std::string* err) {
++    unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
++    if (parentFd < 0) {
++        *err = StringPrintf("open %s: %s", parent.c_str(), strerror(errno));
++        return -errno;
++    }
++    Extractor ex(parentFd.get(), uid, gid, newDirMode);
++    unique_fd root = ex.openDir(parentFd.get(), name);
++    if (root < 0) {
++        *err = StringPrintf("open %s/%s: %s", parent.c_str(), name.c_str(), strerror(errno));
++        return -EIO;
++    }
++    // Only the app's own dir is ever opened from here on
++    ex.mRoot = root.get();
++    if (int r = clearTree(root.get(), skipCaches); r != 0) {
++        *err = "could not clear the old data";
++        return r;
++    }
++
++    ZstdIn z(inFd);
++    std::string longName, longLink, paxPath, paxLink;
++    int zeroBlocks = 0;
++    while (true) {
++        char h[kBlock];
++        if (!z.readExact(h, kBlock)) {
++            if (z.failed()) {
++                *err = "archive is damaged (zstd)";
++                return -EINVAL;
++            }
++            break;  // tolerate archives without the closing zero blocks
++        }
++        if (std::all_of(h, h + kBlock, [](char c) { return c == 0; })) {
++            if (++zeroBlocks == 2) break;
++            continue;
++        }
++        zeroBlocks = 0;
++        if (!checksumOk(h)) {
++            *err = "archive is damaged (tar header checksum)";
++            return -EINVAL;
++        }
++        char type = h[156] ? h[156] : '0';
++        uint64_t size = parseNumber(h + 124, 12);
++        if (type == 'L' || type == 'K' || type == 'x' || type == 'g') {
++            std::string data;
++            if (!readString(&z, size, type == 'x' || type == 'g' ? kMaxPax : kMaxPath, &data)) {
++                *err = "archive has an oversized or damaged header";
++                return -EINVAL;
++            }
++            if (type == 'L') longName = data;
++            if (type == 'K') longLink = data;
++            if (type == 'x') parsePax(data, &paxPath, &paxLink);
++            continue;
++        }
++
++        std::string path = fieldString(h, 100);
++        if (memcmp(h + 257, "ustar\0", 6) == 0 && h[345]) {
++            path = fieldString(h + 345, 155) + "/" + path;  // POSIX ustar prefix
++        }
++        if (!paxPath.empty()) path = paxPath;
++        if (!longName.empty()) path = longName;
++        std::string link = fieldString(h + 157, 100);
++        if (!paxLink.empty()) link = paxLink;
++        if (!longLink.empty()) link = longLink;
++        longName.clear();
++        longLink.clear();
++        paxPath.clear();
++        paxLink.clear();
++        uint64_t dataSize = (type == '0' || type == '7') ? size : 0;
++        auto skipData = [&]() {
++            uint64_t padded = (size + kBlock - 1) / kBlock * kBlock;
++            return z.skip(padded);
++        };
++
++        std::vector<std::string> parts;
++        if (!splitSafe(path, &parts) || parts[0] != name) {
++            *err = "refused an entry outside the app's data: " + path.substr(0, 200);
++            return -EPERM;
++        }
++        if (skipCaches && parts.size() >= 2 && isCacheName(parts[1].c_str())) {
++            if (!skipData()) return -EINVAL;
++            continue;
++        }
++        mode_t perm = parseNumber(h + 100, 8) & 0777;
++        if (parts.size() == 1) {
++            // The app's dir itself: keep it, just set its mode from the archive
++            if (type == '5') fchmod(root.get(), perm | 0700);
++            if (!skipData()) return -EINVAL;
++            continue;
++        }
++        unique_fd dir = ex.parentOf(parts);
++        if (dir < 0) {
++            *err = "could not create the directories for " + path.substr(0, 200);
++            return -EIO;
++        }
++        const std::string& leaf = parts.back();
++        if (type == '5') {
++            unique_fd d = ex.openDir(dir.get(), leaf);
++            if (d < 0 || fchown(d.get(), uid, gid) != 0 || fchmod(d.get(), perm | 0700) != 0) {
++                *err = "could not create " + path.substr(0, 200);
++                return -EIO;
++            }
++        } else if (type == '0' || type == '7') {
++            if (!ex.clearNonDir(dir.get(), leaf)) {
++                *err = "could not replace " + path.substr(0, 200);
++                return -EIO;
++            }
++            unique_fd f(openat(dir.get(), leaf.c_str(),
++                               O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600));
++            if (f < 0) {
++                *err = StringPrintf("create %s: %s", path.substr(0, 200).c_str(), strerror(errno));
++                return -errno;
++            }
++            std::vector<char> buf(kChunk);
++            uint64_t left = dataSize;
++            while (left > 0) {
++                size_t n = std::min<uint64_t>(kChunk, left);
++                if (!z.readExact(buf.data(), n)) {
++                    *err = "archive ended inside " + path.substr(0, 200);
++                    return -EINVAL;
++                }
++                if (!writeAll(f.get(), buf.data(), n)) {
++                    *err = StringPrintf("write %s: %s", path.substr(0, 200).c_str(), strerror(errno));
++                    return -EIO;
++                }
++                left -= n;
++            }
++            size_t rem = dataSize % kBlock;
++            if (rem && !z.skip(kBlock - rem)) return -EINVAL;
++            struct timespec times[2] = {{0, UTIME_OMIT}, {static_cast<time_t>(parseNumber(h + 136, 12)), 0}};
++            if (fchown(f.get(), uid, gid) != 0 || fchmod(f.get(), perm) != 0) {
++                *err = "could not set the owner of " + path.substr(0, 200);
++                return -EIO;
++            }
++            futimens(f.get(), times);
++        } else if (type == '2') {
++            // Kept as a link; nothing here ever follows it
++            if (!ex.clearNonDir(dir.get(), leaf) || link.empty() || link.size() > kMaxPath ||
++                symlinkat(link.c_str(), dir.get(), leaf.c_str()) != 0 ||
++                fchownat(dir.get(), leaf.c_str(), uid, gid, AT_SYMLINK_NOFOLLOW) != 0) {
++                *err = "could not create the link " + path.substr(0, 200);
++                return -EIO;
++            }
++        } else {
++            // Hard links, devices, fifos: never restored
++            if (!skipData()) return -EINVAL;
++        }
++    }
++    return 0;
++}
++
++int zstdDecompress(int inFd, int outFd, std::string* err) {
++    ZstdIn z(inFd);
++    std::vector<char> buf(kChunk);
++    ScopedSigpipeBlock noSigpipe;
++    while (true) {
++        size_t got = z.readSome(buf.data(), buf.size());
++        if (got == 0) break;
++        if (!writeAll(outFd, buf.data(), got)) {
++            *err = "write failed (reader gone?)";
++            return -EIO;
++        }
++    }
++    if (z.failed()) {
++        *err = "archive is damaged (zstd)";
++        return -EINVAL;
++    }
++    return 0;
++}
++
++}  // namespace plait
++}  // namespace installd
++}  // namespace android
+diff --git a/cmds/installd/PlaitBackup.h b/cmds/installd/PlaitBackup.h
+new file mode 100644
+index 0000000..893fecd
+--- /dev/null
++++ b/cmds/installd/PlaitBackup.h
+@@ -0,0 +1,43 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++#pragma once
++
++#include <sys/types.h>
++
++#include <string>
++
++namespace android {
++namespace installd {
++namespace plait {
++
++/*
++ * Streaming app data backups for PlaitOS's plait_backup service: zstd-compressed tar, in the archive layout
++ * Android-DataBackup uses (entries "<pkg>/..." relative to the parent dir, cache and code_cache left out), so
++ * archives move between Plait Backup's rooted-phone backend and PlaitOS.
++ *
++ * Restores only ever write inside <parent>/<name>: every path is walked one component at a time with openat and
++ * O_NOFOLLOW (a symlink in the app's data can never redirect a write), only regular files, directories and symlinks
++ * are created, and everything is owned by the given uid:gid with permission bits only (no setuid/setgid files).
++ * The tar's own owners are ignored. Labels are fixed afterwards by the caller (restorecon).
++ */
++
++// Returns -ENOENT (and writes nothing) if <parent>/<name> does not exist.
++int writeTreeTarZst(int outFd, const std::string& parent, const std::string& name, bool skipCaches,
++                    std::string* err);
++
++// The *.apk files directly in dir, as entries "base.apk", "split_*.apk".
++int writeApksTarZst(int outFd, const std::string& dir, std::string* err);
++
++// Replaces the contents of <parent>/<name> (except cache and code_cache when skipCaches) with the archive's.
++int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
++                      mode_t newDirMode, bool skipCaches, std::string* err);
++
++// Plain zstd decompression from one fd to another (APK archives, which system_server unpacks itself).
++int zstdDecompress(int inFd, int outFd, std::string* err);
++
++}  // namespace plait
++}  // namespace installd
++}  // namespace android
+diff --git a/cmds/installd/binder/android/os/IInstalld.aidl b/cmds/installd/binder/android/os/IInstalld.aidl
+index 34e6302..078d200 100644
+--- a/cmds/installd/binder/android/os/IInstalld.aidl
++++ b/cmds/installd/binder/android/os/IInstalld.aidl
+@@ -204,6 +204,27 @@ interface IInstalld {
+             @utf8InCpp String toPath, int userId, int appId, @utf8InCpp String seInfo, int flags,
+             int callerUid, IAppDataOperationCallback callback);
+ 
++    /**
++     * PlaitOS backups (PlaitBackup.cpp), for system_server's plait_backup service only. Streams are
++     * zstd-compressed tar in Android-DataBackup's layout (entries "<pkg>/..."). `part` is one of
++     * PLAIT_PART_*. Returns false (and writes nothing) if the app has no such data.
++     */
++    boolean plaitBackupAppData(@nullable @utf8InCpp String uuid, @utf8InCpp String packageName,
++            int userId, int part, in ParcelFileDescriptor sink);
++    /** Replaces the app's data for `part` with the stream's, owned by the app, then restorecon. */
++    void plaitRestoreAppData(@nullable @utf8InCpp String uuid, @utf8InCpp String packageName,
++            int userId, int appId, @utf8InCpp String seInfo, int part, in ParcelFileDescriptor source);
++    /** The *.apk files of an installed package's code dir (under /data/app). */
++    void plaitBackupApks(@utf8InCpp String codePath, in ParcelFileDescriptor sink);
++    /** Plain zstd decompression (system_server unpacks APK archives itself). */
++    void plaitZstdDecompress(in ParcelFileDescriptor source, in ParcelFileDescriptor sink);
++
++    const int PLAIT_PART_CE = 1;
++    const int PLAIT_PART_DE = 2;
++    const int PLAIT_PART_EXT_DATA = 3;
++    const int PLAIT_PART_EXT_OBB = 4;
++    const int PLAIT_PART_EXT_MEDIA = 5;
++
+     const int FLAG_STORAGE_DE = 0x1;
+     const int FLAG_STORAGE_CE = 0x2;
+     const int FLAG_STORAGE_EXTERNAL = 0x4;
+-- 
+2.56.0
+

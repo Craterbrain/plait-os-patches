@@ -1,0 +1,71 @@
+From 0c95680b0997d387b92c97b33307620f3d5e89cc Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 18:44:42 -0600
+Subject: [PATCH 15/75] PlaitOS: adapt power menu customizations to GrapheneOS
+
+The entries come from Settings.Secure plait_power_menu_actions ("|"-separated config keys,
+written by Plait Settings) instead of lineage-sdk's LineageGlobalActions. Unset means
+GrapheneOS's default menu, so airplane mode, screenshot and the rest stay hidden until chosen.
+---
+ .../GlobalActionsDialogLite.java              | 22 ++++++++-----------
+ 1 file changed, 9 insertions(+), 13 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+index 5e0cd1f81..481410d3d 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+@@ -175,8 +175,6 @@ import dagger.assisted.Assisted;
+ import dagger.assisted.AssistedFactory;
+ import dagger.assisted.AssistedInject;
+ 
+-import lineageos.app.LineageGlobalActions;
+-import lineageos.providers.LineageSettings;
+ 
+ 
+ import java.util.ArrayList;
+@@ -299,8 +297,8 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+     private final EmergencyAffordanceManager mEmergencyAffordanceManager;
+     @NonNull
+     private final ScreenshotHelper mScreenshotHelper;
+-    @NonNull
+-    private final LineageGlobalActions mLineageGlobalActions;
++    /** Settings.Secure key holding the chosen power menu entries, "|"-separated (unset = GrapheneOS default). */
++    private static final String PLAIT_POWER_MENU_ACTIONS = "plait_power_menu_actions";
+ 
+     // Used for RingerModeTracker
+     private final LifecycleRegistry mLifecycle = new LifecycleRegistry(this);
+@@ -565,10 +563,9 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+ 
+         mEmergencyAffordanceManager = emergencyAffordanceManager;
+         mScreenshotHelper = screenshotHelper;
+-        mLineageGlobalActions = LineageGlobalActions.getInstance(mContext);
+         mActions = loadPowerMenuActions();
+         mContext.getContentResolver().registerContentObserver(
+-                LineageSettings.Secure.getUriFor(LineageSettings.Secure.POWER_MENU_ACTIONS),
++                android.provider.Settings.Secure.getUriFor(PLAIT_POWER_MENU_ACTIONS),
+                 false, mPowerMenuActionsObserver);
+ 
+         mConfigurationController.addCallback(this);
+@@ -590,13 +587,12 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+     }
+ 
+     private String[] loadPowerMenuActions() {
+-        try {
+-            String[] actions = mLineageGlobalActions.getUserActionsArray();
+-            if (actions != null) {
+-                return actions;
+-            }
+-        } catch (RuntimeException e) {
+-            Log.w(TAG, "Unable to load Lineage power menu actions", e);
++        // The user's choice, written by Plait Settings; extra entries (airplane, screenshot, ...) only
++        // appear once chosen there
++        final String chosen = android.provider.Settings.Secure.getString(
++                mContext.getContentResolver(), PLAIT_POWER_MENU_ACTIONS);
++        if (chosen != null && !chosen.isEmpty()) {
++            return chosen.split("\\|");
+         }
+ 
+         List<GlobalActionType> defaultActions = mInteractor.getPossibleGlobalActions();
+-- 
+2.56.0
+

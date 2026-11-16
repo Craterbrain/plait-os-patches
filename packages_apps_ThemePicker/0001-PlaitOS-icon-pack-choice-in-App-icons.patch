@@ -1,0 +1,274 @@
+From ac628fe2abae4d244e64484e4fa47b953126e2fd Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 14:53:06 -0600
+Subject: [PATCH] PlaitOS: icon pack choice in App icons
+
+An "Icon pack" row in the App icons sheet (shape tab, below themed
+icons) chooses the system-wide icon pack: Settings.Secure
+plait_icon_pack, which Launcher3 follows (home screen, app drawer,
+recents, app open animations) and the framework uses for the icons
+other apps load. Packs are found by the actions launchers use for icon
+packs (ADW, Nova, Apex, GO, ...), with "System icons" to turn it off.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ AndroidManifest.xml                           |  25 ++++
+ res/layout/floating_sheet_app_icon.xml        |  25 ++++
+ res/values/plait_strings.xml                  |  10 ++
+ .../ui/binder/AppIconFloatingSheetBinder.kt   |  10 ++
+ .../icon/ui/binder/PlaitIconPackBinder.kt     | 132 ++++++++++++++++++
+ 5 files changed, 202 insertions(+)
+ create mode 100644 res/values/plait_strings.xml
+ create mode 100644 src/com/android/customization/picker/icon/ui/binder/PlaitIconPackBinder.kt
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 58ddb48..6480d4a 100755
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -61,6 +61,31 @@
+             <action android:name="android.intent.action.MAIN" />
+             <category android:name="android.intent.category.HOME" />
+         </intent>
++        <!-- PlaitOS: icon packs (the actions launchers find them by) -->
++        <intent>
++            <action android:name="com.fede.launcher.THEME_ICONPACK" />
++        </intent>
++        <intent>
++            <action android:name="com.anddoes.launcher.THEME" />
++        </intent>
++        <intent>
++            <action android:name="com.novalauncher.THEME" />
++        </intent>
++        <intent>
++            <action android:name="com.teslacoilsw.launcher.THEME" />
++        </intent>
++        <intent>
++            <action android:name="com.gau.go.launcherex.theme" />
++        </intent>
++        <intent>
++            <action android:name="org.adw.launcher.THEMES" />
++        </intent>
++        <intent>
++            <action android:name="net.oneplus.launcher.icons.ACTION_PICK_ICON" />
++        </intent>
++        <intent>
++            <action android:name="org.adw.launcher.icons.ACTION_PICK_ICON" />
++        </intent>
+     </queries>
+ 
+     <application
+diff --git a/res/layout/floating_sheet_app_icon.xml b/res/layout/floating_sheet_app_icon.xml
+index 07d4a34..fdd1f82 100644
+--- a/res/layout/floating_sheet_app_icon.xml
++++ b/res/layout/floating_sheet_app_icon.xml
+@@ -145,6 +145,31 @@
+                     app:layout_constraintEnd_toEndOf="parent"
+                     android:theme="@style/Theme.Material3.DynamicColors.DayNight" />
+             </androidx.constraintlayout.widget.ConstraintLayout>
++
++            <!-- PlaitOS: the system-wide icon pack -->
++            <LinearLayout
++                android:id="@+id/plait_icon_pack_entry"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:paddingVertical="@dimen/floating_sheet_content_vertical_padding"
++                android:paddingHorizontal="@dimen/floating_sheet_content_horizontal_padding"
++                android:background="?android:attr/selectableItemBackground"
++                android:orientation="vertical">
++
++                <TextView
++                    style="@style/CustomizationOptionEntryTitleTextStyle"
++                    android:id="@+id/plait_icon_pack_title"
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:text="@string/plait_icon_pack_title" />
++
++                <TextView
++                    style="@style/CustomizationOptionEntrySubtitleTextStyle"
++                    android:id="@+id/plait_icon_pack_summary"
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:text="@string/plait_icon_pack_none" />
++            </LinearLayout>
+         </LinearLayout>
+ 
+         <LinearLayout
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+new file mode 100644
+index 0000000..b4282e2
+--- /dev/null
++++ b/res/values/plait_strings.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS) -->
++<resources>
++    <!-- System-wide icon packs, in the App icons sheet -->
++    <string name="plait_icon_pack_title">Icon pack</string>
++    <string name="plait_icon_pack_none">System icons</string>
++    <string name="plait_icon_pack_dialog_title">Icon pack</string>
++    <string name="plait_icon_pack_dialog_message">Used on the home screen and everywhere apps are shown: Settings, sharing, notifications and app lists</string>
++    <string name="plait_icon_pack_get_more">Install an icon pack app to see it here</string>
++</resources>
+diff --git a/src/com/android/customization/picker/icon/ui/binder/AppIconFloatingSheetBinder.kt b/src/com/android/customization/picker/icon/ui/binder/AppIconFloatingSheetBinder.kt
+index 67c38ce..e9a7818 100644
+--- a/src/com/android/customization/picker/icon/ui/binder/AppIconFloatingSheetBinder.kt
++++ b/src/com/android/customization/picker/icon/ui/binder/AppIconFloatingSheetBinder.kt
+@@ -148,6 +148,16 @@ object AppIconFloatingSheetBinder {
+         val themedIconBetaLabel = view.requireViewById<TextView>(R.id.themed_icon_beta_title)
+         val showAppLabelsTitle = view.requireViewById<TextView>(R.id.show_app_labels_title)
+         val showAppLabelsSwitch = view.requireViewById<MaterialSwitch>(R.id.show_app_labels_switch)
++        // PlaitOS: the system-wide icon pack row (in the shape tab, below themed icons)
++        PlaitIconPackBinder.bind(view, lifecycleOwner)
++        ColorUpdateBinder.bind(
++            setColor = { color ->
++                view.requireViewById<TextView>(R.id.plait_icon_pack_title).setTextColor(color)
++            },
++            color = colorUpdateViewModel.colorOnSurface,
++            shouldAnimate = isFloatingSheetActive,
++            lifecycleOwner = lifecycleOwner,
++        )
+         ColorUpdateBinder.bind(
+             setColor = { color -> showAppLabelsTitle.setTextColor(color) },
+             color = colorUpdateViewModel.colorOnSurface,
+diff --git a/src/com/android/customization/picker/icon/ui/binder/PlaitIconPackBinder.kt b/src/com/android/customization/picker/icon/ui/binder/PlaitIconPackBinder.kt
+new file mode 100644
+index 0000000..b10260e
+--- /dev/null
++++ b/src/com/android/customization/picker/icon/ui/binder/PlaitIconPackBinder.kt
+@@ -0,0 +1,132 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.customization.picker.icon.ui.binder
++
++import android.content.Context
++import android.content.Intent
++import android.content.pm.PackageManager
++import android.database.ContentObserver
++import android.graphics.drawable.Drawable
++import android.os.Handler
++import android.os.Looper
++import android.provider.Settings
++import android.view.View
++import android.view.ViewGroup
++import android.widget.ArrayAdapter
++import android.widget.ImageView
++import android.widget.TextView
++import androidx.lifecycle.DefaultLifecycleObserver
++import androidx.lifecycle.LifecycleOwner
++import com.android.themepicker.R
++import com.google.android.material.dialog.MaterialAlertDialogBuilder
++
++/**
++ * The "Icon pack" row of the App icons sheet: the system-wide icon pack (Settings.Secure
++ * plait_icon_pack), used by Launcher3 and, for the icons apps load through the package manager,
++ * by the framework. Installed packs are found by the actions launchers use for them.
++ */
++object PlaitIconPackBinder {
++
++    const val SETTING = "plait_icon_pack"
++
++    private val ICON_PACK_ACTIONS =
++        arrayOf(
++            "com.fede.launcher.THEME_ICONPACK",
++            "com.anddoes.launcher.THEME",
++            "com.novalauncher.THEME",
++            "com.teslacoilsw.launcher.THEME",
++            "com.gau.go.launcherex.theme",
++            "org.adw.launcher.THEMES",
++            "net.oneplus.launcher.icons.ACTION_PICK_ICON",
++            "org.adw.launcher.icons.ACTION_PICK_ICON",
++        )
++
++    private class Pack(val packageName: String, val label: CharSequence, val icon: Drawable?)
++
++    fun bind(view: View, lifecycleOwner: LifecycleOwner) {
++        val entry = view.requireViewById<View>(R.id.plait_icon_pack_entry)
++        val summary = view.requireViewById<TextView>(R.id.plait_icon_pack_summary)
++        val context = view.context
++        val update = { summary.text = currentLabel(context) }
++        update()
++        val observer =
++            object : ContentObserver(Handler(Looper.getMainLooper())) {
++                override fun onChange(selfChange: Boolean) = update()
++            }
++        context.contentResolver.registerContentObserver(
++            Settings.Secure.getUriFor(SETTING),
++            false,
++            observer,
++        )
++        lifecycleOwner.lifecycle.addObserver(
++            object : DefaultLifecycleObserver {
++                override fun onDestroy(owner: LifecycleOwner) {
++                    context.contentResolver.unregisterContentObserver(observer)
++                }
++            }
++        )
++        entry.setOnClickListener { showChooser(context) }
++    }
++
++    private fun current(context: Context): String =
++        Settings.Secure.getString(context.contentResolver, SETTING).orEmpty()
++
++    private fun currentLabel(context: Context): CharSequence {
++        val pack = current(context)
++        if (pack.isEmpty()) return context.getString(R.string.plait_icon_pack_none)
++        return installedPacks(context).firstOrNull { it.packageName == pack }?.label
++            ?: context.getString(R.string.plait_icon_pack_none)
++    }
++
++    private fun installedPacks(context: Context): List<Pack> {
++        val pm = context.packageManager
++        return ICON_PACK_ACTIONS.flatMap { action ->
++                pm.queryIntentActivities(Intent(action), PackageManager.GET_META_DATA)
++            }
++            .map { it.activityInfo.applicationInfo }
++            .distinctBy { it.packageName }
++            .map { Pack(it.packageName, it.loadLabel(pm), it.loadIcon(pm)) }
++            .sortedBy { it.label.toString().lowercase() }
++    }
++
++    private fun showChooser(context: Context) {
++        val none = Pack("", context.getString(R.string.plait_icon_pack_none), null)
++        val packs = listOf(none) + installedPacks(context)
++        val selected = packs.indexOfFirst { it.packageName == current(context) }.coerceAtLeast(0)
++        val adapter =
++            object :
++                ArrayAdapter<Pack>(
++                    context,
++                    android.R.layout.select_dialog_singlechoice,
++                    packs,
++                ) {
++                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
++                    val row = super.getView(position, convertView, parent) as TextView
++                    val pack = packs[position]
++                    row.text = pack.label
++                    val size = (32 * context.resources.displayMetrics.density).toInt()
++                    pack.icon?.setBounds(0, 0, size, size)
++                    row.setCompoundDrawablesRelative(pack.icon, null, null, null)
++                    row.compoundDrawablePadding = size / 2
++                    return row
++                }
++            }
++        val builder =
++            MaterialAlertDialogBuilder(context)
++                .setTitle(R.string.plait_icon_pack_dialog_title)
++                .setSingleChoiceItems(adapter, selected) { dialog, which ->
++                    Settings.Secure.putString(
++                        context.contentResolver,
++                        SETTING,
++                        packs[which].packageName,
++                    )
++                    dialog.dismiss()
++                }
++                .setNegativeButton(android.R.string.cancel, null)
++        if (packs.size == 1) builder.setMessage(R.string.plait_icon_pack_get_more)
++        builder.show()
++    }
++}
+-- 
+2.56.0
+

@@ -1,0 +1,380 @@
+From 640514cd1f15bc438711ba868f5b7d22112b4679 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 21:29:02 -0600
+Subject: [PATCH 36/75] PlaitOS: slide on the status bar to change brightness
+
+Port of crDroid's status bar brightness control as it stands after its
+fixes (crDroid frameworks_base 16.0):
+  08a17c17e SystemUI: Port statusbar brightness control (Alberto97; a squash
+            of the CyanogenMod/LineageOS changes by Danesh Mondegarian, Roman
+            Birg, Pawit Pornkitprasan, Zhao Wei Liew, Chenyang Zhong,
+            jhenrique09 and cjh1249131356)
+  22090b794 SystemUI: Fix and add status bar brightness control for lockscreen
+  d1ea8e093 SystemUI: Fix quick pulldown regression (already the order in
+            GrapheneOS, nothing to port)
+  49509c18c SystemUI: Fix sporadic jumps in statusbar brightness control
+            (all three by Pranav Vashi)
+
+Applied by hand: crDroid's CentralSurfacesImpl differs too much from
+GrapheneOS's for the patches to place reliably.
+
+PlaitOS changes:
+- Switches are Settings.System plait_status_bar_brightness_control and
+  plait_status_bar_brightness_control_lockscreen (both off by default),
+  read once per touch-down for the current user (GrapheneOS's shade has no
+  tuner hook)
+- A slide starts from the screen's real brightness instead of the value the
+  last slide left behind, which made the first slide after boot or after the
+  Quick Settings slider jump
+- No settings write on every move: like the Quick Settings slider, the
+  brightness is temporary while dragging and saved once by setBrightness()
+  when the finger lifts
+- CentralSurfaces gets default no-op methods, so other implementations are
+  untouched
+
+Co-authored-by: Alberto97 <albertop2197@gmail.com>
+Co-authored-by: Pranav Vashi <neobuddy89@gmail.com>
+Co-authored-by: Danesh Mondegarian <daneshm90@gmail.com>
+Co-authored-by: Roman Birg <roman@cyngn.com>
+Co-authored-by: Pawit Pornkitprasan <p.pawit@gmail.com>
+Co-authored-by: Zhao Wei Liew <zhaoweiliew@gmail.com>
+Co-authored-by: Chenyang Zhong <zhongcy95@gmail.com>
+Co-authored-by: jhenrique09 <jhsv09@gmail.com>
+Co-authored-by: cjh1249131356 <cjh1249131356@gmail.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../NotificationPanelViewController.java      |  37 +++++-
+ ...NotificationShadeWindowViewController.java |   6 +
+ .../systemui/shade/ShadeViewController.kt     |   3 +
+ .../shade/ShadeViewControllerEmptyImpl.kt     |   2 +
+ .../statusbar/phone/CentralSurfaces.java      |   9 ++
+ .../statusbar/phone/CentralSurfacesImpl.java  | 121 ++++++++++++++++++
+ 6 files changed, 177 insertions(+), 1 deletion(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/NotificationPanelViewController.java b/packages/SystemUI/src/com/android/systemui/shade/NotificationPanelViewController.java
+index e6a7eced5..6b9a436fe 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/NotificationPanelViewController.java
++++ b/packages/SystemUI/src/com/android/systemui/shade/NotificationPanelViewController.java
+@@ -67,6 +67,8 @@ import android.os.Bundle;
+ import android.os.Handler;
+ import android.os.PowerManager;
+ import android.os.Trace;
++import android.os.UserHandle;
++import android.provider.Settings;
+ import android.util.IndentingPrintWriter;
+ import android.util.Log;
+ import android.util.MathUtils;
+@@ -364,6 +366,12 @@ public final class NotificationPanelViewController implements
+     private int mBarState;
+     private FlingAnimationUtils mFlingAnimationUtils;
+     private int mStatusBarMinHeight;
++    /** Settings.System keys: slide on the status bar to change brightness (off by default). */
++    private static final String PLAIT_BRIGHTNESS_CONTROL = "plait_status_bar_brightness_control";
++    private static final String PLAIT_BRIGHTNESS_CONTROL_LOCKSCREEN =
++            "plait_status_bar_brightness_control_lockscreen";
++    private boolean mBrightnessControl;
++    private boolean mBrightnessControlLockscreen;
+     private int mStatusBarHeaderHeightKeyguard;
+     private float mOverStretchAmount;
+     private float mDownX;
+@@ -3024,7 +3032,8 @@ public final class NotificationPanelViewController implements
+         return !isDirectionUpwards(x, y);
+     }
+ 
+-    private void fling(float vel, boolean expand, boolean expandBecauseOfFalsing) {
++    @Override
++    public void fling(float vel, boolean expand, boolean expandBecauseOfFalsing) {
+         fling(vel, expand, 1.0f /* collapseSpeedUpFactor */, expandBecauseOfFalsing);
+     }
+ 
+@@ -3997,6 +4006,11 @@ public final class NotificationPanelViewController implements
+                     return true;
+                 }
+                 mLastTouchDownTime = event.getDownTime();
++                // Read once per gesture, for the current user (written by Plait Settings)
++                mBrightnessControl = Settings.System.getIntForUser(mContentResolver,
++                        PLAIT_BRIGHTNESS_CONTROL, 0, UserHandle.USER_CURRENT) != 0;
++                mBrightnessControlLockscreen = Settings.System.getIntForUser(mContentResolver,
++                        PLAIT_BRIGHTNESS_CONTROL_LOCKSCREEN, 0, UserHandle.USER_CURRENT) != 0;
+             }
+ 
+             if (mQsController.isFullyExpandedAndTouchesDisallowed()) {
+@@ -4022,6 +4036,10 @@ public final class NotificationPanelViewController implements
+             if (event.getAction() == MotionEvent.ACTION_UP
+                     || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                 mBlockingExpansionForCurrentTouch = false;
++                if (mBrightnessControl) {
++                    mCentralSurfaces.onBrightnessChanged(true);
++                    mCentralSurfaces.cancelBrightnessControl();
++                }
+             }
+             // When touch focus transfer happens, ACTION_DOWN->ACTION_UP may happen immediately
+             // without any ACTION_MOVE event.
+@@ -4060,11 +4078,28 @@ public final class NotificationPanelViewController implements
+             }
+             if (!mHeadsUpTouchHelper.isTrackingHeadsUp() && mQsController.handleTouch(
+                     event, isFullyCollapsed(), isShadeOrQsHeightAnimationRunning())) {
++                if (mBrightnessControl) {
++                    mCentralSurfaces.cancelBrightnessControl();
++                }
+                 if (event.getActionMasked() != MotionEvent.ACTION_MOVE) {
+                     mShadeLog.logMotionEvent(event, "onTouch: handleQsTouch handled event");
+                 }
+                 return true;
+             }
++            if (mBrightnessControl) {
++                final int actionIndex = event.getActionIndex();
++                final float swipeY = event.getY(actionIndex);
++                if (swipeY < mStatusBarMinHeight &&
++                        (mBarState != KEYGUARD || mBrightnessControlLockscreen)) {
++                    mCentralSurfaces.brightnessControl(event);
++                    final int action = event.getActionMasked();
++                    if (action == MotionEvent.ACTION_UP
++                            || action == MotionEvent.ACTION_CANCEL) {
++                        mCentralSurfaces.onBrightnessChanged(true);
++                    }
++                    return true;
++                }
++            }
+             if (event.getActionMasked() == MotionEvent.ACTION_DOWN && isFullyCollapsed()) {
+                 mMetricsLogger.count(COUNTER_PANEL_OPEN, 1);
+                 handled = true;
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/NotificationShadeWindowViewController.java b/packages/SystemUI/src/com/android/systemui/shade/NotificationShadeWindowViewController.java
+index 0bdb74495..9ef351d8c 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/NotificationShadeWindowViewController.java
++++ b/packages/SystemUI/src/com/android/systemui/shade/NotificationShadeWindowViewController.java
+@@ -771,4 +771,10 @@ public class NotificationShadeWindowViewController implements Dumpable {
+     void setDragDownHelper(DragDownHelper dragDownHelper) {
+         mDragDownHelper = dragDownHelper;
+     }
++
++    public void fling(float vel, boolean expand, boolean expandBecauseOfFalsing) {
++        if (mShadeViewController != null) {
++            mShadeViewController.fling(vel, expand, expandBecauseOfFalsing);
++        }
++    }
+ }
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/ShadeViewController.kt b/packages/SystemUI/src/com/android/systemui/shade/ShadeViewController.kt
+index 8201920ba..35dd36ee3 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/ShadeViewController.kt
++++ b/packages/SystemUI/src/com/android/systemui/shade/ShadeViewController.kt
+@@ -98,6 +98,9 @@ interface ShadeViewController {
+     /** Notifies the shade that a status bar detected a long press gesture. */
+     fun onStatusBarLongPress(event: MotionEvent)
+ 
++    /** Fling the shade open or closed (used by status bar brightness control). */
++    fun fling(vel: Float, expand: Boolean, expandBecauseOfFalsing: Boolean)
++
+     /** Returns the ShadeFoldAnimator. */
+     @Deprecated("This interface is deprecated in Scene Container")
+     val shadeFoldAnimator: ShadeFoldAnimator
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/ShadeViewControllerEmptyImpl.kt b/packages/SystemUI/src/com/android/systemui/shade/ShadeViewControllerEmptyImpl.kt
+index a66cd8fa5..4439b2ba7 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/ShadeViewControllerEmptyImpl.kt
++++ b/packages/SystemUI/src/com/android/systemui/shade/ShadeViewControllerEmptyImpl.kt
+@@ -54,6 +54,8 @@ open class ShadeViewControllerEmptyImpl @Inject constructor() :
+ 
+     override fun startExpandLatencyTracking() {}
+ 
++    override fun fling(vel: Float, expand: Boolean, expandBecauseOfFalsing: Boolean) {}
++
+     override fun resetViews(animate: Boolean) {}
+ 
+     override val barState: Int = 0
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfaces.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfaces.java
+index e29f3c73f..0a623d894 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfaces.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfaces.java
+@@ -258,4 +258,13 @@ public interface CentralSurfaces extends Dumpable, LifecycleOwner, CoreStartable
+      */
+     ActivityTransitionAnimator.Controller getAnimatorControllerFromNotification(
+             ExpandableNotificationRow associatedView);
++
++    /** Status bar brightness control: feed it the status bar touch stream. */
++    default void brightnessControl(MotionEvent event) {}
++
++    /** Status bar brightness control: commit the brightness once the gesture ends. */
++    default void onBrightnessChanged(boolean upOrCancel) {}
++
++    /** Status bar brightness control: another handler took the gesture. */
++    default void cancelBrightnessControl() {}
+ }
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
+index b7876bfc2..b771a3e7d 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
+@@ -26,6 +26,9 @@ import static android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS;
+ 
+ import static androidx.lifecycle.Lifecycle.State.RESUMED;
+ 
++import static com.android.settingslib.display.BrightnessUtils.GAMMA_SPACE_MAX;
++import static com.android.settingslib.display.BrightnessUtils.convertGammaToLinearFloat;
++import static com.android.settingslib.display.BrightnessUtils.convertLinearToGammaFloat;
+ import static com.android.systemui.Dependency.TIME_TICK_HANDLER_NAME;
+ import static com.android.systemui.charging.WirelessChargingAnimation.UNKNOWN_BATTERY_LEVEL;
+ import static com.android.systemui.statusbar.StatusBarState.SHADE;
+@@ -47,6 +50,7 @@ import android.content.IntentFilter;
+ import android.content.res.Configuration;
+ import android.graphics.Point;
+ import android.hardware.devicestate.DeviceStateManager;
++import android.hardware.display.DisplayManager;
+ import android.metrics.LogMaker;
+ import android.net.Uri;
+ import android.os.Bundle;
+@@ -68,7 +72,9 @@ import android.util.Log;
+ import android.view.Display;
+ import android.view.IRemoteAnimationRunner;
+ import android.view.IWindowManager;
++import android.view.HapticFeedbackConstants;
+ import android.view.MotionEvent;
++import android.view.ViewConfiguration;
+ import android.view.SurfaceControl;
+ import android.view.ThreadedRenderer;
+ import android.view.View;
+@@ -241,6 +247,21 @@ import javax.inject.Named;
+ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
+ 
+     private static final int MSG_LAUNCH_TRANSITION_TIMEOUT = 1003;
++    private static final int MSG_LONG_PRESS_BRIGHTNESS_CHANGE = 1004;
++    private static final int BRIGHTNESS_CONTROL_LONG_PRESS_TIMEOUT = 750; // ms
++    private static final int BRIGHTNESS_CONTROL_LINGER_THRESHOLD = 20;
++
++    // Status bar brightness control (from crDroid)
++    private DisplayManager mDisplayManager;
++    private float mMinimumBacklight;
++    private float mMaximumBacklight;
++    private int mInitialTouchX;
++    private int mInitialTouchY;
++    private int mLinger;
++    private int mQuickQsOffsetHeight;
++    private boolean mBrightnessChanged;
++    private float mCurrentBrightness;
++    private float mBrightnessAtTouchStart = -1f;
+     // 1020-1040 reserved for BaseStatusBar
+ 
+     private static final UiEventLogger sUiEventLogger = new UiEventLoggerImpl();
+@@ -725,6 +746,9 @@ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
+                 data -> mCommandQueueCallbacks.animateExpandSettingsPanel(data.mSubpanel));
+         mMessageRouter.subscribeTo(MSG_LAUNCH_TRANSITION_TIMEOUT,
+                 id -> onLaunchTransitionTimeout());
++        mMessageRouter.subscribeTo(MSG_LONG_PRESS_BRIGHTNESS_CHANGE,
++                id -> onLongPressBrightnessChange());
++        mDisplayManager = mContext.getSystemService(DisplayManager.class);
+ 
+         mDeviceStateManager = deviceStateManager;
+         wiredChargingRippleController.registerCallbacks();
+@@ -960,6 +984,11 @@ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
+         getNotificationShadeWindowView().setOnTouchListener(getStatusBarWindowTouchListener());
+         mWallpaperController.setRootView(getNotificationShadeWindowView());
+ 
++        mMinimumBacklight = mPowerManager.getBrightnessConstraint(
++                PowerManager.BRIGHTNESS_CONSTRAINT_TYPE_MINIMUM);
++        mMaximumBacklight = mPowerManager.getBrightnessConstraint(
++                PowerManager.BRIGHTNESS_CONSTRAINT_TYPE_MAXIMUM);
++
+         mDemoModeController.addCallback(mDemoModeCallback);
+         mCommandQueueCallbacks = mCommandQueueCallbacksLazy.get();
+         mCommandQueue.addCallback(mCommandQueueCallbacks);
+@@ -1519,6 +1548,98 @@ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
+ 
+     @Override
+     @Deprecated
++    private void adjustBrightness(int x) {
++        mBrightnessChanged = true;
++        if (mBrightnessAtTouchStart < 0f) {
++            // Start from the screen's real brightness: it may have changed elsewhere since the
++            // last slide (Quick Settings slider, auto brightness, boot)
++            mCurrentBrightness = mDisplayManager.getBrightness(mDisplayId);
++            mBrightnessAtTouchStart = mCurrentBrightness;
++            mInitialTouchX = x;
++            return;
++        }
++        float delta = ((float) (x - mInitialTouchX)) / getDisplayWidth();
++        float gamma = convertLinearToGammaFloat(mBrightnessAtTouchStart,
++                mMinimumBacklight, mMaximumBacklight) / (float) GAMMA_SPACE_MAX;
++        float value = Math.min(1f, Math.max(0f, gamma + delta));
++        final float val = convertGammaToLinearFloat(
++                Math.round(value * GAMMA_SPACE_MAX), mMinimumBacklight, mMaximumBacklight);
++        mCurrentBrightness = val;
++        // Like the Quick Settings slider: temporary while dragging, saved by
++        // setBrightness() in onBrightnessChanged() when the finger lifts
++        mDisplayManager.setTemporaryBrightness(mDisplayId, val);
++    }
++
++    @Override
++    public void brightnessControl(MotionEvent event) {
++        final int action = event.getAction();
++        final int x = (int) event.getRawX();
++        final int y = (int) event.getRawY();
++        mQuickQsOffsetHeight = mContext.getResources().getDimensionPixelSize(
++                com.android.internal.R.dimen.quick_qs_offset_height);
++        if (action == MotionEvent.ACTION_DOWN) {
++            if (y < mQuickQsOffsetHeight) {
++                mLinger = 0;
++                mInitialTouchX = x;
++                mInitialTouchY = y;
++                mBrightnessAtTouchStart = -1f;
++                mMessageRouter.cancelMessages(MSG_LONG_PRESS_BRIGHTNESS_CHANGE);
++                mMessageRouter.sendMessageDelayed(MSG_LONG_PRESS_BRIGHTNESS_CHANGE,
++                        BRIGHTNESS_CONTROL_LONG_PRESS_TIMEOUT);
++            }
++        } else if (action == MotionEvent.ACTION_MOVE) {
++            if (y < mQuickQsOffsetHeight) {
++                if (mLinger > BRIGHTNESS_CONTROL_LINGER_THRESHOLD) {
++                    adjustBrightness(x);
++                } else {
++                    final int xDiff = Math.abs(x - mInitialTouchX);
++                    final int yDiff = Math.abs(y - mInitialTouchY);
++                    final int touchSlop = ViewConfiguration.get(mContext).getScaledTouchSlop();
++                    if (yDiff > xDiff && yDiff > touchSlop) {
++                        mMessageRouter.cancelMessages(MSG_LONG_PRESS_BRIGHTNESS_CHANGE);
++                        mLinger = 0;
++                    } else if (xDiff > yDiff) {
++                        mLinger++;
++                    }
++                    if (xDiff > touchSlop || yDiff > touchSlop) {
++                        mMessageRouter.cancelMessages(MSG_LONG_PRESS_BRIGHTNESS_CHANGE);
++                    }
++                }
++            } else {
++                mLinger = 0;
++                mMessageRouter.cancelMessages(MSG_LONG_PRESS_BRIGHTNESS_CHANGE);
++            }
++        } else if (action == MotionEvent.ACTION_UP
++                || action == MotionEvent.ACTION_CANCEL) {
++            mMessageRouter.cancelMessages(MSG_LONG_PRESS_BRIGHTNESS_CHANGE);
++        }
++    }
++
++    @Override
++    public void onBrightnessChanged(boolean upOrCancel) {
++        if (mBrightnessChanged && upOrCancel) {
++            mBrightnessChanged = false;
++            if (mShadeController.isExpandedVisible()) {
++                getNotificationShadeWindowViewController().fling(10, false, false);
++            }
++            mDisplayManager.setBrightness(mDisplayId, mCurrentBrightness);
++        }
++    }
++
++    @Override
++    public void cancelBrightnessControl() {
++        mMessageRouter.cancelMessages(MSG_LONG_PRESS_BRIGHTNESS_CHANGE);
++        mLinger = 0;
++        mBrightnessChanged = false;
++        mBrightnessAtTouchStart = -1f;
++    }
++
++    void onLongPressBrightnessChange() {
++        mShadeController.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
++        adjustBrightness(mInitialTouchX);
++        mLinger = BRIGHTNESS_CONTROL_LINGER_THRESHOLD + 1;
++    }
++
+     public float getDisplayWidth() {
+         return mDisplayMetrics.widthPixels;
+     }
+-- 
+2.56.0
+

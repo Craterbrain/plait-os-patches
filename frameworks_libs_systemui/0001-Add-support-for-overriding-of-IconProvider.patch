@@ -1,0 +1,643 @@
+From f5213cb505910aafa0869486e25c5b0a5a09edc2 Mon Sep 17 00:00:00 2001
+From: DennySPb <dennyspb@gmail.com>
+Date: Tue, 19 Apr 2022 10:57:59 +0300
+Subject: [PATCH 1/3] Add support for overriding of IconProvider
+
+Utils for resource based overrides were taken from launcher
+
+Signed-off-by: DennySPb <dennyspb@gmail.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_libs_systemui 17.0]
+---
+ iconloaderlib/res/values/config.xml           |   1 +
+ .../android/launcher3/icons/IconProvider.java |  10 +-
+ .../launcher3/util/override/Executors.java    | 102 +++++++++++
+ .../util/override/LooperExecutor.java         | 118 ++++++++++++
+ .../override/MainThreadInitializedObject.java | 168 ++++++++++++++++++
+ .../util/override/ResourceBasedOverride.java  |  54 ++++++
+ .../launcher3/util/override/TraceHelper.java  |  89 ++++++++++
+ 7 files changed, 541 insertions(+), 1 deletion(-)
+ create mode 100644 iconloaderlib/src/com/android/launcher3/util/override/Executors.java
+ create mode 100644 iconloaderlib/src/com/android/launcher3/util/override/LooperExecutor.java
+ create mode 100644 iconloaderlib/src/com/android/launcher3/util/override/MainThreadInitializedObject.java
+ create mode 100644 iconloaderlib/src/com/android/launcher3/util/override/ResourceBasedOverride.java
+ create mode 100644 iconloaderlib/src/com/android/launcher3/util/override/TraceHelper.java
+
+diff --git a/iconloaderlib/res/values/config.xml b/iconloaderlib/res/values/config.xml
+index 893f955..26b59b5 100644
+--- a/iconloaderlib/res/values/config.xml
++++ b/iconloaderlib/res/values/config.xml
+@@ -26,5 +26,6 @@
+ 
+     <string name="calendar_component_name" translatable="false"></string>
+     <string name="clock_component_name" translatable="false"></string>
++    <string name="icon_provider_class" translatable="false"></string>
+ 
+ </resources>
+\ No newline at end of file
+diff --git a/iconloaderlib/src/com/android/launcher3/icons/IconProvider.java b/iconloaderlib/src/com/android/launcher3/icons/IconProvider.java
+index f7ba474..391df54 100644
+--- a/iconloaderlib/src/com/android/launcher3/icons/IconProvider.java
++++ b/iconloaderlib/src/com/android/launcher3/icons/IconProvider.java
+@@ -19,6 +19,8 @@ package com.android.launcher3.icons;
+ import static android.content.res.Resources.ID_NULL;
+ import static android.graphics.drawable.AdaptiveIconDrawable.getExtraInsetFraction;
+ 
++import static com.android.launcher3.util.override.MainThreadInitializedObject.forOverride;
++
+ import android.annotation.TargetApi;
+ import android.content.ComponentName;
+ import android.content.Context;
+@@ -44,13 +46,16 @@ import androidx.core.os.BuildCompat;
+ import com.android.launcher3.icons.cache.CachingLogic;
+ import com.android.launcher3.util.ComponentKey;
+ 
++import com.android.launcher3.util.override.MainThreadInitializedObject;
++import com.android.launcher3.util.override.ResourceBasedOverride;
++
+ import java.util.Calendar;
+ import java.util.Objects;
+ 
+ /**
+  * Class to handle icon loading from different packages
+  */
+-public class IconProvider {
++public class IconProvider implements ResourceBasedOverride {
+ 
+     private static final String TAG = "IconProvider";
+     private static final boolean DEBUG = false;
+@@ -65,6 +70,9 @@ public class IconProvider {
+     @NonNull
+     protected PersistedItemState mSystemState = new PersistedItemState();
+ 
++    public static MainThreadInitializedObject<IconProvider> INSTANCE =
++            forOverride(IconProvider.class, R.string.icon_provider_class);
++
+     public IconProvider(Context context) {
+         mContext = context;
+         mCalendar = parseComponentOrNull(context, R.string.calendar_component_name);
+diff --git a/iconloaderlib/src/com/android/launcher3/util/override/Executors.java b/iconloaderlib/src/com/android/launcher3/util/override/Executors.java
+new file mode 100644
+index 0000000..41c29eb
+--- /dev/null
++++ b/iconloaderlib/src/com/android/launcher3/util/override/Executors.java
+@@ -0,0 +1,102 @@
++/*
++ * Copyright (C) 2008 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.android.launcher3.util.override;
++
++import android.os.HandlerThread;
++import android.os.Looper;
++import android.os.Process;
++
++import java.util.concurrent.LinkedBlockingQueue;
++import java.util.concurrent.ThreadFactory;
++import java.util.concurrent.ThreadPoolExecutor;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicInteger;
++
++/**
++ * Various different executors used in Launcher
++ */
++public class Executors {
++
++    private static final int POOL_SIZE =
++            Math.max(Runtime.getRuntime().availableProcessors(), 2);
++    private static final int KEEP_ALIVE = 1;
++
++    /**
++     * An {@link ThreadPoolExecutor} to be used with async task with no limit on the queue size.
++     */
++    public static final ThreadPoolExecutor THREAD_POOL_EXECUTOR = new ThreadPoolExecutor(
++            POOL_SIZE, POOL_SIZE, KEEP_ALIVE, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
++
++    /**
++     * Returns the executor for running tasks on the main thread.
++     */
++    public static final LooperExecutor MAIN_EXECUTOR =
++            new LooperExecutor(Looper.getMainLooper());
++
++    /**
++     * A background executor for using time sensitive actions where user is waiting for response.
++     */
++    public static final LooperExecutor UI_HELPER_EXECUTOR =
++            new LooperExecutor(
++                    createAndStartNewLooper("UiThreadHelper", Process.THREAD_PRIORITY_FOREGROUND));
++
++    /**
++     * Utility method to get a started handler thread statically
++     */
++    public static Looper createAndStartNewLooper(String name) {
++        return createAndStartNewLooper(name, Process.THREAD_PRIORITY_DEFAULT);
++    }
++
++    /**
++     * Utility method to get a started handler thread statically with the provided priority
++     */
++    public static Looper createAndStartNewLooper(String name, int priority) {
++        HandlerThread thread = new HandlerThread(name, priority);
++        thread.start();
++        return thread.getLooper();
++    }
++
++    /**
++     * Executor used for running Launcher model related tasks (eg loading icons or updated db)
++     */
++    public static final LooperExecutor MODEL_EXECUTOR =
++            new LooperExecutor(createAndStartNewLooper("launcher-loader"));
++
++    /**
++     * A simple ThreadFactory to set the thread name and priority when used with executors.
++     */
++    public static class SimpleThreadFactory implements ThreadFactory {
++
++        private final int mPriority;
++        private final String mNamePrefix;
++
++        private final AtomicInteger mCount = new AtomicInteger(0);
++
++        public SimpleThreadFactory(String namePrefix, int priority) {
++            mNamePrefix = namePrefix;
++            mPriority = priority;
++        }
++
++        @Override
++        public Thread newThread(Runnable runnable) {
++            Thread t = new Thread(() -> {
++                Process.setThreadPriority(mPriority);
++                runnable.run();
++            }, mNamePrefix + mCount.incrementAndGet());
++            return t;
++        }
++    }
++}
+diff --git a/iconloaderlib/src/com/android/launcher3/util/override/LooperExecutor.java b/iconloaderlib/src/com/android/launcher3/util/override/LooperExecutor.java
+new file mode 100644
+index 0000000..55a74a4
+--- /dev/null
++++ b/iconloaderlib/src/com/android/launcher3/util/override/LooperExecutor.java
+@@ -0,0 +1,118 @@
++/*
++ * Copyright (C) 2017 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License
++ */
++package com.android.launcher3.util.override;
++
++import android.os.Handler;
++import android.os.HandlerThread;
++import android.os.Looper;
++import android.os.Process;
++
++import java.util.List;
++import java.util.concurrent.AbstractExecutorService;
++import java.util.concurrent.TimeUnit;
++
++/**
++ * Extension of {@link AbstractExecutorService} which executed on a provided looper.
++ */
++public class LooperExecutor extends AbstractExecutorService {
++
++    private final Handler mHandler;
++
++    public LooperExecutor(Looper looper) {
++        mHandler = new Handler(looper);
++    }
++
++    public Handler getHandler() {
++        return mHandler;
++    }
++
++    @Override
++    public void execute(Runnable runnable) {
++        if (getHandler().getLooper() == Looper.myLooper()) {
++            runnable.run();
++        } else {
++            getHandler().post(runnable);
++        }
++    }
++
++    /**
++     * Same as execute, but never runs the action inline.
++     */
++    public void post(Runnable runnable) {
++        getHandler().post(runnable);
++    }
++
++    /**
++     * Not supported and throws an exception when used.
++     */
++    @Override
++    @Deprecated
++    public void shutdown() {
++        throw new UnsupportedOperationException();
++    }
++
++    /**
++     * Not supported and throws an exception when used.
++     */
++    @Override
++    @Deprecated
++    public List<Runnable> shutdownNow() {
++        throw new UnsupportedOperationException();
++    }
++
++    @Override
++    public boolean isShutdown() {
++        return false;
++    }
++
++    @Override
++    public boolean isTerminated() {
++        return false;
++    }
++
++    /**
++     * Not supported and throws an exception when used.
++     */
++    @Override
++    @Deprecated
++    public boolean awaitTermination(long l, TimeUnit timeUnit) {
++        throw new UnsupportedOperationException();
++    }
++
++    /**
++     * Returns the thread for this executor
++     */
++    public Thread getThread() {
++        return getHandler().getLooper().getThread();
++    }
++
++    /**
++     * Returns the looper for this executor
++     */
++    public Looper getLooper() {
++        return getHandler().getLooper();
++    }
++
++    /**
++     * Set the priority of a thread, based on Linux priorities.
++     * @param priority Linux priority level, from -20 for highest scheduling priority
++     *                to 19 for lowest scheduling priority.
++     * @see Process#setThreadPriority(int, int)
++     */
++    public void setThreadPriority(int priority) {
++        Process.setThreadPriority(((HandlerThread) getThread()).getThreadId(), priority);
++    }
++}
+diff --git a/iconloaderlib/src/com/android/launcher3/util/override/MainThreadInitializedObject.java b/iconloaderlib/src/com/android/launcher3/util/override/MainThreadInitializedObject.java
+new file mode 100644
+index 0000000..5fb3ca9
+--- /dev/null
++++ b/iconloaderlib/src/com/android/launcher3/util/override/MainThreadInitializedObject.java
+@@ -0,0 +1,168 @@
++/*
++ * Copyright (C) 2018 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.android.launcher3.util.override;
++
++import static com.android.launcher3.util.override.Executors.MAIN_EXECUTOR;
++
++import android.content.Context;
++import android.content.ContextWrapper;
++import android.os.Looper;
++import android.util.Log;
++
++import androidx.annotation.UiThread;
++import androidx.annotation.VisibleForTesting;
++
++import com.android.launcher3.util.override.ResourceBasedOverride.Overrides;
++import com.android.launcher3.util.SafeCloseable;
++
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++import java.util.concurrent.ExecutionException;
++
++/**
++ * Utility class for defining singletons which are initiated on main thread.
++ */
++public class MainThreadInitializedObject<T> {
++
++    private final ObjectProvider<T> mProvider;
++    private T mValue;
++
++    public MainThreadInitializedObject(ObjectProvider<T> provider) {
++        mProvider = provider;
++    }
++
++    public T get(Context context) {
++        if (context instanceof SandboxContext) {
++            return ((SandboxContext) context).getObject(this, mProvider);
++        }
++
++        if (mValue == null) {
++            if (Looper.myLooper() == Looper.getMainLooper()) {
++                mValue = TraceHelper.allowIpcs("main.thread.object",
++                        () -> mProvider.get(context.getApplicationContext()));
++            } else {
++                try {
++                    return MAIN_EXECUTOR.submit(() -> get(context)).get();
++                } catch (InterruptedException|ExecutionException e) {
++                    throw new RuntimeException(e);
++                }
++            }
++        }
++        return mValue;
++    }
++
++    public T getNoCreate() {
++        return mValue;
++    }
++
++    @VisibleForTesting
++    public void initializeForTesting(T value) {
++        mValue = value;
++    }
++
++    /**
++     * Initializes a provider based on resource overrides
++     */
++    public static <T extends ResourceBasedOverride> MainThreadInitializedObject<T> forOverride(
++            Class<T> clazz, int resourceId) {
++        return new MainThreadInitializedObject<>(c -> Overrides.getObject(clazz, c, resourceId));
++    }
++
++    public interface ObjectProvider<T> {
++
++        T get(Context context);
++    }
++
++    /**
++     * Abstract Context which allows custom implementations for
++     * {@link MainThreadInitializedObject} providers
++     */
++    public static abstract class SandboxContext extends ContextWrapper {
++
++        private static final String TAG = "SandboxContext";
++
++        protected final Set<MainThreadInitializedObject> mAllowedObjects;
++        protected final Map<MainThreadInitializedObject, Object> mObjectMap = new HashMap<>();
++        protected final ArrayList<Object> mOrderedObjects = new ArrayList<>();
++
++        private final Object mDestroyLock = new Object();
++        private boolean mDestroyed = false;
++
++        public SandboxContext(Context base, MainThreadInitializedObject... allowedObjects) {
++            super(base);
++            mAllowedObjects = new HashSet<>(Arrays.asList(allowedObjects));
++        }
++
++        @Override
++        public Context getApplicationContext() {
++            return this;
++        }
++
++        public void onDestroy() {
++            synchronized (mDestroyLock) {
++                // Destroy in reverse order
++                for (int i = mOrderedObjects.size() - 1; i >= 0; i--) {
++                    Object o = mOrderedObjects.get(i);
++                    if (o instanceof SafeCloseable) {
++                        ((SafeCloseable) o).close();
++                    }
++                }
++                mDestroyed = true;
++            }
++        }
++
++        /**
++         * Find a cached object from mObjectMap if we have already created one. If not, generate
++         * an object using the provider.
++         */
++        private <T> T getObject(MainThreadInitializedObject<T> object, ObjectProvider<T> provider) {
++            synchronized (mDestroyLock) {
++                if (mDestroyed) {
++                    Log.e(TAG, "Static object access with a destroyed context");
++                }
++                if (!mAllowedObjects.contains(object)) {
++                    throw new IllegalStateException(
++                            "Leaking unknown objects " + object + "  " + provider);
++                }
++                T t = (T) mObjectMap.get(object);
++                if (t != null) {
++                    return t;
++                }
++                if (Looper.myLooper() == Looper.getMainLooper()) {
++                    t = createObject(provider);
++                    mObjectMap.put(object, t);
++                    mOrderedObjects.add(t);
++                    return t;
++                }
++            }
++
++            try {
++                return MAIN_EXECUTOR.submit(() -> getObject(object, provider)).get();
++            } catch (InterruptedException | ExecutionException e) {
++                throw new RuntimeException(e);
++            }
++        }
++
++        @UiThread
++        protected <T> T createObject(ObjectProvider<T> provider) {
++            return provider.get(this);
++        }
++    }
++}
+diff --git a/iconloaderlib/src/com/android/launcher3/util/override/ResourceBasedOverride.java b/iconloaderlib/src/com/android/launcher3/util/override/ResourceBasedOverride.java
+new file mode 100644
+index 0000000..9cceb13
+--- /dev/null
++++ b/iconloaderlib/src/com/android/launcher3/util/override/ResourceBasedOverride.java
+@@ -0,0 +1,54 @@
++/*
++ * Copyright (C) 2018 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.android.launcher3.util.override;
++
++import android.content.Context;
++import android.text.TextUtils;
++import android.util.Log;
++
++import java.lang.reflect.InvocationTargetException;
++
++/**
++ * An interface to indicate that a class is dynamically loaded using resource overlay, hence its
++ * class name and constructor should be preserved by proguard
++ */
++public interface ResourceBasedOverride {
++
++    class Overrides {
++
++        private static final String TAG = "Overrides";
++
++        public static <T extends ResourceBasedOverride> T getObject(
++                Class<T> clazz, Context context, int resId) {
++            String className = context.getString(resId);
++            if (!TextUtils.isEmpty(className)) {
++                try {
++                    Class<?> cls = Class.forName(className);
++                    return (T) cls.getDeclaredConstructor(Context.class).newInstance(context);
++                } catch (ClassNotFoundException | InstantiationException | IllegalAccessException
++                        | ClassCastException | NoSuchMethodException | InvocationTargetException e) {
++                    Log.e(TAG, "Bad overriden class", e);
++                }
++            }
++
++            try {
++                return clazz.newInstance();
++            } catch (InstantiationException|IllegalAccessException e) {
++                throw new RuntimeException(e);
++            }
++        }
++    }
++}
+diff --git a/iconloaderlib/src/com/android/launcher3/util/override/TraceHelper.java b/iconloaderlib/src/com/android/launcher3/util/override/TraceHelper.java
+new file mode 100644
+index 0000000..4edee61
+--- /dev/null
++++ b/iconloaderlib/src/com/android/launcher3/util/override/TraceHelper.java
+@@ -0,0 +1,89 @@
++/*
++ * Copyright (C) 2017 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.android.launcher3.util.override;
++
++import android.os.Trace;
++
++import androidx.annotation.MainThread;
++
++import java.util.function.Supplier;
++
++/**
++ * A wrapper around {@link Trace} to allow better testing.
++ *
++ * To enable any tracing log, execute the following command:
++ * $ adb shell setprop log.tag.LAUNCHER_TRACE VERBOSE
++ * $ adb shell setprop log.tag.TAGNAME VERBOSE
++ */
++public class TraceHelper {
++
++    // Track binder class for this trace
++    public static final int FLAG_ALLOW_BINDER_TRACKING = 1 << 0;
++
++    // Temporarily ignore blocking binder calls for this trace.
++    public static final int FLAG_IGNORE_BINDERS = 1 << 1;
++
++    public static final int FLAG_CHECK_FOR_RACE_CONDITIONS = 1 << 2;
++
++    public static final int FLAG_UI_EVENT =
++            FLAG_ALLOW_BINDER_TRACKING | FLAG_CHECK_FOR_RACE_CONDITIONS;
++
++    /**
++     * Static instance of Trace helper, overridden in tests.
++     */
++    public static TraceHelper INSTANCE = new TraceHelper();
++
++    /**
++     * @return a token to pass into {@link #endSection(Object)}.
++     */
++    public Object beginSection(String sectionName) {
++        return beginSection(sectionName, 0);
++    }
++
++    public Object beginSection(String sectionName, int flags) {
++        Trace.beginSection(sectionName);
++        return null;
++    }
++
++    /**
++     * @param token the token returned from {@link #beginSection(String, int)}
++     */
++    public void endSection(Object token) {
++        Trace.endSection();
++    }
++
++    /**
++     * Similar to {@link #beginSection} but doesn't add a trace section.
++     */
++    public Object beginFlagsOverride(int flags) {
++        return null;
++    }
++
++    public void endFlagsOverride(Object token) { }
++
++    /**
++     * Temporarily ignore blocking binder calls for the duration of this {@link Supplier}.
++     */
++    @MainThread
++    public static <T> T allowIpcs(String rpcName, Supplier<T> supplier) {
++        Object traceToken = INSTANCE.beginSection(rpcName, FLAG_IGNORE_BINDERS);
++        try {
++            return supplier.get();
++        } finally {
++            INSTANCE.endSection(traceToken);
++        }
++    }
++}
+-- 
+2.56.0
+

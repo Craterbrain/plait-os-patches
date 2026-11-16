@@ -1,0 +1,1370 @@
+From b98e8317fd8cbd219ce071b9773ce1469d9957b3 Mon Sep 17 00:00:00 2001
+From: Michael Bestas <mkbestas@lineageos.org>
+Date: Sun, 21 Jan 2018 00:22:10 +0200
+Subject: [PATCH 12/75] frameworks: Add support for advanced restart options
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-authored-by: Bruno Martins <bgcngm@gmail.com>
+Co-authored-by: Dave Kessler <activethrasher00@gmail.com>
+Co-authored-by: DvTonder <david.vantonder@gmail.com>
+Co-authored-by: Jorge Ruesga <jorge@ruesga.com>
+Co-authored-by: maxwen <max.weninger@gmail.com>
+Co-authored-by: Ricardo Cerqueira <cyanogenmod@cerqueira.org>
+Co-authored-by: Roman Birg <roman@cyngn.com>
+Co-authored-by: SagarMakhar <sagarmakhar@gmail.com>
+Co-authored-by: Timi Rautamäki <timi.rautamaki@gmail.com>
+Co-authored-by: Veeti Paananen <veeti.paananen@rojekti.fi>
+Co-authored-by: Zhao Wei Liew <zhaoweiliew@gmail.com>
+Change-Id: I4b35d10b0811eff0d8e9ab68b2aedbe52b4aa53f
+
+[PlaitOS: ported from LineageOS frameworks_base lineage-24.0 (716be0cfd26b). Strings went to
+plait_strings.xml (GrapheneOS has no cm_strings.xml); rebootCustom placed inside IPowerManager.]
+---
+ core/java/android/os/IPowerManager.aidl       |   2 +
+ core/java/android/os/PowerManager.java        |  38 ++++
+ .../internal/statusbar/IStatusBar.aidl        |   2 +-
+ .../internal/statusbar/IStatusBarService.aidl |   2 +-
+ .../globalactions/ShutdownUiTest.java         |  17 +-
+ .../systemui/plugins/GlobalActions.java       |   4 +-
+ .../drawable/ic_lock_restart_bootloader.xml   |  30 +++
+ .../res/drawable/ic_lock_restart_fastboot.xml |  26 +++
+ .../res/drawable/ic_lock_restart_recovery.xml |  27 +++
+ .../global_actions_power_dialog.xml           |  23 +++
+ .../global_actions_power_dialog_flow.xml      |  38 ++++
+ .../res/layout/global_actions_power_item.xml  |   2 +-
+ packages/SystemUI/res/values-land/dimens.xml  |   3 -
+ packages/SystemUI/res/values/dimens.xml       |   6 +-
+ .../SystemUI/res/values/plait_strings.xml     |  31 +++
+ .../globalactions/GlobalActionsComponent.java |   8 +-
+ .../GlobalActionsDialogLite.java              | 186 ++++++++++++++++--
+ .../globalactions/GlobalActionsImpl.java      |   4 +-
+ .../GlobalActionsPowerDialog.java             |  22 ++-
+ .../systemui/globalactions/ShutdownUi.java    |  25 ++-
+ .../interactor/GlobalActionsInteractor.kt     |   2 +-
+ .../systemui/statusbar/CommandQueue.java      |   9 +-
+ .../globalactions/GlobalActionsImplTest.kt    |   4 +-
+ .../statusbar/FakeStatusBarService.kt         |   2 +-
+ .../server/policy/WindowManagerPolicy.java    |   1 +
+ .../server/power/PowerManagerService.java     |  36 +++-
+ .../android/server/power/ShutdownThread.java  |  27 ++-
+ .../statusbar/StatusBarManagerInternal.java   |   2 +-
+ .../statusbar/StatusBarManagerService.java    |  12 +-
+ .../server/wm/WindowManagerService.java       |   8 +
+ 30 files changed, 528 insertions(+), 71 deletions(-)
+ create mode 100644 packages/SystemUI/res/drawable/ic_lock_restart_bootloader.xml
+ create mode 100644 packages/SystemUI/res/drawable/ic_lock_restart_fastboot.xml
+ create mode 100644 packages/SystemUI/res/drawable/ic_lock_restart_recovery.xml
+ create mode 100644 packages/SystemUI/res/layout-land/global_actions_power_dialog.xml
+ create mode 100644 packages/SystemUI/res/layout/global_actions_power_dialog_flow.xml
+ create mode 100644 packages/SystemUI/res/values/plait_strings.xml
+
+diff --git a/core/java/android/os/IPowerManager.aidl b/core/java/android/os/IPowerManager.aidl
+index 0d89a3472..7735f6478 100644
+--- a/core/java/android/os/IPowerManager.aidl
++++ b/core/java/android/os/IPowerManager.aidl
+@@ -184,4 +184,6 @@ interface IPowerManager
+     const int GO_TO_SLEEP_REASON_MAX = 10;
+     const int GO_TO_SLEEP_FLAG_NO_DOZE = 1 << 0;
+ 
++    // PlaitOS (from LineageOS advanced restart): reboot with a custom reason (recovery, bootloader, ...)
++    void rebootCustom(boolean confirm, String reason, boolean wait);
+ }
+diff --git a/core/java/android/os/PowerManager.java b/core/java/android/os/PowerManager.java
+index ee3c62eb9..d7899ccb3 100644
+--- a/core/java/android/os/PowerManager.java
++++ b/core/java/android/os/PowerManager.java
+@@ -965,6 +965,27 @@ public final class PowerManager {
+      */
+     public static final String REBOOT_RECOVERY_UPDATE = "recovery-update";
+ 
++    /**
++     * The value to pass as the 'reason' argument to reboot() to
++     * reboot into bootloader mode
++     * @hide
++     */
++    public static final String REBOOT_BOOTLOADER = "bootloader";
++
++    /**
++     * The value to pass as the 'reason' argument to reboot() to
++     * reboot into download mode
++     * @hide
++     */
++    public static final String REBOOT_DOWNLOAD = "download";
++
++    /**
++     * The value to pass as the 'reason' argument to reboot() to
++     * reboot into fastboot mode
++     * @hide
++     */
++    public static final String REBOOT_FASTBOOT = "fastboot";
++
+     /**
+      * The value to pass as the 'reason' argument to reboot() when device owner requests a reboot on
+      * the device.
+@@ -2234,6 +2255,23 @@ public final class PowerManager {
+         }
+     }
+ 
++    /**
++     * Reboot the device.  Will not return if the reboot is successful.
++     * <p>
++     * Requires the {@link android.Manifest.permission#REBOOT} permission.
++     * </p>
++     *
++     * @param reason code to pass to the kernel (e.g., "recovery", "bootloader", "download") to
++     *               request special boot modes, or null.
++     * @hide
++     */
++    public void rebootCustom(String reason) {
++        try {
++            mService.rebootCustom(false, reason, true);
++        } catch (RemoteException e) {
++            throw e.rethrowFromSystemServer();
++        }
++    }
+ 
+     /**
+      * Reboot the device. Will not return if the reboot is successful.
+diff --git a/core/java/com/android/internal/statusbar/IStatusBar.aidl b/core/java/com/android/internal/statusbar/IStatusBar.aidl
+index 97e75b131..0582b67f8 100644
+--- a/core/java/com/android/internal/statusbar/IStatusBar.aidl
++++ b/core/java/com/android/internal/statusbar/IStatusBar.aidl
+@@ -199,7 +199,7 @@ oneway interface IStatusBar
+     void showPinningEnterExitToast(boolean entering);
+     void showPinningEscapeToast();
+ 
+-    void showShutdownUi(boolean isReboot, String reason);
++    void showShutdownUi(boolean isReboot, String reason, boolean rebootCustom);
+ 
+     /**
+     * Used to show the authentication dialog (Biometrics, Device Credential).
+diff --git a/core/java/com/android/internal/statusbar/IStatusBarService.aidl b/core/java/com/android/internal/statusbar/IStatusBarService.aidl
+index 20d07c5c9..1c9179461 100644
+--- a/core/java/com/android/internal/statusbar/IStatusBarService.aidl
++++ b/core/java/com/android/internal/statusbar/IStatusBarService.aidl
+@@ -126,7 +126,7 @@ interface IStatusBarService
+      * These methods are needed for global actions control which the UI is shown in sysui.
+      */
+     void shutdown();
+-    void reboot(boolean safeMode);
++    void reboot(boolean safeMode, String reason);
+ 
+     /** just restarts android without rebooting device. Used for some feature flags. */
+     void restart();
+diff --git a/packages/SystemUI/multivalentTests/src/com/android/systemui/globalactions/ShutdownUiTest.java b/packages/SystemUI/multivalentTests/src/com/android/systemui/globalactions/ShutdownUiTest.java
+index 482084b90..1084c6b20 100644
+--- a/packages/SystemUI/multivalentTests/src/com/android/systemui/globalactions/ShutdownUiTest.java
++++ b/packages/SystemUI/multivalentTests/src/com/android/systemui/globalactions/ShutdownUiTest.java
+@@ -63,37 +63,38 @@ public class ShutdownUiTest extends SysuiTestCase {
+ 
+     @Test
+     public void getRebootMessage_update() {
+-        int messageId = mShutdownUi.getRebootMessage(true, PowerManager.REBOOT_RECOVERY_UPDATE);
++        int messageId = mShutdownUi.getRebootMessage(
++                true, PowerManager.REBOOT_RECOVERY_UPDATE, false);
+         assertEquals(messageId, R.string.reboot_to_update_reboot);
+     }
+ 
+     @Test
+     public void getRebootMessage_rebootDefault() {
+-        int messageId = mShutdownUi.getRebootMessage(true, "anything-else");
+-        assertEquals(messageId, R.string.reboot_to_reset_message);
++        int messageId = mShutdownUi.getRebootMessage(true, "anything-else", false);
++        assertEquals(messageId, com.android.systemui.res.R.string.global_action_restart_progress);
+     }
+ 
+     @Test
+     public void getRebootMessage_shutdown() {
+-        int messageId = mShutdownUi.getRebootMessage(false, "anything-else");
++        int messageId = mShutdownUi.getRebootMessage(false, "anything-else", false);
+         assertEquals(messageId, R.string.shutdown_progress);
+     }
+ 
+     @Test
+     public void getReasonMessage_update() {
+-        String message = mShutdownUi.getReasonMessage(PowerManager.REBOOT_RECOVERY_UPDATE);
++        String message = mShutdownUi.getReasonMessage(PowerManager.REBOOT_RECOVERY_UPDATE, false);
+         assertEquals(message, mContext.getString(R.string.reboot_to_update_title));
+     }
+ 
+     @Test
+     public void getReasonMessage_rebootDefault() {
+-        String message = mShutdownUi.getReasonMessage(PowerManager.REBOOT_RECOVERY);
++        String message = mShutdownUi.getReasonMessage(PowerManager.REBOOT_RECOVERY, false);
+         assertEquals(message, mContext.getString(R.string.reboot_to_reset_title));
+     }
+ 
+     @Test
+     public void getRebootMessage_defaultToNone() {
+-        String message = mShutdownUi.getReasonMessage("anything-else");
++        String message = mShutdownUi.getReasonMessage("anything-else", false);
+         assertNull(message);
+     }
+ 
+@@ -157,7 +158,7 @@ public class ShutdownUiTest extends SysuiTestCase {
+         Resources mockResources = spy(mContext.getResources());
+         when(mContext.getResources()).thenReturn(mockResources);
+ 
+-        Dialog dialog = mShutdownUi.showShutdownUi(false, "test");
++        Dialog dialog = mShutdownUi.showShutdownUi(false, "test", false);
+         try {
+             verify(mockResources).getFloat(
+                     eq(com.android.systemui.res.R.dimen.shutdown_scrim_behind_alpha));
+diff --git a/packages/SystemUI/plugin/src/com/android/systemui/plugins/GlobalActions.java b/packages/SystemUI/plugin/src/com/android/systemui/plugins/GlobalActions.java
+index 96e25d344..0b2a27009 100644
+--- a/packages/SystemUI/plugin/src/com/android/systemui/plugins/GlobalActions.java
++++ b/packages/SystemUI/plugin/src/com/android/systemui/plugins/GlobalActions.java
+@@ -27,7 +27,7 @@ public interface GlobalActions extends Plugin {
+ 
+     void showGlobalActions(GlobalActionsManager manager);
+     void showOrHideGlobalActions(GlobalActionsManager manager);
+-    default void showShutdownUi(boolean isReboot, String reason) {
++    default void showShutdownUi(boolean isReboot, String reason, boolean rebootCustom) {
+     }
+ 
+     default void destroy() {
+@@ -41,6 +41,6 @@ public interface GlobalActions extends Plugin {
+         void onGlobalActionsHidden();
+ 
+         void shutdown();
+-        void reboot(boolean safeMode);
++        void reboot(boolean safeMode, String reason);
+     }
+ }
+diff --git a/packages/SystemUI/res/drawable/ic_lock_restart_bootloader.xml b/packages/SystemUI/res/drawable/ic_lock_restart_bootloader.xml
+new file mode 100644
+index 000000000..ea625b111
+--- /dev/null
++++ b/packages/SystemUI/res/drawable/ic_lock_restart_bootloader.xml
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     Copyright (C) 2018 The LineageOS Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?android:attr/colorControlNormal">
++
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M21,8 L3,8 C2,8,2,9,2,9 L2,21 C2,22,3,22,3,22 L21,22 C22,22,22,21,22,21 L22,9 C22,8,21,8,21,8 Z M17,9 C17.55,9,18,9.45,18,10 S17.55,11,17,11 S16,10.55,16,10 S16.45,9,17,9 Z M14,9 C14.55,9,15,9.45,15,10 S14.55,11,14,11 S13,10.55,13,10 S13.45,9,14,9 Z M20,20 L4,20 L4,12 L20,12 L20,20 Z M20,11 C19.45,11,19,10.55,19,10 S19.45,9,20,9 S21,9.45,21,10 S20.55,11,20,11 Z M21,2 L3,2 C2,2,2,3,2,3 L2,6 L22,6 L22,3 C22,2,21,2,21,2 Z M14,5 C13.45,5,13,4.55,13,4 S13.45,3,14,3 S15,3.45,15,4 S14.55,5,14,5 Z M17,5 C16.45,5,16,4.55,16,4 S16.45,3,17,3 S18,3.45,18,4 S17.55,5,17,5 Z M20,5 C19.45,5,19,4.55,19,4 S19.45,3,20,3 S21,3.45,21,4 S20.55,5,20,5 Z" />
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M11,19.414 L8.293,16.707 L9.707,15.293 L11,16.586 L14.293,13.293 L15.707,14.707 Z" />
++</vector>
+diff --git a/packages/SystemUI/res/drawable/ic_lock_restart_fastboot.xml b/packages/SystemUI/res/drawable/ic_lock_restart_fastboot.xml
+new file mode 100644
+index 000000000..560e6254e
+--- /dev/null
++++ b/packages/SystemUI/res/drawable/ic_lock_restart_fastboot.xml
+@@ -0,0 +1,26 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     Copyright (C) 2019 The LineageOS Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:pathData="M 22 9 L 22 7 L 20 7 L 20 5 C 20 4.47 19.789 3.961 19.414 3.586 C 19.039 3.211 18.53 3 18 3 L 4 3 C 3.47 3 2.961 3.211 2.586 3.586 C 2.211 3.961 2 4.47 2 5 L 2 19 C 2 19.53 2.211 20.039 2.586 20.414 C 2.961 20.789 3.47 21 4 21 L 18 21 C 18.53 21 19.039 20.789 19.414 20.414 C 19.789 20.039 20 19.53 20 19 L 20 17 L 22 17 L 22 15 L 20 15 L 20 13 L 22 13 L 22 11 L 20 11 L 20 9 L 22 9 M 18 19 L 4 19 L 4 5 L 18 5 L 18 19 M 6 13 L 11 13 L 11 17 L 6 17 L 6 13 M 12 7 L 16 7 L 16 10 L 12 10 L 12 7 M 6 7 L 11 7 L 11 12 L 6 12 L 6 7 M 12 11 L 16 11 L 16 17 L 12 17 L 12 11 Z"
++        android:fillColor="#000000" />
++</vector>
+diff --git a/packages/SystemUI/res/drawable/ic_lock_restart_recovery.xml b/packages/SystemUI/res/drawable/ic_lock_restart_recovery.xml
+new file mode 100644
+index 000000000..632802607
+--- /dev/null
++++ b/packages/SystemUI/res/drawable/ic_lock_restart_recovery.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     Copyright (C) 2018 The LineageOS Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?android:attr/colorControlNormal">
++
++    <path
++        android:fillColor="#FF000000"
++        android:pathData="M19.43,12.98 C19.47,12.66,19.5,12.34,19.5,12 S19.47,11.34,19.43,11.02 L21.54,9.37 C21.73,9.22,21.78,8.95,21.66,8.73 L19.66,5.27 C19.54,5.05,19.269,4.97,19.05,5.05 L16.56,6.05 C16.04,5.65,15.481,5.32,14.871,5.07 L14.491,2.42 C14.46,2.18,14.25,2,14,2 L10,2 C9.75,2,9.54,2.18,9.51,2.42 L9.13,5.07 C8.52,5.32,7.96,5.66,7.44,6.05 L4.95,5.05 C4.72,4.96,4.46,5.05,4.34,5.27 L2.34,8.73 C2.21,8.95,2.27,9.22,2.46,9.37 L4.57,11.02 C4.53,11.34,4.5,11.67,4.5,12 S4.53,12.66,4.57,12.98 L2.46,14.63 C2.27,14.78,2.22,15.05,2.34,15.27 L4.34,18.731 C4.46,18.951,4.73,19.031,4.95,18.951 L7.44,17.951 C7.96,18.35,8.52,18.68,9.13,18.93 L9.51,21.58 C9.54,21.82,9.75,22,10,22 L14,22 C14.25,22,14.46,21.82,14.49,21.58 L14.87,18.93 C15.48,18.68,16.04,18.34,16.559,17.951 L19.049,18.951 C19.279,19.041,19.539,18.951,19.659,18.731 L21.659,15.27 C21.779,15.05,21.729,14.781,21.539,14.63 L19.43,12.98 Z M9.71,15.71 L8.29,14.29 L14.29,8.29 L15.71,9.71 L9.71,15.71 Z" />
++</vector>
+diff --git a/packages/SystemUI/res/layout-land/global_actions_power_dialog.xml b/packages/SystemUI/res/layout-land/global_actions_power_dialog.xml
+new file mode 100644
+index 000000000..66eef169c
+--- /dev/null
++++ b/packages/SystemUI/res/layout-land/global_actions_power_dialog.xml
+@@ -0,0 +1,23 @@
++<!--
++  ~ Copyright (C) 2020 The Android Open Source Project
++  ~
++  ~ Licensed under the Apache License, Version 2.0 (the "License");
++  ~ you may not use this file except in compliance with the License.
++  ~ You may obtain a copy of the License at
++  ~
++  ~      http://www.apache.org/licenses/LICENSE-2.0
++  ~
++  ~ Unless required by applicable law or agreed to in writing, software
++  ~ distributed under the License is distributed on an "AS IS" BASIS,
++  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++  ~ See the License for the specific language governing permissions and
++  ~ limitations under the License.
++  -->
++<LinearLayout
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="wrap_content"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:divider="@drawable/controls_list_divider"
++    android:showDividers="middle"
++/>
+diff --git a/packages/SystemUI/res/layout/global_actions_power_dialog_flow.xml b/packages/SystemUI/res/layout/global_actions_power_dialog_flow.xml
+new file mode 100644
+index 000000000..c85f35293
+--- /dev/null
++++ b/packages/SystemUI/res/layout/global_actions_power_dialog_flow.xml
+@@ -0,0 +1,38 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright (C) 2021 The Android Open Source Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<androidx.constraintlayout.widget.ConstraintLayout
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:id="@+id/power_actions_container"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:gravity="center"
++    android:background="@drawable/global_actions_lite_background"
++    android:padding="@dimen/global_actions_lite_padding">
++
++    <androidx.constraintlayout.helper.widget.Flow
++        android:id="@+id/power_flow"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintTop_toTopOf="parent"
++        app:flow_wrapMode="chain"
++        app:flow_maxElementsWrap="2"
++        app:flow_horizontalGap="@dimen/global_actions_lite_padding"
++        app:flow_verticalGap="@dimen/global_actions_lite_padding"
++        app:flow_horizontalStyle="packed"/>
++</androidx.constraintlayout.widget.ConstraintLayout>
+diff --git a/packages/SystemUI/res/layout/global_actions_power_item.xml b/packages/SystemUI/res/layout/global_actions_power_item.xml
+index 3bf589444..84153a8d0 100644
+--- a/packages/SystemUI/res/layout/global_actions_power_item.xml
++++ b/packages/SystemUI/res/layout/global_actions_power_item.xml
+@@ -37,7 +37,7 @@
+         android:ellipsize="marquee"
+         android:layout_marginBottom="16dp"
+         android:maxLines="1"
+-        android:textSize="16sp"
++        android:textSize="12sp"
+         android:gravity="center"
+         android:textColor="@color/control_primary_text"
+         android:textAppearance="?android:attr/textAppearanceSmall" />
+diff --git a/packages/SystemUI/res/values-land/dimens.xml b/packages/SystemUI/res/values-land/dimens.xml
+index d76cbb4ef..7fedb7b1f 100644
+--- a/packages/SystemUI/res/values-land/dimens.xml
++++ b/packages/SystemUI/res/values-land/dimens.xml
+@@ -41,9 +41,6 @@
+     <dimen name="biometric_auth_pattern_view_size">248dp</dimen>
+     <dimen name="biometric_auth_pattern_view_max_size">348dp</dimen>
+ 
+-    <dimen name="global_actions_power_dialog_item_height">130dp</dimen>
+-    <dimen name="global_actions_power_dialog_item_bottom_margin">35dp</dimen>
+-
+     <dimen name="controls_management_top_padding">12dp</dimen>
+     <dimen name="controls_management_titles_margin">8dp</dimen>
+     <dimen name="controls_management_indicator_top_margin">8dp</dimen>
+diff --git a/packages/SystemUI/res/values/dimens.xml b/packages/SystemUI/res/values/dimens.xml
+index 6f388d006..937b1a03c 100644
+--- a/packages/SystemUI/res/values/dimens.xml
++++ b/packages/SystemUI/res/values/dimens.xml
+@@ -1108,9 +1108,9 @@
+     <dimen name="global_actions_controls_y_translation">20dp</dimen>
+ 
+     <!-- Shutdown and restart actions are larger in power options dialog -->
+-    <dimen name="global_actions_power_dialog_item_height">190dp</dimen>
+-    <dimen name="global_actions_power_dialog_item_width">255dp</dimen>
+-    <dimen name="global_actions_power_dialog_item_bottom_margin">45dp</dimen>
++    <dimen name="global_actions_power_dialog_item_height">128dp</dimen>
++    <dimen name="global_actions_power_dialog_item_width">128dp</dimen>
++    <dimen name="global_actions_power_dialog_item_bottom_margin">22dp</dimen>
+ 
+     <!-- Power Menu Lite -->
+     <dimen name="global_actions_button_size">96dp</dimen>
+diff --git a/packages/SystemUI/res/values/plait_strings.xml b/packages/SystemUI/res/values/plait_strings.xml
+new file mode 100644
+index 000000000..a9bcf40c5
+--- /dev/null
++++ b/packages/SystemUI/res/values/plait_strings.xml
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     PlaitOS SystemUI strings for features ported from LineageOS (Apache-2.0). LineageOS keeps these
++     in its own cm_strings.xml, which GrapheneOS does not have.
++-->
++<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
++    <!-- Advanced restart menu -->
++    <!-- Button to indicate more options -->
++    <string name="global_action_restart_more">Restart\u2026</string>
++    <!-- Button to restart the device, within the Restart Options dialog -->
++    <string name="global_action_restart_system">System</string>
++    <!-- Button to restart the device into recovery mode, within the Restart Options dialog -->
++    <string name="global_action_restart_recovery">Recovery</string>
++    <!-- Button to restart the device into bootloader mode, within the Restart Options dialog -->
++    <string name="global_action_restart_bootloader">Bootloader</string>
++    <!-- Button to restart the device into download mode, within the Restart Options dialog -->
++    <string name="global_action_restart_download">Download</string>
++    <!-- Button to restart the device into fastboot mode, within the Restart Options dialog -->
++    <string name="global_action_restart_fastboot">Fastbootd</string>
++
++    <!-- Restart progress dialog. This is shown if the user chooses to restart the device. -->
++    <string name="global_action_restart_progress">Restarting\u2026</string>
++    <!-- Restart to recovery mode progress dialog. This is shown if the user chooses to restart the device. -->
++    <string name="global_action_restart_recovery_progress">Restarting to recovery mode\u2026</string>
++    <!-- Restart to bootloader mode progress dialog. This is shown if the user chooses to restart the device. -->
++    <string name="global_action_restart_bootloader_progress">Restarting to bootloader mode\u2026</string>
++    <!-- Restart to download mode progress dialog. This is shown if the user chooses to restart the device. -->
++    <string name="global_action_restart_download_progress">Restarting to download mode\u2026</string>
++    <!-- Restart to fastboot mode progress dialog. This is shown if the user chooses to restart the device. -->
++    <string name="global_action_restart_fastboot_progress">Restarting to fastbootd mode\u2026</string>
++</resources>
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsComponent.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsComponent.java
+index 566e4418e..d8a851523 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsComponent.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsComponent.java
+@@ -78,8 +78,8 @@ public class GlobalActionsComponent implements CoreStartable, Callbacks, GlobalA
+     }
+ 
+     @Override
+-    public void handleShowShutdownUi(boolean isReboot, String reason) {
+-        mExtension.get().showShutdownUi(isReboot, reason);
++    public void handleShowShutdownUi(boolean isReboot, String reason, boolean rebootCustom) {
++        mExtension.get().showShutdownUi(isReboot, reason, rebootCustom);
+     }
+ 
+     @Override
+@@ -119,9 +119,9 @@ public class GlobalActionsComponent implements CoreStartable, Callbacks, GlobalA
+     }
+ 
+     @Override
+-    public void reboot(boolean safeMode) {
++    public void reboot(boolean safeMode, String reason) {
+         try {
+-            mBarService.reboot(safeMode);
++            mBarService.reboot(safeMode, reason);
+         } catch (RemoteException e) {
+         }
+     }
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+index dc11e240c..153d3a71c 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+@@ -74,6 +74,7 @@ import android.telephony.ServiceState;
+ import android.telephony.TelephonyCallback;
+ import android.telephony.TelephonyManager;
+ import android.util.Log;
++import android.util.ArraySet;
+ import android.view.ContextThemeWrapper;
+ import android.view.GestureDetector;
+ import android.view.IWindowManager;
+@@ -164,6 +165,8 @@ import dagger.assisted.Assisted;
+ import dagger.assisted.AssistedFactory;
+ import dagger.assisted.AssistedInject;
+ 
++import org.lineageos.internal.util.PowerMenuUtils;
++
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.List;
+@@ -198,6 +201,12 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+ 
+     private static final boolean SHOW_SILENT_TOGGLE = true;
+ 
++    private static final String RESTART_ACTION_KEY_RESTART = "restart";
++    private static final String RESTART_ACTION_KEY_RESTART_RECOVERY = "restart_recovery";
++    private static final String RESTART_ACTION_KEY_RESTART_BOOTLOADER = "restart_bootloader";
++    private static final String RESTART_ACTION_KEY_RESTART_DOWNLOAD = "restart_download";
++    private static final String RESTART_ACTION_KEY_RESTART_FASTBOOT = "restart_fastboot";
++
+     // See NotificationManagerService#scheduleDurationReachedLocked
+     private static final long TOAST_FADE_TIME = 333;
+     // See NotificationManagerService.LONG_DELAY
+@@ -288,6 +297,8 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+     final ArrayList<Action> mOverflowItems = new ArrayList<>();
+     @VisibleForTesting
+     final ArrayList<Action> mPowerItems = new ArrayList<>();
++    @VisibleForTesting
++    final ArrayList<Action> mRestartItems = new ArrayList<>();
+ 
+     @NonNull
+     private Handler mMainHandler;
+@@ -302,6 +313,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+     private MyAdapter mAdapter;
+     private MyOverflowAdapter mOverflowAdapter;
+     private MyPowerOptionsAdapter mPowerAdapter;
++    private MyRestartOptionsAdapter mRestartAdapter;
+ 
+     private boolean mKeyguardShowing = false;
+     private boolean mDeviceProvisioned = false;
+@@ -666,6 +678,16 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         }
+     }
+ 
++    private boolean shouldShowRestartSubmenu() {
++        return PowerMenuUtils.isAdvancedRestartPossible(mContext);
++    }
++
++    @VisibleForTesting
++    String[] getRestartActions() {
++        return mResources.getStringArray(
++                org.lineageos.platform.internal.R.array.config_restartActionsList);
++    }
++
+     @VisibleForTesting
+     void createActionItems() {
+         // Simple toggle style if there's no vibrator, otherwise use a tri-state
+@@ -681,11 +703,19 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         mItems.clear();
+         mOverflowItems.clear();
+         mPowerItems.clear();
++        mRestartItems.clear();
+ 
+         List<GlobalActionType> actionTypes = mInteractor.getPossibleGlobalActions();
++        String[] restartActions = getRestartActions();
+ 
+         ShutDownAction shutdownAction = new ShutDownAction();
+         RestartAction restartAction = new RestartAction();
++        RestartSystemAction sysAction = new RestartSystemAction();
++        RestartRecoveryAction recAction = new RestartRecoveryAction();
++        RestartBootloaderAction blAction = new RestartBootloaderAction();
++        RestartDownloadAction dlAction = new RestartDownloadAction();
++        RestartFastbootAction fbAction = new RestartFastbootAction();
++        ArraySet<String> addedRestartKeys = new ArraySet<>();
+         var restartSafeModeAction = new RestartSafeModeAction(mContext);
+         List<Action> tempActions = new ArrayList<>();
+         CurrentUserProvider currentUser = new CurrentUserProvider();
+@@ -698,6 +728,23 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             handledEmergencyAffordance = true;
+         }
+ 
++        for (String actionKey : restartActions) {
++            if (!addedRestartKeys.add(actionKey)) {
++                continue;
++            }
++            if (RESTART_ACTION_KEY_RESTART.equals(actionKey)) {
++                addIfShouldShowAction(mRestartItems, sysAction);
++            } else if (RESTART_ACTION_KEY_RESTART_RECOVERY.equals(actionKey)) {
++                addIfShouldShowAction(mRestartItems, recAction);
++            } else if (RESTART_ACTION_KEY_RESTART_BOOTLOADER.equals(actionKey)) {
++                addIfShouldShowAction(mRestartItems, blAction);
++            } else if (RESTART_ACTION_KEY_RESTART_DOWNLOAD.equals(actionKey)) {
++                addIfShouldShowAction(mRestartItems, dlAction);
++            } else if (RESTART_ACTION_KEY_RESTART_FASTBOOT.equals(actionKey)) {
++                addIfShouldShowAction(mRestartItems, fbAction);
++            }
++        }
++
+         for (int i = 0; i < actionTypes.size(); i++) {
+             GlobalActionType actionType = actionTypes.get(i);
+             switch (actionType) {
+@@ -809,6 +856,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         mAdapter = new MyAdapter();
+         mOverflowAdapter = new MyOverflowAdapter();
+         mPowerAdapter = new MyPowerOptionsAdapter();
++        mRestartAdapter = new MyRestartOptionsAdapter();
+     }
+ 
+ 
+@@ -849,6 +897,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+                 mAdapter,
+                 mOverflowAdapter,
+                 mPowerAdapter,
++                mRestartAdapter,
+                 mStatusBarWindowControllerStore.forDisplay(context.getDisplayId()),
+                 mKeyguardShowing,
+                 this::onRefresh,
+@@ -963,7 +1012,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             mUiEventLogger.log(GlobalActionsEvent.GA_SHUTDOWN_LONG_PRESS);
+             if (!mUserManager.hasUserRestrictionForUser(UserManager.DISALLOW_SAFE_BOOT,
+                     mUserTracker.getUserHandle())) {
+-                mWindowManagerFuncs.reboot(true);
++                mWindowManagerFuncs.reboot(true, null);
+                 return true;
+             }
+             return false;
+@@ -1084,7 +1133,9 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+     final class RestartAction extends SinglePressAction implements LongPressAction {
+         RestartAction() {
+             super(com.android.systemui.res.R.drawable.ic_global_actions_restart,
+-                    R.string.global_action_restart);
++                    shouldShowRestartSubmenu()
++                            ? com.android.systemui.res.R.string.global_action_restart_more
++                            : R.string.global_action_restart);
+         }
+ 
+         @Override
+@@ -1097,7 +1148,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             mUiEventLogger.log(GlobalActionsEvent.GA_REBOOT_LONG_PRESS);
+             if (!mUserManager.hasUserRestrictionForUser(UserManager.DISALLOW_SAFE_BOOT,
+                     mUserTracker.getUserHandle())) {
+-                mWindowManagerFuncs.reboot(true);
++                mWindowManagerFuncs.reboot(true, null);
+                 return true;
+             }
+             return false;
+@@ -1121,8 +1172,65 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+                 return;
+             }
+             mUiEventLogger.log(GlobalActionsEvent.GA_REBOOT_PRESS);
+-            mWindowManagerFuncs.reboot(false);
++            if (mDelegate != null && shouldShowRestartSubmenu()) {
++                mDelegate.showRestartOptionsMenu();
++            } else {
++                mWindowManagerFuncs.reboot(false, null);
++            }
++        }
++    }
++
++    private final class RestartSystemAction extends SinglePressAction implements LongPressAction {
++        RestartSystemAction() {
++            super(R.drawable.ic_restart,
++                    com.android.systemui.res.R.string.global_action_restart_system);
++        }
++
++        @Override
++        public boolean onLongPress() {
++            if (!mUserManager.hasUserRestrictionForUser(UserManager.DISALLOW_SAFE_BOOT,
++                    mUserTracker.getUserHandle())) {
++                mWindowManagerFuncs.reboot(true, null);
++                return true;
++            }
++            return false;
+         }
++
++        @Override public boolean showDuringKeyguard() { return true; }
++        @Override public boolean showBeforeProvisioning() { return true; }
++        @Override public void onPress() { mWindowManagerFuncs.reboot(false, null); }
++    }
++
++    private abstract class RestartReasonAction extends SinglePressAction {
++        RestartReasonAction(int icon, int label) { super(icon, label); }
++        @Override public boolean showDuringKeyguard() { return true; }
++        @Override public boolean showBeforeProvisioning() { return true; }
++        abstract String getReason();
++        @Override public void onPress() { mWindowManagerFuncs.reboot(false, getReason()); }
++    }
++
++    private final class RestartRecoveryAction extends RestartReasonAction {
++        RestartRecoveryAction() { super(com.android.systemui.res.R.drawable.ic_lock_restart_recovery,
++                com.android.systemui.res.R.string.global_action_restart_recovery); }
++        @Override String getReason() { return PowerManager.REBOOT_RECOVERY; }
++    }
++
++    private final class RestartBootloaderAction extends RestartReasonAction {
++        RestartBootloaderAction() { super(com.android.systemui.res.R.drawable.ic_lock_restart_bootloader,
++                com.android.systemui.res.R.string.global_action_restart_bootloader); }
++        @Override String getReason() { return PowerManager.REBOOT_BOOTLOADER; }
++    }
++
++    private final class RestartFastbootAction extends RestartReasonAction {
++        RestartFastbootAction() { super(com.android.systemui.res.R.drawable.ic_lock_restart_fastboot,
++                com.android.systemui.res.R.string.global_action_restart_fastboot); }
++        @Override String getReason() { return PowerManager.REBOOT_FASTBOOT; }
++    }
++
++    private final class RestartDownloadAction extends RestartReasonAction {
++        RestartDownloadAction() { super(com.android.systemui.res.R.drawable.ic_lock_restart_bootloader,
++                com.android.systemui.res.R.string.global_action_restart_download); }
++        @Override String getReason() { return PowerManager.REBOOT_DOWNLOAD; }
+     }
+ 
+     @VisibleForTesting
+@@ -1649,10 +1757,21 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+      * The adapter used for power menu items shown in the global actions dialog.
+      */
+     public class MyAdapter extends MultiListAdapter {
++        private boolean mShowingRestartOptions = false;
++
++        public boolean isShowingRestartOptions() {
++            return mShowingRestartOptions;
++        }
++
++        public void setShowingRestartOptions(boolean show) {
++            mShowingRestartOptions = show;
++        }
++
+         private int countItems(boolean separated) {
+             int count = 0;
+-            for (int i = 0; i < mItems.size(); i++) {
+-                final Action action = mItems.get(i);
++            List<Action> items = mShowingRestartOptions ? mRestartItems : mItems;
++            for (int i = 0; i < items.size(); i++) {
++                final Action action = items.get(i);
+ 
+                 if (action.shouldBeSeparated() == separated) {
+                     count++;
+@@ -1689,8 +1808,9 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         @Override
+         public Action getItem(int position) {
+             int filteredPos = 0;
+-            for (int i = 0; i < mItems.size(); i++) {
+-                final Action action = mItems.get(i);
++            List<Action> items = mShowingRestartOptions ? mRestartItems : mItems;
++            for (int i = 0; i < items.size(); i++) {
++                final Action action = items.get(i);
+                 if (!shouldShowAction(action)) {
+                     continue;
+                 }
+@@ -1778,7 +1898,8 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             if (!(item instanceof SilentModeTriStateAction)) {
+                 if (mDelegate != null) {
+                     // don't dismiss the dialog if we're opening the power options menu
+-                    if (!(item instanceof PowerOptionsAction)) {
++                    if (!(item instanceof PowerOptionsAction)
++                            && !(item instanceof RestartAction && shouldShowRestartSubmenu())) {
+                         // Usually clicking an item shuts down the phone, locks, or starts an
+                         // activity. We don't want to animate back into the power button when that
+                         // happens, so we disable the dialog animation before dismissing.
+@@ -1879,6 +2000,18 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         }
+     }
+ 
++    public class MyRestartOptionsAdapter extends MyPowerOptionsAdapter {
++        @Override
++        public int getCount() {
++            return mRestartItems.size();
++        }
++
++        @Override
++        public Action getItem(int position) {
++            return mRestartItems.get(position);
++        }
++    }
++
+     /**
+      * The adapter used for items in the power options menu, triggered by the PowerOptionsAction.
+      */
+@@ -2582,6 +2715,8 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         @NonNull
+         private final MyPowerOptionsAdapter mPowerOptionsAdapter;
+         @NonNull
++        private final MyRestartOptionsAdapter mRestartOptionsAdapter;
++        @NonNull
+         private final StatusBarWindowController mStatusBarWindowController;
+         private final boolean mKeyguardShowing;
+         @NonNull
+@@ -2626,13 +2761,12 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         @Nullable
+         private Dialog mPowerOptionsDialog;
+         @Nullable
++        private Dialog mRestartOptionsDialog;
++        @Nullable
+         private ListPopupWindow mOverflowPopup;
+         private float mInitialWindowDimAmount;
+ 
+-        private final OnBackInvokedCallback mOnBackInvokedCallback = () -> {
+-            logOnBackInvocation();
+-            dismiss();
+-        };
++        private final OnBackInvokedCallback mOnBackInvokedCallback;
+ 
+         @VisibleForTesting
+         final GestureDetector.SimpleOnGestureListener mGestureListener =
+@@ -2688,6 +2822,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+                 @Assisted @NonNull MyAdapter adapter,
+                 @Assisted @NonNull MyOverflowAdapter overflowAdapter,
+                 @Assisted @NonNull MyPowerOptionsAdapter powerAdapter,
++                @Assisted @NonNull MyRestartOptionsAdapter restartAdapter,
+                 @Assisted @NonNull StatusBarWindowController statusBarWindowController,
+                 @Assisted boolean keyguardShowing,
+                 @Assisted("onRefreshCallback") @NonNull Runnable onRefreshCallback,
+@@ -2709,6 +2844,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             mAdapter = adapter;
+             mOverflowAdapter = overflowAdapter;
+             mPowerOptionsAdapter = powerAdapter;
++            mRestartOptionsAdapter = restartAdapter;
+             mStatusBarWindowController = statusBarWindowController;
+             mKeyguardShowing = keyguardShowing;
+             mOnRefreshCallback = onRefreshCallback;
+@@ -2727,6 +2863,15 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             mSystemUIDialogFactory = systemUIDialogFactory;
+             mGestureDetector = new GestureDetector(context, mGestureListener);
+             mDeviceEntryInteractor = deviceEntryInteractor;
++            mOnBackInvokedCallback = () -> {
++                logOnBackInvocation();
++                if (mAdapter.isShowingRestartOptions()) {
++                    mAdapter.setShowingRestartOptions(false);
++                    mGlobalActionsLayout.updateList();
++                } else {
++                    dismiss();
++                }
++            };
+         }
+ 
+         @NonNull
+@@ -2806,6 +2951,11 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             mPowerOptionsDialog.show();
+         }
+ 
++        public void showRestartOptionsMenu() {
++            mAdapter.setShowingRestartOptions(true);
++            mGlobalActionsLayout.updateList();
++        }
++
+         private void showPowerOverflowMenu(@NonNull SystemUIDialog dialog) {
+             mOverflowPopup = createPowerOverflowPopup(dialog);
+             mOverflowPopup.show();
+@@ -3123,8 +3273,10 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         }
+ 
+         private void onDismiss() {
++            mAdapter.setShowingRestartOptions(false);
+             dismissOverflow();
+             dismissPowerOptions();
++            dismissRestartOptions();
+             mTopUiController.setRequestTopUi(false, TAG);
+         }
+ 
+@@ -3140,6 +3292,12 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             }
+         }
+ 
++        private void dismissRestartOptions() {
++            if (mRestartOptionsDialog != null) {
++                mRestartOptionsDialog.dismiss();
++            }
++        }
++
+         @Override
+         public void onColorsChanged(ColorExtractor extractor, int which) {
+             if (mCurrentDialog == null) {
+@@ -3164,6 +3322,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             // Dismiss the dropdown menus.
+             dismissOverflow();
+             dismissPowerOptions();
++            dismissRestartOptions();
+ 
+             // Update the list as the max number of items per row has probably changed.
+             mGlobalActionsLayout.updateList();
+@@ -3182,6 +3341,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+                     @NonNull MyAdapter adapter,
+                     @NonNull MyOverflowAdapter overflowAdapter,
+                     @NonNull MyPowerOptionsAdapter powerAdapter,
++                    @NonNull MyRestartOptionsAdapter restartAdapter,
+                     @NonNull StatusBarWindowController statusBarWindowController,
+                     boolean keyguardShowing,
+                     @Assisted("onRefreshCallback") @NonNull Runnable onRefreshCallback,
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsImpl.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsImpl.java
+index 1d5cd77e0..3e79acdbd 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsImpl.java
+@@ -77,8 +77,8 @@ public class GlobalActionsImpl implements GlobalActions, CommandQueue.Callbacks
+     }
+ 
+     @Override
+-    public void showShutdownUi(boolean isReboot, String reason) {
+-        mShutdownUi.showShutdownUi(isReboot, reason);
++    public void showShutdownUi(boolean isReboot, String reason, boolean rebootCustom) {
++        mShutdownUi.showShutdownUi(isReboot, reason, rebootCustom);
+         mShadeController.instantCollapseShade();
+     }
+     @Override
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsPowerDialog.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsPowerDialog.java
+index b8bf1428b..6d0b6c68f 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsPowerDialog.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsPowerDialog.java
+@@ -26,6 +26,8 @@ import android.view.Window;
+ import android.view.WindowManager;
+ import android.widget.ListAdapter;
+ 
++import androidx.constraintlayout.helper.widget.Flow;
++
+ /**
+  * Creates a customized Dialog for displaying the Shut Down and Restart actions.
+  */
+@@ -36,15 +38,30 @@ public class GlobalActionsPowerDialog {
+      */
+     public static Dialog create(@NonNull Context context, ListAdapter adapter) {
+         ViewGroup listView = (ViewGroup) LayoutInflater.from(context).inflate(
+-                com.android.systemui.res.R.layout.global_actions_power_dialog, null);
++                com.android.systemui.res.R.layout.global_actions_power_dialog_flow, null);
++
++        Flow flow = listView.findViewById(com.android.systemui.res.R.id.power_flow);
+ 
+         for (int i = 0; i < adapter.getCount(); i++) {
+             View action = adapter.getView(i, null, listView);
++            action.setId(View.generateViewId());
+             listView.addView(action);
++            flow.addView(action);
+         }
+ 
+         Resources res = context.getResources();
+ 
++        int nElementsWrap = res.getInteger(
++                com.android.systemui.res.R.integer.power_menu_lite_max_columns);
++        int nChildren = listView.getChildCount() - 1; // don't count flow element
++
++        // Avoid having just one action on the last row if there are more than 2 columns because
++        // it looks unbalanced. Instead, bring the column size down to balance better.
++        if (nChildren == nElementsWrap + 1 && nElementsWrap > 2) {
++            nElementsWrap -= 1;
++        }
++        flow.setMaxElementsWrap(nElementsWrap);
++
+         Dialog dialog = new Dialog(context);
+         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+         dialog.setContentView(listView);
+@@ -53,7 +70,8 @@ public class GlobalActionsPowerDialog {
+         window.setType(WindowManager.LayoutParams.TYPE_VOLUME_OVERLAY);
+         window.setTitle(""); // prevent Talkback from speaking first item name twice
+         window.setBackgroundDrawable(res.getDrawable(
+-                com.android.systemui.res.R.drawable.control_background, context.getTheme()));
++                com.android.systemui.res.R.drawable.global_actions_lite_background,
++                context.getTheme()));
+         window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+ 
+         return dialog;
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/ShutdownUi.java b/packages/SystemUI/src/com/android/systemui/globalactions/ShutdownUi.java
+index 49d4d036f..0194c43d0 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/ShutdownUi.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/ShutdownUi.java
+@@ -63,7 +63,7 @@ public class ShutdownUi {
+      * @param reason   Cause for the shutdown.
+      * @return Shutdown dialog.
+      */
+-    public Dialog showShutdownUi(boolean isReboot, String reason) {
++    public Dialog showShutdownUi(boolean isReboot, String reason, boolean rebootCustom) {
+         ScrimDrawable background = new ScrimDrawable();
+ 
+         final Dialog d = new Dialog(mContext,
+@@ -118,8 +118,8 @@ public class ShutdownUi {
+         reasonView.setTypeface(typeface);
+         messageView.setTypeface(typeface);
+ 
+-        messageView.setText(getRebootMessage(isReboot, reason));
+-        String rebootReasonMessage = getReasonMessage(reason);
++        messageView.setText(getRebootMessage(isReboot, reason, rebootCustom));
++        String rebootReasonMessage = getReasonMessage(reason, rebootCustom);
+         if (rebootReasonMessage != null) {
+             reasonView.setVisibility(View.VISIBLE);
+             reasonView.setText(rebootReasonMessage);
+@@ -158,13 +158,22 @@ public class ShutdownUi {
+ 
+     @StringRes
+     @VisibleForTesting
+-    int getRebootMessage(boolean isReboot, @Nullable String reason) {
++    int getRebootMessage(boolean isReboot, @Nullable String reason,
++            boolean custom) {
+         if (reason != null && reason.startsWith(PowerManager.REBOOT_RECOVERY_UPDATE)) {
+             return R.string.reboot_to_update_reboot;
++        } else if (reason != null && !custom && reason.equals(PowerManager.REBOOT_RECOVERY)) {
++            return com.android.systemui.res.R.string.global_action_restart_progress;
+         } else if (reason != null && reason.equals(PowerManager.REBOOT_RECOVERY)) {
+-            return R.string.reboot_to_reset_message;
++            return com.android.systemui.res.R.string.global_action_restart_recovery_progress;
++        } else if (reason != null && reason.equals(PowerManager.REBOOT_BOOTLOADER)) {
++            return com.android.systemui.res.R.string.global_action_restart_bootloader_progress;
++        } else if (reason != null && reason.equals(PowerManager.REBOOT_DOWNLOAD)) {
++            return com.android.systemui.res.R.string.global_action_restart_download_progress;
++        } else if (reason != null && reason.equals(PowerManager.REBOOT_FASTBOOT)) {
++            return com.android.systemui.res.R.string.global_action_restart_fastboot_progress;
+         } else if (isReboot) {
+-            return R.string.reboot_to_reset_message;
++            return com.android.systemui.res.R.string.global_action_restart_progress;
+         } else {
+             return R.string.shutdown_progress;
+         }
+@@ -172,10 +181,10 @@ public class ShutdownUi {
+ 
+     @Nullable
+     @VisibleForTesting
+-    String getReasonMessage(@Nullable String reason) {
++    String getReasonMessage(@Nullable String reason, boolean custom) {
+         if (reason != null && reason.startsWith(PowerManager.REBOOT_RECOVERY_UPDATE)) {
+             return mContext.getString(R.string.reboot_to_update_title);
+-        } else if (reason != null && reason.equals(PowerManager.REBOOT_RECOVERY)) {
++        } else if (reason != null && !custom && reason.equals(PowerManager.REBOOT_RECOVERY)) {
+             return mContext.getString(R.string.reboot_to_reset_title);
+         } else {
+             return null;
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/domain/interactor/GlobalActionsInteractor.kt b/packages/SystemUI/src/com/android/systemui/globalactions/domain/interactor/GlobalActionsInteractor.kt
+index ec4d9570c..ff9e888f7 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/domain/interactor/GlobalActionsInteractor.kt
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/domain/interactor/GlobalActionsInteractor.kt
+@@ -120,7 +120,7 @@ constructor(
+                 return@withContext false
+             }
+ 
+-            globalActionsManager.reboot(safeMode)
++            globalActionsManager.reboot(safeMode, null)
+             true
+         }
+ 
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/CommandQueue.java b/packages/SystemUI/src/com/android/systemui/statusbar/CommandQueue.java
+index ddb3abf43..bc286ef22 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/CommandQueue.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/CommandQueue.java
+@@ -386,7 +386,7 @@ public class CommandQueue extends IStatusBar.Stub implements
+         default void showPinningEscapeToast() { }
+         default void handleShowGlobalActionsMenu() { }
+         default void handleShowOrHideGlobalActionsMenu() { }
+-        default void handleShowShutdownUi(boolean isReboot, String reason) { }
++        default void handleShowShutdownUi(boolean isReboot, String reason, boolean rebootCustom) { }
+ 
+         default void showWirelessChargingAnimation(int batteryLevel) {  }
+ 
+@@ -1134,10 +1134,10 @@ public class CommandQueue extends IStatusBar.Stub implements
+     }
+ 
+     @Override
+-    public void showShutdownUi(boolean isReboot, String reason) {
++    public void showShutdownUi(boolean isReboot, String reason, boolean rebootCustom) {
+         synchronized (mLock) {
+             mHandler.removeMessages(MSG_SHOW_SHUTDOWN_UI);
+-            mHandler.obtainMessage(MSG_SHOW_SHUTDOWN_UI, isReboot ? 1 : 0, 0, reason)
++            mHandler.obtainMessage(MSG_SHOW_SHUTDOWN_UI, isReboot ? 1 : 0, rebootCustom ? 1 : 0, reason)
+                     .sendToTarget();
+         }
+     }
+@@ -1840,7 +1840,8 @@ public class CommandQueue extends IStatusBar.Stub implements
+                     break;
+                 case MSG_SHOW_SHUTDOWN_UI:
+                     for (Callbacks callback : mCallbacks) {
+-                        callback.handleShowShutdownUi(msg.arg1 != 0, (String) msg.obj);
++                        callback.handleShowShutdownUi(msg.arg1 != 0, (String) msg.obj,
++                                msg.arg2 != 0);
+                     }
+                     break;
+                 case MSG_SET_TOP_APP_HIDES_STATUS_BAR:
+diff --git a/packages/SystemUI/tests/src/com/android/systemui/globalactions/GlobalActionsImplTest.kt b/packages/SystemUI/tests/src/com/android/systemui/globalactions/GlobalActionsImplTest.kt
+index 071893b55..7177eb4b4 100644
+--- a/packages/SystemUI/tests/src/com/android/systemui/globalactions/GlobalActionsImplTest.kt
++++ b/packages/SystemUI/tests/src/com/android/systemui/globalactions/GlobalActionsImplTest.kt
+@@ -53,14 +53,14 @@ class GlobalActionsImplTest : SysuiTestCase() {
+ 
+     @Test
+     fun testShutdown_collapsesShade() {
+-        underTest.showShutdownUi(false, "test")
++        underTest.showShutdownUi(false, "test", false)
+ 
+         verify(shadeController).instantCollapseShade()
+     }
+ 
+     @Test
+     fun testReboot_collapsesShade() {
+-        underTest.showShutdownUi(true, "test")
++        underTest.showShutdownUi(true, "test", false)
+ 
+         verify(shadeController).instantCollapseShade()
+     }
+diff --git a/packages/SystemUI/tests/utils/src/android/internal/statusbar/FakeStatusBarService.kt b/packages/SystemUI/tests/utils/src/android/internal/statusbar/FakeStatusBarService.kt
+index ed1262482..b09e6dd36 100644
+--- a/packages/SystemUI/tests/utils/src/android/internal/statusbar/FakeStatusBarService.kt
++++ b/packages/SystemUI/tests/utils/src/android/internal/statusbar/FakeStatusBarService.kt
+@@ -338,7 +338,7 @@ class FakeStatusBarService : IStatusBarService.Stub() {
+ 
+     override fun shutdown() {}
+ 
+-    override fun reboot(safeMode: Boolean) {}
++    override fun reboot(safeMode: Boolean, reason: String) {}
+ 
+     override fun restart() {}
+ 
+diff --git a/services/core/java/com/android/server/policy/WindowManagerPolicy.java b/services/core/java/com/android/server/policy/WindowManagerPolicy.java
+index f925ad4a7..a74975109 100644
+--- a/services/core/java/com/android/server/policy/WindowManagerPolicy.java
++++ b/services/core/java/com/android/server/policy/WindowManagerPolicy.java
+@@ -255,6 +255,7 @@ public interface WindowManagerPolicy extends WindowManagerPolicyConstants {
+ 
+         public void shutdown(boolean confirm);
+         public void reboot(boolean confirm);
++        public void reboot(boolean confirm, String reason);
+         public void rebootSafeMode(boolean confirm);
+ 
+         /**
+diff --git a/services/core/java/com/android/server/power/PowerManagerService.java b/services/core/java/com/android/server/power/PowerManagerService.java
+index 505530cc2..af47e412d 100644
+--- a/services/core/java/com/android/server/power/PowerManagerService.java
++++ b/services/core/java/com/android/server/power/PowerManagerService.java
+@@ -4447,7 +4447,7 @@ public final class PowerManagerService extends SystemService
+     }
+ 
+     private void shutdownOrRebootInternal(final @HaltMode int haltMode, final boolean confirm,
+-            @Nullable final String reason, boolean wait) {
++            @Nullable final String reason, boolean wait, boolean custom) {
+         if (PowerManager.REBOOT_USERSPACE.equals(reason)) {
+             if (!PowerManager.isRebootingUserspaceSupportedImpl()) {
+                 throw new UnsupportedOperationException(
+@@ -4473,7 +4473,11 @@ public final class PowerManagerService extends SystemService
+                     if (haltMode == HALT_MODE_REBOOT_SAFE_MODE) {
+                         ShutdownThread.rebootSafeMode(getUiContext(), confirm);
+                     } else if (haltMode == HALT_MODE_REBOOT) {
+-                        ShutdownThread.reboot(getUiContext(), reason, confirm);
++                        if (custom) {
++                            ShutdownThread.rebootCustom(getUiContext(), reason, confirm);
++                        } else {
++                            ShutdownThread.reboot(getUiContext(), reason, confirm);
++                        }
+                     } else {
+                         ShutdownThread.shutdown(getUiContext(), reason, confirm);
+                     }
+@@ -7364,7 +7368,7 @@ public final class PowerManagerService extends SystemService
+             ShutdownCheckPoints.recordCheckPoint(Binder.getCallingPid(), reason);
+             final long ident = Binder.clearCallingIdentity();
+             try {
+-                shutdownOrRebootInternal(HALT_MODE_REBOOT, confirm, reason, wait);
++                shutdownOrRebootInternal(HALT_MODE_REBOOT, confirm, reason, wait, false);
+             } finally {
+                 Binder.restoreCallingIdentity(ident);
+             }
+@@ -7384,7 +7388,29 @@ public final class PowerManagerService extends SystemService
+             ShutdownCheckPoints.recordCheckPoint(Binder.getCallingPid(), reason);
+             final long ident = Binder.clearCallingIdentity();
+             try {
+-                shutdownOrRebootInternal(HALT_MODE_REBOOT_SAFE_MODE, confirm, reason, wait);
++                shutdownOrRebootInternal(HALT_MODE_REBOOT_SAFE_MODE, confirm, reason, wait, false);
++            } finally {
++                Binder.restoreCallingIdentity(ident);
++            }
++        }
++
++        /**
++         * Reboots the device.
++         *
++         * @param confirm If true, shows a reboot confirmation dialog.
++         * @param reason The reason for the reboot, or null if none.
++         * @param wait If true, this call waits for the reboot to complete and does not return.
++         */
++        @Override // Binder call
++        public void rebootCustom(boolean confirm, String reason, boolean wait) {
++            mContext.enforceCallingOrSelfPermission(android.Manifest.permission.REBOOT, null);
++            if (PowerManager.REBOOT_RECOVERY.equals(reason)) {
++                mContext.enforceCallingOrSelfPermission(android.Manifest.permission.RECOVERY, null);
++            }
++
++            final long ident = Binder.clearCallingIdentity();
++            try {
++                shutdownOrRebootInternal(HALT_MODE_REBOOT, confirm, reason, wait, true);
+             } finally {
+                 Binder.restoreCallingIdentity(ident);
+             }
+@@ -7404,7 +7430,7 @@ public final class PowerManagerService extends SystemService
+             ShutdownCheckPoints.recordCheckPoint(Binder.getCallingPid(), reason);
+             final long ident = Binder.clearCallingIdentity();
+             try {
+-                shutdownOrRebootInternal(HALT_MODE_SHUTDOWN, confirm, reason, wait);
++                shutdownOrRebootInternal(HALT_MODE_SHUTDOWN, confirm, reason, wait, false);
+             } finally {
+                 Binder.restoreCallingIdentity(ident);
+             }
+diff --git a/services/core/java/com/android/server/power/ShutdownThread.java b/services/core/java/com/android/server/power/ShutdownThread.java
+index 7e93aa767..b44ae9c1c 100644
+--- a/services/core/java/com/android/server/power/ShutdownThread.java
++++ b/services/core/java/com/android/server/power/ShutdownThread.java
+@@ -97,6 +97,7 @@ public final class ShutdownThread extends Thread {
+     private static boolean sIsStarted = false;
+ 
+     private static boolean mReboot;
++    private static boolean mRebootCustom;
+     private static boolean mRebootSafeMode;
+     private static boolean mRebootHasProgressBar;
+     private static String mReason;
+@@ -163,6 +164,7 @@ public final class ShutdownThread extends Thread {
+      */
+     public static void shutdown(final Context context, String reason, boolean confirm) {
+         mReboot = false;
++        mRebootCustom = false;
+         mRebootSafeMode = false;
+         mReason = reason;
+         shutdownInner(context, confirm);
+@@ -290,6 +292,26 @@ public final class ShutdownThread extends Thread {
+      */
+     public static void reboot(final Context context, String reason, boolean confirm) {
+         mReboot = true;
++        mRebootCustom = false;
++        mRebootSafeMode = false;
++        mRebootHasProgressBar = false;
++        mReason = reason;
++        shutdownInner(context, confirm);
++    }
++
++    /**
++     * Request a clean shutdown, waiting for subsystems to clean up their
++     * state etc.  Must be called from a Looper thread in which its UI
++     * is shown.
++     *
++     * @param context Context used to display the shutdown progress dialog. This must be a context
++     *                suitable for displaying UI (aka Themable).
++     * @param reason code to pass to the kernel (e.g. "recovery", "bootloader"), or null.
++     * @param confirm true if user confirmation is needed before shutting down.
++     */
++    public static void rebootCustom(final Context context, String reason, boolean confirm) {
++        mReboot = true;
++        mRebootCustom = true;
+         mRebootSafeMode = false;
+         mRebootHasProgressBar = false;
+         mReason = reason;
+@@ -311,6 +333,7 @@ public final class ShutdownThread extends Thread {
+         }
+ 
+         mReboot = true;
++        mRebootCustom = false;
+         mRebootSafeMode = true;
+         mRebootHasProgressBar = false;
+         mReason = null;
+@@ -383,7 +406,7 @@ public final class ShutdownThread extends Thread {
+                 pd.setTitle(context.getText(com.android.internal.R.string.power_off));
+                 pd.setMessage(context.getText(com.android.internal.R.string.shutdown_progress));
+                 pd.setIndeterminate(true);
+-            } else if (showSysuiReboot()) {
++            } else if (mRebootCustom && showSysuiReboot()) {
+                 return null;
+             } else {
+                 // Factory reset path. Set the dialog message accordingly.
+@@ -414,7 +437,7 @@ public final class ShutdownThread extends Thread {
+         try {
+             StatusBarManagerInternal service = LocalServices.getService(
+                     StatusBarManagerInternal.class);
+-            if (service.showShutdownUi(mReboot, mReason)) {
++            if (service.showShutdownUi(mReboot, mReason, mRebootCustom)) {
+                 // Sysui will handle shutdown UI.
+                 if (DEBUG) {
+                     Log.d(TAG, "SysUI handling shutdown UI");
+diff --git a/services/core/java/com/android/server/statusbar/StatusBarManagerInternal.java b/services/core/java/com/android/server/statusbar/StatusBarManagerInternal.java
+index a100b2941..55f5f5d01 100644
+--- a/services/core/java/com/android/server/statusbar/StatusBarManagerInternal.java
++++ b/services/core/java/com/android/server/statusbar/StatusBarManagerInternal.java
+@@ -148,7 +148,7 @@ public interface StatusBarManagerInternal {
+      */
+     void setTopAppHidesStatusBar(int displayId, boolean hidesStatusBar);
+ 
+-    boolean showShutdownUi(boolean isReboot, String requestString);
++    boolean showShutdownUi(boolean isReboot, String requestString, boolean rebootCustom);
+ 
+     /**
+      * Notify system UI the immersive prompt should be dismissed as confirmed, and the confirmed
+diff --git a/services/core/java/com/android/server/statusbar/StatusBarManagerService.java b/services/core/java/com/android/server/statusbar/StatusBarManagerService.java
+index 7f4846909..470498910 100644
+--- a/services/core/java/com/android/server/statusbar/StatusBarManagerService.java
++++ b/services/core/java/com/android/server/statusbar/StatusBarManagerService.java
+@@ -630,11 +630,12 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
+         }
+ 
+         @Override
+-        public boolean showShutdownUi(boolean isReboot, String reason) {
++        public boolean showShutdownUi(boolean isReboot, String reason, boolean rebootCustom) {
+             if (!mContext.getResources().getBoolean(R.bool.config_showSysuiShutdown)) {
+                 return false;
+             }
+-            return runWithStatusBarIfPresent(bar -> bar.showShutdownUi(isReboot, reason));
++            return runWithStatusBarIfPresent(
++                    bar -> bar.showShutdownUi(isReboot, reason, rebootCustom));
+         }
+ 
+         @Override
+@@ -1671,13 +1672,10 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
+      * Allows the status bar to reboot the device.
+      */
+     @Override
+-    public void reboot(boolean safeMode) {
++    public void reboot(boolean safeMode, String reason) {
+         enforceStatusBarService();
+         enforceValidCallingUser();
+ 
+-        String reason = safeMode
+-                ? PowerManager.REBOOT_SAFE_MODE
+-                : PowerManager.SHUTDOWN_USER_REQUESTED;
+         ShutdownCheckPoints.recordCheckPoint(Binder.getCallingPid(), reason);
+         final long identity = Binder.clearCallingIdentity();
+         try {
+@@ -1687,7 +1685,7 @@ public class StatusBarManagerService extends IStatusBarService.Stub implements D
+                 if (safeMode) {
+                     ShutdownThread.rebootSafeMode(getUiContext(), true);
+                 } else {
+-                    ShutdownThread.reboot(getUiContext(), reason, false);
++                    ShutdownThread.rebootCustom(getUiContext(), reason, false);
+                 }
+             });
+         } finally {
+diff --git a/services/core/java/com/android/server/wm/WindowManagerService.java b/services/core/java/com/android/server/wm/WindowManagerService.java
+index 13fc85386..4e7cdaec9 100644
+--- a/services/core/java/com/android/server/wm/WindowManagerService.java
++++ b/services/core/java/com/android/server/wm/WindowManagerService.java
+@@ -4159,6 +4159,14 @@ public class WindowManagerService extends IWindowManager.Stub
+                 PowerManager.SHUTDOWN_USER_REQUESTED, confirm);
+     }
+ 
++    // Called by window manager policy.  Not exposed externally.
++    @Override
++    public void reboot(boolean confirm, String reason) {
++        // Pass in the UI context, since ShutdownThread requires it (to show UI).
++        ShutdownThread.rebootCustom(ActivityThread.currentActivityThread().getSystemUiContext(),
++                reason, confirm);
++    }
++
+     // Called by window manager policy.  Not exposed externally.
+     @Override
+     public void rebootSafeMode(boolean confirm) {
+-- 
+2.56.0
+

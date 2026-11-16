@@ -1,0 +1,95 @@
+From 860f7d06f4bde8066353e5c2d7d949c8cbfc50d4 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 19:21:41 -0600
+Subject: [PATCH 19/75] PlaitOS: adapt notification kill button to GrapheneOS
+
+Read the switch from a plain Settings.System key, plait_notification_kill_app_button
+(default off, written by Plait Settings), instead of a new Settings API
+constant; drop the unused CentralSurfaces and PackageInfo imports.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../notification/row/NotificationConversationInfo.java      | 6 +++---
+ .../statusbar/notification/row/NotificationInfo.java        | 6 +++---
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationConversationInfo.java b/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationConversationInfo.java
+index 98d12a68b..d5043a73c 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationConversationInfo.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationConversationInfo.java
+@@ -44,7 +44,6 @@ import android.content.Context;
+ import android.content.DialogInterface;
+ import android.content.Intent;
+ import android.content.pm.ApplicationInfo;
+-import android.content.pm.PackageInfo;
+ import android.content.pm.PackageManager;
+ import android.content.pm.ShortcutInfo;
+ import android.content.pm.ShortcutManager;
+@@ -83,7 +82,6 @@ import com.android.systemui.shade.ShadeController;
+ import com.android.systemui.statusbar.notification.NotificationChannelHelper;
+ import com.android.systemui.statusbar.notification.collection.EntryAdapter;
+ import com.android.systemui.statusbar.notification.stack.StackStateAnimator;
+-import com.android.systemui.statusbar.phone.CentralSurfaces;
+ import com.android.systemui.statusbar.phone.SystemUIDialog;
+ import com.android.systemui.wmshell.BubblesManager;
+ 
+@@ -98,6 +96,8 @@ import java.util.List;
+ public class NotificationConversationInfo extends LinearLayout implements
+         NotificationGuts.GutsContent {
+     private static final String TAG = "ConversationGuts";
++    /** Settings.System key (written by Plait Settings): show the force stop button. */
++    private static final String PLAIT_KILL_APP_BUTTON = "plait_notification_kill_app_button";
+ 
+     private INotificationManager mINotificationManager;
+     private ShortcutManager mShortcutManager;
+@@ -323,7 +323,7 @@ public class NotificationConversationInfo extends LinearLayout implements
+         if (killButton != null) {
+             boolean killButtonEnabled = Settings.System.getIntForUser(
+                     mContext.getContentResolver(),
+-                    Settings.System.NOTIFICATION_GUTS_KILL_APP_BUTTON, 0,
++                    PLAIT_KILL_APP_BUTTON, 0,
+                     UserHandle.USER_CURRENT) != 0;
+             killButton.setOnClickListener(new View.OnClickListener() {
+                 public void onClick(View v) {
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationInfo.java b/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationInfo.java
+index 74e9ff160..5a3379ba1 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationInfo.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/notification/row/NotificationInfo.java
+@@ -44,7 +44,6 @@ import android.content.DialogInterface;
+ import android.content.Intent;
+ import android.content.pm.ActivityInfo;
+ import android.content.pm.ApplicationInfo;
+-import android.content.pm.PackageInfo;
+ import android.content.pm.PackageManager;
+ import android.content.pm.ResolveInfo;
+ import android.graphics.Typeface;
+@@ -83,7 +82,6 @@ import com.android.systemui.res.R;
+ import com.android.systemui.statusbar.notification.collection.EntryAdapter;
+ import com.android.systemui.statusbar.notification.promoted.domain.interactor.PackageDemotionInteractor;
+ import com.android.systemui.statusbar.notification.row.icon.NotificationIconStyleProvider;
+-import com.android.systemui.statusbar.phone.CentralSurfaces;
+ import com.android.systemui.statusbar.phone.SystemUIDialog;
+ 
+ import java.lang.annotation.Retention;
+@@ -95,6 +93,8 @@ import java.util.List;
+  */
+ public class NotificationInfo extends LinearLayout implements NotificationGuts.GutsContent {
+     private static final String TAG = "InfoGuts";
++    /** Settings.System key (written by Plait Settings): show the force stop button. */
++    private static final String PLAIT_KILL_APP_BUTTON = "plait_notification_kill_app_button";
+     private int mActualHeight;
+ 
+     private TextView mPriorityDescriptionView;
+@@ -341,7 +341,7 @@ public class NotificationInfo extends LinearLayout implements NotificationGuts.G
+         if (killButton != null) {
+             boolean killButtonEnabled = Settings.System.getIntForUser(
+                     mContext.getContentResolver(),
+-                    Settings.System.NOTIFICATION_GUTS_KILL_APP_BUTTON, 0,
++                    PLAIT_KILL_APP_BUTTON, 0,
+                     UserHandle.USER_CURRENT) != 0;
+             killButton.setOnClickListener(new View.OnClickListener() {
+                 public void onClick(View v) {
+-- 
+2.56.0
+

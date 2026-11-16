@@ -1,0 +1,99 @@
+From 23e1aa6381062c422d1394a7617221afbe88051e Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 17:22:02 -0600
+Subject: [PATCH 09/75] PlaitOS: adapt answer-call keys to GrapheneOS
+
+- Volume answer reads Settings.System plait_volume_answer_call and no longer depends on
+  LineageOS's hardware wake keys mask (not ported)
+- Home answer reads Settings.Secure plait_home_answer_call (on/off) instead of LineageOS's
+  RING_HOME_BUTTON_BEHAVIOR bitmask; it only fires with 3-button navigation, which sends HOME
+---
+ .../server/policy/PhoneWindowManager.java     | 29 +++++++++----------
+ 1 file changed, 13 insertions(+), 16 deletions(-)
+
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 4bc0e4473..9cd0bb718 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -407,6 +407,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     // PlaitOS settings (written by the Plait Settings app); plain Settings.System keys instead of lineage-sdk
+     private static final String PLAIT_TORCH_LONG_PRESS_POWER = "plait_torch_long_press_power";
+     private static final String PLAIT_TORCH_LONG_PRESS_POWER_TIMEOUT = "plait_torch_long_press_power_timeout";
++    private static final String PLAIT_VOLUME_ANSWER_CALL = "plait_volume_answer_call";
++    private static final String PLAIT_HOME_ANSWER_CALL = "plait_home_answer_call";
+ 
+     private static final String ACTION_TORCH_OFF =
+             "com.android.server.policy.PhoneWindowManager.ACTION_TORCH_OFF";
+@@ -655,9 +657,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     // Behavior of Back button while in-call and screen on
+     int mIncallBackBehavior;
+ 
+-    // Behavior of HOME button during an incoming call.
+-    // (See LineageSettings.Secure.RING_HOME_BUTTON_BEHAVIOR.)
+-    int mRingHomeBehavior;
++    // Whether HOME answers an incoming call (Settings.Secure plait_home_answer_call)
++    boolean mHomeAnswerCall;
+ 
+     // Whether system navigation keys are enabled
+     boolean mSystemNavigationKeysEnabled;
+@@ -949,11 +950,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                     PLAIT_TORCH_LONG_PRESS_POWER_TIMEOUT), false, this,
+                     UserHandle.USER_ALL);
+ 
+-            resolver.registerContentObserver(LineageSettings.Secure.getUriFor(
+-                    LineageSettings.Secure.RING_HOME_BUTTON_BEHAVIOR), false, this,
++            resolver.registerContentObserver(Settings.Secure.getUriFor(
++                    PLAIT_HOME_ANSWER_CALL), false, this,
+                     UserHandle.USER_ALL);
+-            resolver.registerContentObserver(LineageSettings.System.getUriFor(
+-                    LineageSettings.System.VOLUME_ANSWER_CALL), false, this,
++            resolver.registerContentObserver(Settings.System.getUriFor(
++                    PLAIT_VOLUME_ANSWER_CALL), false, this,
+                     UserHandle.USER_ALL);
+             updateSettings();
+         }
+@@ -2151,8 +2152,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                     return true;
+                 }
+ 
+-                if ((mRingHomeBehavior
+-                        & LineageSettings.Secure.RING_HOME_BUTTON_BEHAVIOR_ANSWER) != 0) {
++                if (mHomeAnswerCall) {
+                     final TelecomManager telecomManager = getTelecommService();
+                     if (telecomManager != null && telecomManager.isRinging()) {
+                         telecomManager.acceptRingingCall();
+@@ -3071,10 +3071,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                     Settings.Secure.INCALL_BACK_BUTTON_BEHAVIOR,
+                     Settings.Secure.INCALL_BACK_BUTTON_BEHAVIOR_DEFAULT,
+                     UserHandle.USER_CURRENT);
+-            mRingHomeBehavior = LineageSettings.Secure.getIntForUser(resolver,
+-                    LineageSettings.Secure.RING_HOME_BUTTON_BEHAVIOR,
+-                    LineageSettings.Secure.RING_HOME_BUTTON_BEHAVIOR_DEFAULT,
+-                    UserHandle.USER_CURRENT);
++            mHomeAnswerCall = Settings.Secure.getIntForUser(resolver,
++                    PLAIT_HOME_ANSWER_CALL, 0, UserHandle.USER_CURRENT) == 1;
+             mSystemNavigationKeysEnabled = Settings.Secure.getIntForUser(resolver,
+                     Settings.Secure.SYSTEM_NAVIGATION_KEYS_ENABLED,
+                     0, UserHandle.USER_CURRENT) == 1;
+@@ -3095,6 +3093,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             mTorchTimeout = Settings.System.getIntForUser(
+                     resolver, PLAIT_TORCH_LONG_PRESS_POWER_TIMEOUT, 0,
+                     UserHandle.USER_CURRENT);
++            mVolumeAnswerCall = Settings.System.getIntForUser(resolver,
++                    PLAIT_VOLUME_ANSWER_CALL, 0, UserHandle.USER_CURRENT) == 1;
+ 
+             // Configure wake gesture.
+             boolean wakeGestureEnabledSetting = Settings.Secure.getIntForUser(resolver,
+@@ -3317,9 +3317,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             appInfo = null;
+         }
+ 
+-            mVolumeAnswerCall = (LineageSettings.System.getIntForUser(resolver,
+-                    LineageSettings.System.VOLUME_ANSWER_CALL, 0, UserHandle.USER_CURRENT) == 1)
+-                    && ((mDeviceHardwareWakeKeys & KEY_MASK_VOLUME) != 0);
+         if (appInfo == null || (type != TYPE_APPLICATION_OVERLAY && appInfo.targetSdkVersion >= O)) {
+             /**
+              * Apps targeting >= {@link Build.VERSION_CODES#O} are required to hold
+-- 
+2.56.0
+

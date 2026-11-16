@@ -1,0 +1,932 @@
+From 8d1d0bcb22556d948c740e9c07c8b4c832b74bac Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 16:07:52 -0600
+Subject: [PATCH 75/75] PlaitOS: plait_backup system service
+
+Plait Backup (the app with Android-DataBackup's UI) gets root-depth app
+backups on a locked PlaitOS through this Binder service: installd
+streams the data (its new plait* calls), this service decides who may.
+
+Every call carries a grant the Plait Broker manager signed (same token
+as the broker's GrantToken). It counts only if the signature checks
+out against the manager's key, the manager is app.plait.broker as it
+came in the system image (never updated), the caller is the uid,
+package and signing certificate the grant names (own user only), the
+grant covers the scope and target and has not expired, and the manager
+still reports it active. Uses go to the manager's audit log.
+
+- backupPart / restorePart: CE, DE, Android/data, obb, media as
+  tar.zst (Android-DataBackup's layout); restores force-stop the app.
+- backupApks / installApks: base + split APKs; installs go through a
+  PackageInstaller session pinned to the package name.
+- getState / restoreState: granted runtime permissions and app-ops.
+  Restores only grant runtime permissions the app requests, and only
+  loosen app-ops whose permission the app requests.
+- Never a target: the broker, the backup app, android, shared system
+  uids.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../android/internal/plait/IPlaitBackup.aidl  |  53 ++
+ .../server/plait/PlaitBackupService.java      | 607 ++++++++++++++++++
+ .../com/android/server/plait/PlaitGrant.java  | 109 ++++
+ .../java/com/android/server/pm/Installer.java |  46 ++
+ .../java/com/android/server/SystemServer.java |  13 +
+ 5 files changed, 828 insertions(+)
+ create mode 100644 core/java/com/android/internal/plait/IPlaitBackup.aidl
+ create mode 100644 services/core/java/com/android/server/plait/PlaitBackupService.java
+ create mode 100644 services/core/java/com/android/server/plait/PlaitGrant.java
+
+diff --git a/core/java/com/android/internal/plait/IPlaitBackup.aidl b/core/java/com/android/internal/plait/IPlaitBackup.aidl
+new file mode 100644
+index 000000000..64006652e
+--- /dev/null
++++ b/core/java/com/android/internal/plait/IPlaitBackup.aidl
+@@ -0,0 +1,53 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.internal.plait;
++
++import android.os.ParcelFileDescriptor;
++
++/**
++ * PlaitOS's plait_backup service (system_server PlaitBackupService): app backups at root depth for the one app the
++ * Plait Broker manager has granted it to (Plait Backup). Every call carries a grant the manager signed; anything the
++ * grant does not cover is refused with a SecurityException.
++ *
++ * Streams are Android-DataBackup's archive parts: zstd-compressed tar. Calls block until the stream is done, so the
++ * caller reads (or writes) its end of the pipe on another thread. Keep the order of the methods: the Plait Backup app
++ * calls them with a hand-written proxy (an app can't use the framework's hidden copy of this class).
++ *
++ * @hide
++ */
++interface IPlaitBackup {
++    /** CE data, DE data, Android/data, obb, media of an app. */
++    const int PART_CE = 1;
++    const int PART_DE = 2;
++    const int PART_EXT_DATA = 3;
++    const int PART_EXT_OBB = 4;
++    const int PART_EXT_MEDIA = 5;
++
++    /** One data part as tar.zst into sink; false if the app has none. Scope backup.apps. */
++    boolean backupPart(String grant, String packageName, int userId, int part, in ParcelFileDescriptor sink);
++
++    /** The app's APKs (base + splits) as tar.zst into sink. Scope backup.apps. */
++    void backupApks(String grant, String packageName, int userId, in ParcelFileDescriptor sink);
++
++    /**
++     * Granted runtime permissions (one name per line), then a line "---", then app-ops in `appops get` form
++     * ("OP_NAME: mode"). Scope backup.apps.
++     */
++    String getState(String grant, String packageName, int userId);
++
++    /** Installs (or updates) the app from an APK tar.zst. Scope restore.apps. */
++    void installApks(String grant, String packageName, int userId, in ParcelFileDescriptor source);
++
++    /** Replaces one data part with a tar.zst; the app is force-stopped first. Scope restore.apps. */
++    void restorePart(String grant, String packageName, int userId, int part, in ParcelFileDescriptor source);
++
++    /**
++     * Grants the runtime permissions the app requests that are listed, and sets the listed app-ops. Scope
++     * restore.apps.
++     */
++    void restoreState(String grant, String packageName, int userId, in String[] permissions,
++            in String[] ops, in String[] modes);
++}
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+new file mode 100644
+index 000000000..b47eeff5d
+--- /dev/null
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -0,0 +1,607 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.server.plait;
++
++import android.app.ActivityManager;
++import android.app.AppOpsManager;
++import android.content.Context;
++import android.content.IIntentReceiver;
++import android.content.IIntentSender;
++import android.content.Intent;
++import android.content.IntentSender;
++import android.content.pm.ApplicationInfo;
++import android.content.pm.PackageInfo;
++import android.content.pm.PackageInstaller;
++import android.content.pm.PackageManager;
++import android.content.pm.PermissionInfo;
++import android.content.pm.ProviderInfo;
++import android.content.pm.Signature;
++import android.content.pm.SigningInfo;
++import android.net.Uri;
++import android.os.Binder;
++import android.os.Bundle;
++import android.os.IBinder;
++import android.os.ParcelFileDescriptor;
++import android.os.Process;
++import android.os.UserHandle;
++import android.util.Slog;
++
++import com.android.internal.plait.IPlaitBackup;
++import com.android.server.pm.Installer;
++import com.android.server.pm.Installer.InstallerException;
++
++import java.io.DataInputStream;
++import java.io.EOFException;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.nio.charset.StandardCharsets;
++import java.security.KeyFactory;
++import java.security.MessageDigest;
++import java.security.PublicKey;
++import java.security.spec.X509EncodedKeySpec;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import java.util.concurrent.LinkedBlockingQueue;
++import java.util.concurrent.TimeUnit;
++
++/**
++ * PlaitOS's plait_backup service: Plait Backup's backups and restores at root depth, on a locked phone without root.
++ * The data itself is streamed by installd (PlaitBackup.cpp), which already has the rights for app data; this service
++ * decides who may use it.
++ *
++ * <p>Every call carries a grant the Plait Broker manager signed. It counts only if:
++ * <ul>
++ * <li>its signature checks out against the manager's key, and the manager is {@code app.plait.broker} as it came in
++ *     the system image (a system app that was never updated);
++ * <li>the caller is the uid, package and signing certificate the grant names, and the call is for the caller's own
++ *     user;
++ * <li>it covers the scope and the target app, has not expired, and the manager still reports it active (revocation
++ *     and a change of backup app take effect on the next call).
++ * </ul>
++ * Never a target: the broker, the backup app itself, {@code android}, and apps that share a system uid. Restores
++ * force-stop the app first. Restored permissions are limited to runtime permissions the app requests, and app-ops can
++ * only be loosened where the app requests the op's permission (anything stricter is always fine), so an archive can't
++ * give an app more than it asked for. Every use is reported to the manager's audit log.
++ */
++public final class PlaitBackupService extends IPlaitBackup.Stub {
++    private static final String TAG = "PlaitBackup";
++    public static final String SERVICE = "plait_backup";
++
++    private static final String BROKER = "app.plait.broker";
++    private static final String GRANTS = "app.plait.broker.grants";
++    private static final Uri GRANTS_URI = Uri.parse("content://" + GRANTS);
++    private static final long INSTALL_TIMEOUT_MINUTES = 10;
++
++    private final Context mContext;
++    private final Installer mInstaller;
++
++    public PlaitBackupService(Context context, Installer installer) {
++        mContext = context;
++        mInstaller = installer;
++    }
++
++    // ---- grants ----
++
++    /** What a verified call may act on. */
++    private static final class Call {
++        final PlaitGrant grant;
++        final String pkg;
++        final int userId;
++
++        Call(PlaitGrant grant, String pkg, int userId) {
++            this.grant = grant;
++            this.pkg = pkg;
++            this.userId = userId;
++        }
++    }
++
++    /** Checks the grant for [scope] on [pkg]; must be called with the caller's identity (before clearing it). */
++    private Call verify(String token, String scope, String pkg, int userId) {
++        final int callingUid = Binder.getCallingUid();
++        final long ident = Binder.clearCallingIdentity();
++        try {
++            if (pkg == null || pkg.isEmpty()) throw new SecurityException("no target package");
++            if (userId != UserHandle.getUserId(callingUid)) {
++                throw new SecurityException("only the caller's own user");
++            }
++            PlaitGrant g = PlaitGrant.verify(token, managerKey());
++            if (g == null) throw new SecurityException("grant signature is invalid");
++            if (g.uid != callingUid) throw new SecurityException("grant was issued to another uid");
++            PackageManager pm = mContext.getPackageManager();
++            String[] callerPkgs = pm.getPackagesForUid(callingUid);
++            if (callerPkgs == null || !Arrays.asList(callerPkgs).contains(g.packageName)) {
++                throw new SecurityException("grant was issued to another app");
++            }
++            if (!g.certSha256.equals(signingCert(g.packageName, userId))) {
++                throw new SecurityException("the app's signing certificate does not match the grant");
++            }
++            if (!g.allows(scope, pkg, System.currentTimeMillis())) {
++                throw new SecurityException("grant does not cover " + scope + " of " + pkg + " (or expired)");
++            }
++            if (pkg.equals(g.packageName) || pkg.equals(BROKER) || pkg.equals("android")) {
++                throw new SecurityException(pkg + " is never backed up or restored (it guards backups)");
++            }
++            if (!isActive(g.grantId)) throw new SecurityException("grant was revoked");
++            return new Call(g, pkg, userId);
++        } finally {
++            Binder.restoreCallingIdentity(ident);
++        }
++    }
++
++    /** The manager's public key; only if the provider belongs to the broker as installed in the system image. */
++    private PublicKey managerKey() {
++        PackageManager pm = mContext.getPackageManager();
++        ProviderInfo pi = pm.resolveContentProvider(GRANTS, PackageManager.ComponentInfoFlags.of(0));
++        if (pi == null || !BROKER.equals(pi.packageName) || pi.applicationInfo == null) {
++            throw new SecurityException("the Plait Broker manager is not installed");
++        }
++        int flags = pi.applicationInfo.flags;
++        if ((flags & ApplicationInfo.FLAG_SYSTEM) == 0
++                || (flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) {
++            throw new SecurityException("the Plait Broker manager is not the system's own");
++        }
++        Bundle b = mContext.getContentResolver().call(GRANTS_URI, "publicKey", null, null);
++        byte[] key = b == null ? null : b.getByteArray("key");
++        if (key == null) throw new SecurityException("could not read the manager's key");
++        try {
++            return KeyFactory.getInstance("EC").generatePublic(new X509EncodedKeySpec(key));
++        } catch (Exception e) {
++            throw new SecurityException("the manager's key is invalid");
++        }
++    }
++
++    private boolean isActive(String grantId) {
++        Bundle b = mContext.getContentResolver().call(GRANTS_URI, "check", grantId, null);
++        return b != null && b.getBoolean("active", false);
++    }
++
++    private void logUse(Call call, String what) {
++        final long ident = Binder.clearCallingIdentity();
++        try {
++            Bundle extras = new Bundle();
++            extras.putString("what", what + " " + call.pkg);
++            mContext.getContentResolver().call(GRANTS_URI, "used", call.grant.grantId, extras);
++        } catch (RuntimeException e) {
++            Slog.w(TAG, "could not log the use of " + call.grant, e);
++        } finally {
++            Binder.restoreCallingIdentity(ident);
++        }
++    }
++
++    /** SHA-256 (hex) of the oldest certificate in the app's rotation history, as the broker computes it. */
++    private String signingCert(String pkg, int userId) {
++        try {
++            PackageInfo info = mContext.getPackageManager().getPackageInfoAsUser(pkg,
++                    PackageManager.GET_SIGNING_CERTIFICATES, userId);
++            SigningInfo si = info.signingInfo;
++            if (si == null || si.hasMultipleSigners()) return null;
++            Signature[] history = si.getSigningCertificateHistory();
++            if (history == null || history.length == 0) return null;
++            byte[] digest = MessageDigest.getInstance("SHA-256").digest(history[0].toByteArray());
++            StringBuilder sb = new StringBuilder();
++            for (byte b : digest) sb.append(String.format("%02x", b));
++            return sb.toString();
++        } catch (Exception e) {
++            return null;
++        }
++    }
++
++    /** The installed target, which must be a real app (not one sharing a system uid). */
++    private ApplicationInfo target(Call call) {
++        try {
++            ApplicationInfo ai = mContext.getPackageManager().getApplicationInfoAsUser(call.pkg, 0,
++                    call.userId);
++            if (UserHandle.getAppId(ai.uid) < Process.FIRST_APPLICATION_UID) {
++                throw new SecurityException(call.pkg + " shares a system uid; never backed up or restored");
++            }
++            return ai;
++        } catch (PackageManager.NameNotFoundException e) {
++            throw new IllegalArgumentException(call.pkg + " is not installed");
++        }
++    }
++
++    private static void checkPart(int part) {
++        if (part < PART_CE || part > PART_EXT_MEDIA) {
++            throw new IllegalArgumentException("unknown part " + part);
++        }
++    }
++
++    private static RuntimeException failed(String what, InstallerException e) {
++        return new IllegalStateException(what + ": " + e.getMessage());
++    }
++
++    // ---- backup ----
++
++    @Override
++    public boolean backupPart(String grant, String packageName, int userId, int part, ParcelFileDescriptor out) {
++        try {
++            checkPart(part);
++            Call call = verify(grant, PlaitGrant.SCOPE_BACKUP, packageName, userId);
++            final long ident = Binder.clearCallingIdentity();
++            try {
++                ApplicationInfo ai = target(call);
++                boolean written = mInstaller.plaitBackupAppData(ai.volumeUuid, call.pkg, userId, part, out);
++                logUse(call, "backup part " + part + " of");
++                return written;
++            } catch (InstallerException e) {
++                throw failed("backup of " + call.pkg, e);
++            } finally {
++                Binder.restoreCallingIdentity(ident);
++            }
++        } finally {
++            closeQuietly(out);
++        }
++    }
++
++    @Override
++    public void backupApks(String grant, String packageName, int userId, ParcelFileDescriptor out) {
++        try {
++            Call call = verify(grant, PlaitGrant.SCOPE_BACKUP, packageName, userId);
++            final long ident = Binder.clearCallingIdentity();
++            try {
++                ApplicationInfo ai = target(call);
++                String dir = new java.io.File(ai.sourceDir).getParent();
++                mInstaller.plaitBackupApks(dir, out);
++                logUse(call, "backup APKs of");
++            } catch (InstallerException e) {
++                throw failed("APK backup of " + call.pkg, e);
++            } finally {
++                Binder.restoreCallingIdentity(ident);
++            }
++        } finally {
++            closeQuietly(out);
++        }
++    }
++
++    @Override
++    public String getState(String grant, String packageName, int userId) {
++        Call call = verify(grant, PlaitGrant.SCOPE_BACKUP, packageName, userId);
++        final long ident = Binder.clearCallingIdentity();
++        try {
++            ApplicationInfo ai = target(call);
++            StringBuilder sb = new StringBuilder();
++            for (String p : grantedRuntimePermissions(call)) sb.append(p).append('\n');
++            sb.append("---\n");
++            AppOpsManager appOps = mContext.getSystemService(AppOpsManager.class);
++            for (AppOpsManager.PackageOps ops : appOps.getOpsForPackage(ai.uid, call.pkg, (String[]) null)) {
++                for (AppOpsManager.OpEntry op : ops.getOps()) {
++                    sb.append(AppOpsManager.opToName(op.getOp())).append(": ")
++                            .append(AppOpsManager.modeToName(op.getMode())).append('\n');
++                }
++            }
++            logUse(call, "backup permissions of");
++            return sb.toString();
++        } finally {
++            Binder.restoreCallingIdentity(ident);
++        }
++    }
++
++    private List<String> grantedRuntimePermissions(Call call) {
++        List<String> out = new ArrayList<>();
++        PackageInfo info = packageInfo(call, PackageManager.GET_PERMISSIONS);
++        if (info.requestedPermissions == null) return out;
++        for (int i = 0; i < info.requestedPermissions.length; i++) {
++            boolean granted = (info.requestedPermissionsFlags[i]
++                    & PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0;
++            if (granted && isRuntime(info.requestedPermissions[i])) out.add(info.requestedPermissions[i]);
++        }
++        return out;
++    }
++
++    private boolean isRuntime(String perm) {
++        try {
++            PermissionInfo pi = mContext.getPackageManager().getPermissionInfo(perm, 0);
++            return pi.getProtection() == PermissionInfo.PROTECTION_DANGEROUS;
++        } catch (PackageManager.NameNotFoundException e) {
++            return false;
++        }
++    }
++
++    private PackageInfo packageInfo(Call call, int flags) {
++        try {
++            return mContext.getPackageManager().getPackageInfoAsUser(call.pkg, flags, call.userId);
++        } catch (PackageManager.NameNotFoundException e) {
++            throw new IllegalArgumentException(call.pkg + " is not installed");
++        }
++    }
++
++    // ---- restore ----
++
++    @Override
++    public void installApks(String grant, String packageName, int userId, ParcelFileDescriptor source) {
++        try {
++            Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
++            final long ident = Binder.clearCallingIdentity();
++            try {
++                install(call, source);
++                logUse(call, "install APKs of");
++            } finally {
++                Binder.restoreCallingIdentity(ident);
++            }
++        } finally {
++            closeQuietly(source);
++        }
++    }
++
++    private void install(Call call, ParcelFileDescriptor source) {
++        // installd decompresses into a pipe, this thread reads the tar and writes each APK into a session
++        ParcelFileDescriptor[] pipe;
++        try {
++            pipe = ParcelFileDescriptor.createPipe();
++        } catch (IOException e) {
++            throw new IllegalStateException("no pipe: " + e.getMessage());
++        }
++        final ParcelFileDescriptor readEnd = pipe[0];
++        final ParcelFileDescriptor writeEnd = pipe[1];
++        final String[] decompressError = new String[1];
++        Thread unpack = new Thread(() -> {
++            try {
++                mInstaller.plaitZstdDecompress(source, writeEnd);
++            } catch (InstallerException e) {
++                decompressError[0] = e.getMessage();
++            } finally {
++                closeQuietly(writeEnd);
++            }
++        }, "PlaitBackupUnzstd");
++        unpack.start();
++
++        PackageInstaller installer = mContext.createContextAsUser(UserHandle.of(call.userId), 0)
++                .getPackageManager().getPackageInstaller();
++        PackageInstaller.SessionParams params =
++                new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
++        // The APKs must really be this package; installing over an existing install is fine
++        params.setAppPackageName(call.pkg);
++        params.setInstallReason(PackageManager.INSTALL_REASON_USER);
++        params.installFlags |= PackageManager.INSTALL_REPLACE_EXISTING;
++        int sessionId = -1;
++        try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(readEnd)) {
++            sessionId = installer.createSession(params);
++            int apks = 0;
++            try (PackageInstaller.Session session = installer.openSession(sessionId)) {
++                TarReader tar = new TarReader(in);
++                TarReader.Entry e;
++                while ((e = tar.next()) != null) {
++                    // Only flat "*.apk" files: the APK archive holds base.apk and split_*.apk
++                    if (!e.isFile || !e.name.endsWith(".apk") || e.name.contains("/")
++                            || e.name.startsWith(".")) {
++                        tar.skip(e);
++                        continue;
++                    }
++                    try (OutputStream o = session.openWrite(e.name, 0, e.size)) {
++                        tar.copy(e, o);
++                        session.fsync(o);
++                    }
++                    apks++;
++                }
++                unpack.join(TimeUnit.MINUTES.toMillis(INSTALL_TIMEOUT_MINUTES));
++                if (decompressError[0] != null) {
++                    throw new IllegalStateException("APK archive is damaged: " + decompressError[0]);
++                }
++                if (apks == 0) throw new IllegalArgumentException("no APKs in the archive");
++                LinkedBlockingQueue<Intent> result = new LinkedBlockingQueue<>();
++                IIntentSender.Stub sender = new IIntentSender.Stub() {
++                    @Override
++                    public void send(int code, Intent intent, String resolvedType, IBinder allowlistToken,
++                            IIntentReceiver finishedReceiver, String requiredPermission, Bundle options) {
++                        result.offer(intent);
++                    }
++                };
++                session.commit(new IntentSender((IIntentSender) sender));
++                sessionId = -1;
++                Intent r = result.poll(INSTALL_TIMEOUT_MINUTES, TimeUnit.MINUTES);
++                int status = r == null ? PackageInstaller.STATUS_FAILURE
++                        : r.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
++                if (status != PackageInstaller.STATUS_SUCCESS) {
++                    String msg = r == null ? "timed out" : r.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
++                    throw new IllegalStateException("install of " + call.pkg + " failed: " + msg);
++                }
++            }
++        } catch (IOException | InterruptedException e) {
++            throw new IllegalStateException("install of " + call.pkg + " failed: " + e.getMessage());
++        } finally {
++            if (sessionId != -1) {
++                try {
++                    installer.abandonSession(sessionId);
++                } catch (RuntimeException ignored) {
++                }
++            }
++            closeQuietly(readEnd);
++        }
++    }
++
++    @Override
++    public void restorePart(String grant, String packageName, int userId, int part, ParcelFileDescriptor source) {
++        try {
++            checkPart(part);
++            Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
++            final long ident = Binder.clearCallingIdentity();
++            try {
++                ApplicationInfo ai = target(call);
++                // Nothing of the app may run while its data is replaced
++                ActivityManager.getService().forceStopPackage(call.pkg, call.userId);
++                String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
++                mInstaller.plaitRestoreAppData(ai.volumeUuid, call.pkg, userId, UserHandle.getAppId(ai.uid),
++                        seInfo, part, source);
++                logUse(call, "restore part " + part + " of");
++            } catch (InstallerException e) {
++                throw failed("restore of " + call.pkg, e);
++            } catch (android.os.RemoteException e) {
++                throw new IllegalStateException("could not stop " + call.pkg);
++            } finally {
++                Binder.restoreCallingIdentity(ident);
++            }
++        } finally {
++            closeQuietly(source);
++        }
++    }
++
++    @Override
++    public void restoreState(String grant, String packageName, int userId, String[] permissions, String[] ops,
++            String[] modes) {
++        Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
++        final long ident = Binder.clearCallingIdentity();
++        try {
++            ApplicationInfo ai = target(call);
++            PackageInfo info = packageInfo(call, PackageManager.GET_PERMISSIONS);
++            Set<String> requested = new HashSet<>();
++            if (info.requestedPermissions != null) requested.addAll(Arrays.asList(info.requestedPermissions));
++            PackageManager pm = mContext.getPackageManager();
++            if (permissions != null) {
++                for (String p : permissions) {
++                    if (p == null || !requested.contains(p) || !isRuntime(p)) continue;
++                    try {
++                        pm.grantRuntimePermission(call.pkg, p, UserHandle.of(call.userId));
++                    } catch (RuntimeException e) {
++                        Slog.w(TAG, "could not grant " + p + " to " + call.pkg + ": " + e.getMessage());
++                    }
++                }
++            }
++            if (ops != null && modes != null && ops.length == modes.length) {
++                AppOpsManager appOps = mContext.getSystemService(AppOpsManager.class);
++                for (int i = 0; i < ops.length; i++) {
++                    int code = opCode(ops[i]);
++                    int mode = Arrays.asList(AppOpsManager.MODE_NAMES).indexOf(modes[i]);
++                    if (code < 0 || mode < 0) continue;
++                    boolean loosens = mode == AppOpsManager.MODE_ALLOWED
++                            || mode == AppOpsManager.MODE_FOREGROUND;
++                    String opPerm = AppOpsManager.opToPermission(code);
++                    if (loosens && (opPerm == null || !requested.contains(opPerm))) continue;
++                    try {
++                        appOps.setMode(code, ai.uid, call.pkg, mode);
++                    } catch (RuntimeException e) {
++                        Slog.w(TAG, "could not set " + ops[i] + " for " + call.pkg + ": " + e.getMessage());
++                    }
++                }
++            }
++            logUse(call, "restore permissions of");
++        } finally {
++            Binder.restoreCallingIdentity(ident);
++        }
++    }
++
++    /** An op from its `appops get` name ("CAMERA"), or -1. */
++    private static int opCode(String name) {
++        if (name == null) return -1;
++        try {
++            return AppOpsManager.strDebugOpToOp(name);
++        } catch (IllegalArgumentException e) {
++            return -1;
++        }
++    }
++
++    private static void closeQuietly(ParcelFileDescriptor pfd) {
++        if (pfd == null) return;
++        try {
++            pfd.close();
++        } catch (IOException ignored) {
++        }
++    }
++
++    /** Just enough tar for APK archives: ustar and GNU headers, GNU long names, pax paths. */
++    static final class TarReader {
++        static final class Entry {
++            String name;
++            long size;
++            boolean isFile;
++        }
++
++        private final DataInputStream mIn;
++        private final byte[] mBuf = new byte[64 * 1024];
++
++        TarReader(InputStream in) {
++            mIn = new DataInputStream(in);
++        }
++
++        Entry next() throws IOException {
++            String longName = null;
++            byte[] h = new byte[512];
++            while (true) {
++                try {
++                    mIn.readFully(h);
++                } catch (EOFException e) {
++                    return null;
++                }
++                boolean zero = true;
++                for (byte b : h) if (b != 0) zero = false;
++                if (zero) return null;
++                char type = h[156] == 0 ? '0' : (char) h[156];
++                long size = number(h, 124, 12);
++                if (type == 'L' || type == 'x') {
++                    if (size > 64 * 1024) throw new IOException("oversized tar header");
++                    byte[] data = new byte[(int) size];
++                    mIn.readFully(data);
++                    skipPadding(size);
++                    String text = new String(data, StandardCharsets.UTF_8);
++                    if (type == 'L') {
++                        longName = text.indexOf('\0') >= 0 ? text.substring(0, text.indexOf('\0')) : text;
++                    } else {
++                        for (String rec : text.split("\n")) {
++                            int sp = rec.indexOf(' ');
++                            if (sp > 0 && rec.startsWith("path=", sp + 1)) longName = rec.substring(sp + 6);
++                        }
++                    }
++                    continue;
++                }
++                Entry e = new Entry();
++                e.name = longName != null ? longName : string(h, 0, 100);
++                if (e.name.startsWith("./")) e.name = e.name.substring(2);
++                e.size = size;
++                e.isFile = type == '0' || type == '7';
++                return e;
++            }
++        }
++
++        void copy(Entry e, OutputStream out) throws IOException {
++            long left = e.size;
++            while (left > 0) {
++                int n = mIn.read(mBuf, 0, (int) Math.min(mBuf.length, left));
++                if (n < 0) throw new EOFException("archive ended inside " + e.name);
++                out.write(mBuf, 0, n);
++                left -= n;
++            }
++            skipPadding(e.size);
++        }
++
++        void skip(Entry e) throws IOException {
++            long left = (e.size + 511) / 512 * 512;
++            while (left > 0) {
++                int n = mIn.read(mBuf, 0, (int) Math.min(mBuf.length, left));
++                if (n < 0) throw new EOFException("archive ended inside " + e.name);
++                left -= n;
++            }
++        }
++
++        private void skipPadding(long size) throws IOException {
++            int rem = (int) (size % 512);
++            if (rem != 0) mIn.readFully(new byte[512 - rem]);
++        }
++
++        private static long number(byte[] h, int off, int len) {
++            if ((h[off] & 0x80) != 0) {
++                long v = 0;
++                for (int i = off + 1; i < off + len; i++) v = (v << 8) | (h[i] & 0xff);
++                return v;
++            }
++            long v = 0;
++            for (int i = off; i < off + len && h[i] != 0; i++) {
++                if (h[i] == ' ') continue;
++                if (h[i] < '0' || h[i] > '7') break;
++                v = (v << 3) | (h[i] - '0');
++            }
++            return v;
++        }
++
++        private static String string(byte[] h, int off, int len) {
++            int end = off;
++            while (end < off + len && h[end] != 0) end++;
++            return new String(h, off, end - off, StandardCharsets.UTF_8);
++        }
++    }
++}
+diff --git a/services/core/java/com/android/server/plait/PlaitGrant.java b/services/core/java/com/android/server/plait/PlaitGrant.java
+new file mode 100644
+index 000000000..98e4e7e4b
+--- /dev/null
++++ b/services/core/java/com/android/server/plait/PlaitGrant.java
+@@ -0,0 +1,109 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.server.plait;
++
++import java.nio.charset.StandardCharsets;
++import java.security.PublicKey;
++import java.security.Signature;
++import java.util.Arrays;
++import java.util.Base64;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++
++/**
++ * A grant the Plait Broker manager signed for the backup app: the Java twin of the broker's (and Plait Backup's)
++ * GrantToken, same wire format. `base64url(payload) + "." + base64url(signature)`; the payload is sorted
++ * `key=value` lines, the signature ECDSA P-256 (SHA256withECDSA) over the payload bytes.
++ */
++final class PlaitGrant {
++    static final int VERSION = 1;
++    static final long STANDING = 0L;
++    static final String SCOPE_BACKUP = "backup.apps";
++    static final String SCOPE_RESTORE = "restore.apps";
++    private static final Set<String> KNOWN_SCOPES = Set.of(SCOPE_BACKUP, SCOPE_RESTORE);
++
++    final String packageName;
++    final int uid;
++    final String certSha256;
++    final Set<String> scopes;
++    final Set<String> targets;
++    final long issuedAt;
++    final long expiresAt;
++    final String grantId;
++
++    private PlaitGrant(String packageName, int uid, String certSha256, Set<String> scopes, Set<String> targets,
++            long issuedAt, long expiresAt, String grantId) {
++        this.packageName = packageName;
++        this.uid = uid;
++        this.certSha256 = certSha256;
++        this.scopes = scopes;
++        this.targets = targets;
++        this.issuedAt = issuedAt;
++        this.expiresAt = expiresAt;
++        this.grantId = grantId;
++    }
++
++    boolean allows(String scope, String target, long now) {
++        return scopes.contains(scope)
++                && (targets.isEmpty() || (target != null && targets.contains(target)))
++                && (expiresAt == STANDING || now < expiresAt);
++    }
++
++    /** The grant if [token] is well formed and signed by [key], else null. */
++    static PlaitGrant verify(String token, PublicKey key) {
++        if (token == null) return null;
++        String[] parts = token.split("\\.", -1);
++        if (parts.length != 2) return null;
++        try {
++            byte[] payload = Base64.getUrlDecoder().decode(parts[0]);
++            byte[] sig = Base64.getUrlDecoder().decode(parts[1]);
++            Signature s = Signature.getInstance("SHA256withECDSA");
++            s.initVerify(key);
++            s.update(payload);
++            if (!s.verify(sig)) return null;
++            return parse(new String(payload, StandardCharsets.UTF_8));
++        } catch (Exception e) {
++            return null;
++        }
++    }
++
++    private static PlaitGrant parse(String payload) {
++        Map<String, String> m = new HashMap<>();
++        for (String line : payload.split("\n", -1)) {
++            int i = line.indexOf('=');
++            if (i <= 0) return null;
++            m.put(line.substring(0, i), line.substring(i + 1));
++        }
++        if (!String.valueOf(VERSION).equals(m.get("v"))) return null;
++        try {
++            Set<String> scopes = set(m.get("scopes"));
++            if (scopes.isEmpty() || !KNOWN_SCOPES.containsAll(scopes)) return null;
++            String pkg = m.get("pkg");
++            String cert = m.get("cert");
++            String id = m.get("id");
++            if (pkg == null || cert == null || id == null || id.isEmpty()) return null;
++            return new PlaitGrant(pkg, Integer.parseInt(m.get("uid")), cert, scopes, set(m.get("targets")),
++                    Long.parseLong(m.get("iat")), Long.parseLong(m.get("exp")), id);
++        } catch (RuntimeException e) {
++            return null;
++        }
++    }
++
++    private static Set<String> set(String s) {
++        Set<String> out = new HashSet<>();
++        if (s == null) return out;
++        for (String v : s.split(",", -1)) if (!v.isEmpty()) out.add(v);
++        return out;
++    }
++
++    @Override
++    public String toString() {
++        return "grant " + grantId + " (" + String.join(",", scopes) + ") for " + packageName
++                + (targets.isEmpty() ? "" : " on " + Arrays.toString(targets.toArray()));
++    }
++}
+diff --git a/services/core/java/com/android/server/pm/Installer.java b/services/core/java/com/android/server/pm/Installer.java
+index 18b2933f9..e0c9dae30 100644
+--- a/services/core/java/com/android/server/pm/Installer.java
++++ b/services/core/java/com/android/server/pm/Installer.java
+@@ -705,6 +705,52 @@ public class Installer extends SystemService {
+         }
+     }
+ 
++    // ---- PlaitOS backups (installd PlaitBackup.cpp), for PlaitBackupService only ----
++
++    /** Streams one part of an app's data as tar.zst into out; false if the app has none. */
++    public boolean plaitBackupAppData(String uuid, String pkg, @UserIdInt int userId, int part,
++            ParcelFileDescriptor out) throws InstallerException {
++        if (!checkBeforeRemote()) return false;
++        try {
++            return mInstalld.plaitBackupAppData(uuid, pkg, userId, part, out);
++        } catch (Exception e) {
++            throw InstallerException.from(e);
++        }
++    }
++
++    /** Replaces one part of an app's data with a tar.zst stream (owned by the app, relabelled). */
++    public void plaitRestoreAppData(String uuid, String pkg, @UserIdInt int userId, int appId,
++            String seInfo, int part, ParcelFileDescriptor source) throws InstallerException {
++        if (!checkBeforeRemote()) return;
++        try {
++            mInstalld.plaitRestoreAppData(uuid, pkg, userId, appId, seInfo, part, source);
++        } catch (Exception e) {
++            throw InstallerException.from(e);
++        }
++    }
++
++    /** Streams the *.apk files of an app's code dir as tar.zst into out. */
++    public void plaitBackupApks(String codePath, ParcelFileDescriptor out)
++            throws InstallerException {
++        if (!checkBeforeRemote()) return;
++        try {
++            mInstalld.plaitBackupApks(codePath, out);
++        } catch (Exception e) {
++            throw InstallerException.from(e);
++        }
++    }
++
++    /** zstd decompression from source to out. */
++    public void plaitZstdDecompress(ParcelFileDescriptor source, ParcelFileDescriptor out)
++            throws InstallerException {
++        if (!checkBeforeRemote()) return;
++        try {
++            mInstalld.plaitZstdDecompress(source, out);
++        } catch (Exception e) {
++            throw InstallerException.from(e);
++        }
++    }
++
+     /**
+      * Snapshots user data of the given package.
+      *
+diff --git a/services/java/com/android/server/SystemServer.java b/services/java/com/android/server/SystemServer.java
+index fb3a9e758..0f13355c3 100644
+--- a/services/java/com/android/server/SystemServer.java
++++ b/services/java/com/android/server/SystemServer.java
+@@ -247,6 +247,7 @@ import com.android.server.pm.permission.PermissionMigrationHelper;
+ import com.android.server.pm.permission.PermissionMigrationHelperImpl;
+ import com.android.server.pm.verify.domain.DomainVerificationService;
+ import com.android.server.pocket.PocketBridgeService;
++import com.android.server.plait.PlaitBackupService;
+ import com.android.server.pocket.PocketService;
+ import com.android.server.policy.AppOpsPolicy;
+ import com.android.server.policy.PermissionPolicyService;
+@@ -529,6 +530,8 @@ public final class SystemServer implements Dumpable {
+ 
+     private Context mSystemContext;
+     private SystemServiceManager mSystemServiceManager;
++    // PlaitOS: installd connection for the plait_backup service
++    private Installer mPlaitInstaller;
+ 
+     // TODO: remove all of these references by improving dependency resolution and boot phases
+     private PowerManagerService mPowerManagerService;
+@@ -1258,6 +1261,7 @@ public final class SystemServer implements Dumpable {
+         // permissions.  We need this to complete before we initialize other services.
+         t.traceBegin("StartInstaller");
+         Installer installer = mSystemServiceManager.startService(Installer.class);
++        mPlaitInstaller = installer;
+         t.traceEnd();
+ 
+         // In some cases after launching an app we need to access device identifiers,
+@@ -2884,6 +2888,15 @@ public final class SystemServer implements Dumpable {
+             mSystemServiceManager.startService(CrossProfileAppsService.class);
+             t.traceEnd();
+ 
++            t.traceBegin("StartPlaitBackupService");
++            try {
++                ServiceManager.addService(PlaitBackupService.SERVICE,
++                        new PlaitBackupService(context, mPlaitInstaller));
++            } catch (Throwable e) {
++                reportWtf("starting PlaitBackupService", e);
++            }
++            t.traceEnd();
++
+             if (context.getResources().getBoolean(
+                     com.android.internal.R.bool.config_pocketModeSupported)) {
+                 t.traceBegin("StartPocketService");
+-- 
+2.56.0
+

@@ -1,0 +1,90 @@
+From 832779e437038c3e7b37f7fa16894664a0390b54 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:13:15 -0600
+Subject: [PATCH 54/75] PlaitOS: adapt always-on display while charging to
+ GrapheneOS
+
+- Key is Settings.Secure plait_doze_on_charge (default off) instead of a new
+  Settings API constant
+- Same conditions as the normal AOD switch: display support and no color
+  inversion (alwaysOnChargingEnabled skipped both)
+- Plugged in is enough: with a charge limit GrapheneOS holds the battery at
+  80% and reports "not charging" on the charger, which turned AOD off there;
+  PowerManagerService already only checks mIsPowered
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../display/AmbientDisplayConfiguration.java  | 23 ++++++++++---------
+ .../server/power/PowerManagerService.java     |  2 +-
+ 2 files changed, 13 insertions(+), 12 deletions(-)
+
+diff --git a/core/java/android/hardware/display/AmbientDisplayConfiguration.java b/core/java/android/hardware/display/AmbientDisplayConfiguration.java
+index 2be38a1df..325c39008 100644
+--- a/core/java/android/hardware/display/AmbientDisplayConfiguration.java
++++ b/core/java/android/hardware/display/AmbientDisplayConfiguration.java
+@@ -45,6 +45,9 @@ import java.util.Map;
+ public class AmbientDisplayConfiguration {
+     private static final IntentFilter sIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+ 
++    /** PlaitOS: Settings.Secure key (written by Plait Settings): AOD while plugged in. */
++    private static final String DOZE_ON_CHARGE = "plait_doze_on_charge";
++
+     private final Context mContext;
+     private final boolean mAlwaysOnByDefault;
+     private final boolean mPickupGestureEnabledByDefault;
+@@ -63,7 +66,7 @@ public class AmbientDisplayConfiguration {
+             Settings.Secure.DOZE_WAKE_LOCK_SCREEN_GESTURE,
+             Settings.Secure.DOZE_WAKE_DISPLAY_GESTURE,
+             Settings.Secure.DOZE_TAP_SCREEN_GESTURE,
+-            Settings.Secure.DOZE_ON_CHARGE
++            DOZE_ON_CHARGE
+     };
+ 
+     /** Non-user configurable doze settings */
+@@ -274,21 +277,19 @@ public class AmbientDisplayConfiguration {
+     /** @hide */
+     public boolean alwaysOnChargingEnabledSetting(int user) {
+         return Settings.Secure.getIntForUser(mContext.getContentResolver(),
+-            Settings.Secure.DOZE_ON_CHARGE, 0, user) == 1;
++            DOZE_ON_CHARGE, 0, user) == 1;
+     }
+ 
+     private boolean alwaysOnChargingEnabled(int user) {
+-        if (alwaysOnChargingEnabledSetting(user)) {
++        // PlaitOS: same conditions as the normal AOD switch (display support, no color inversion)
++        if (alwaysOnChargingEnabledSetting(user) && alwaysOnAvailable()
++                && !accessibilityInversionEnabled(user)) {
+             final Intent intent = mContext.registerReceiver(null, sIntentFilter, Context.RECEIVER_NOT_EXPORTED);
+             if (intent != null) {
+-                int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+-                boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+-                            status == BatteryManager.BATTERY_STATUS_FULL;
+-                int plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
+-                boolean isPlugged = plugged == BatteryManager.BATTERY_PLUGGED_AC || 
+-                            plugged == BatteryManager.BATTERY_PLUGGED_USB ||
+-                            plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS;
+-                return isPlugged && isCharging;
++                // PlaitOS: plugged in is enough. A charge limit (GrapheneOS can hold the
++                // battery at 80%) reports "not charging" while on the charger, which would
++                // turn AOD off there; PowerManagerService also only checks mIsPowered.
++                return intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0;
+             }
+         }
+         return false;
+diff --git a/services/core/java/com/android/server/power/PowerManagerService.java b/services/core/java/com/android/server/power/PowerManagerService.java
+index 715aa8dee..d0b10fa01 100644
+--- a/services/core/java/com/android/server/power/PowerManagerService.java
++++ b/services/core/java/com/android/server/power/PowerManagerService.java
+@@ -1591,7 +1591,7 @@ public final class PowerManagerService extends SystemService
+                 Settings.Secure.DOZE_ALWAYS_ON),
+                 false, mSettingsObserver, UserHandle.USER_ALL);
+         resolver.registerContentObserver(Settings.Secure.getUriFor(
+-                Settings.Secure.DOZE_ON_CHARGE),
++                "plait_doze_on_charge"),
+                 false, mSettingsObserver, UserHandle.USER_ALL);
+         resolver.registerContentObserver(Settings.Secure.getUriFor(
+                 Settings.Secure.DOUBLE_TAP_TO_WAKE),
+-- 
+2.56.0
+

@@ -1,0 +1,32 @@
+From fd43d642073e1be9963ce6c693e5b8b8071f5293 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 10:08:59 -0600
+Subject: [PATCH 73/75] PlaitOS: allow FORCE_STOP_PACKAGES for the launcher
+
+Slim Recents (built into Launcher3) has a "force stop" option on each
+card. FORCE_STOP_PACKAGES is signature|privileged, so the privileged
+launcher needs it in its privapp allowlist (an unlisted privileged
+permission stops the boot).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ data/etc/com.android.launcher3.xml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/data/etc/com.android.launcher3.xml b/data/etc/com.android.launcher3.xml
+index 9594194dd..7e26603a1 100644
+--- a/data/etc/com.android.launcher3.xml
++++ b/data/etc/com.android.launcher3.xml
+@@ -29,6 +29,8 @@
+         <permission name="android.permission.ACCESS_HIDDEN_PROFILES_FULL"/>
+         <permission name="android.permission.READ_REMOTE_TASKS"/>
+         <permission name="android.permission.REQUEST_TASK_HANDOFF"/>
++        <!-- PlaitOS: Slim Recents "force stop" card option -->
++        <permission name="android.permission.FORCE_STOP_PACKAGES"/>
+         <!-- Permissions for showing personal context results in cue bar -->
+         <permission name="android.permission.PERSONAL_CONTEXT_PUBLISH_HINTS"/>
+         <permission name="android.permission.PERSONAL_CONTEXT_RECEIVE_INSIGHTS"/>
+-- 
+2.56.0
+

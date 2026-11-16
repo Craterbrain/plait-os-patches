@@ -1,0 +1,61 @@
+From d2db98715f711e5a80a779818a4f37d4f0e56d73 Mon Sep 17 00:00:00 2001
+From: minaripenguin <minaripenguin@users.noreply.github.com>
+Date: Wed, 16 Oct 2024 14:59:00 +0800
+Subject: [PATCH 50/75] AutoAODService: Add null checks to mSharedPreferences
+
+crash:
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: *** FATAL EXCEPTION IN SYSTEM PROCESS: main
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: java.lang.NullPointerException: Attempt to invoke interface method 'android.content.SharedPreferences$Editor android.content.SharedPreferences.edit()' on a null object reference
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at com.android.server.display.AutoAODService$SettingsObserver.onChange(AutoAODService.java:220)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.database.ContentObserver.onChange(ContentObserver.java:184)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.database.ContentObserver.onChange(ContentObserver.java:202)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.database.ContentObserver.onChange(ContentObserver.java:224)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.database.ContentObserver.onChange(ContentObserver.java:236)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.database.ContentObserver.lambda$dispatchChange$1(ContentObserver.java:332)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.database.ContentObserver.$r8$lambda$_30FqRqKC3pUku8T3BsVPQAFotM(Unknown Source:0)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.database.ContentObserver$$ExternalSyntheticLambda1.run(D8$$SyntheticClass:0)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.os.Handler.handleCallback(Handler.java:959)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:100)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:232)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:317)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at com.android.server.SystemServer.run(SystemServer.java:981)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at com.android.server.SystemServer.main(SystemServer.java:665)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+10-16 14:49:40.890  1663  1663 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:864)
+
+Signed-off-by: minaripenguin <minaripenguin@users.noreply.github.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ .../com/android/server/display/AutoAODService.java     | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/services/core/java/com/android/server/display/AutoAODService.java b/services/core/java/com/android/server/display/AutoAODService.java
+index 89d8557dd..f30ddc1b7 100644
+--- a/services/core/java/com/android/server/display/AutoAODService.java
++++ b/services/core/java/com/android/server/display/AutoAODService.java
+@@ -212,12 +212,16 @@ public class AutoAODService extends SystemService {
+                     // we have a future alarm set and user left current state
+                     // save the next alarm
+                     Slog.v(TAG, "user abandoned state. active: " + mActive);
+-                    mSharedPreferences.edit()
+-                            .putLong(PREF_TIME_KEY, mLastSetTime).apply();
++                    if (mSharedPreferences != null) {
++                        mSharedPreferences.edit()
++                                .putLong(PREF_TIME_KEY, mLastSetTime).apply();
++                    }
+                     return;
+                 }
+                 Slog.v(TAG, "removing PREF_TIME_KEY. active: " + mActive);
+-                mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
++                if (mSharedPreferences != null) {
++                    mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
++                }
+                 return;
+             }
+             mHandler.post(() -> initState());
+-- 
+2.56.0
+

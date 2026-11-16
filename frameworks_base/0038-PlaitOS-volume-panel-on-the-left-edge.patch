@@ -1,0 +1,121 @@
+From 01da67d65acfef61993e3772fcacd6f78d10324f Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 21:55:00 -0600
+Subject: [PATCH 38/75] PlaitOS: volume panel on the left edge
+
+Android 17 replaced VolumeDialogImpl (where LineageOS and crDroid had their
+left-side options) with the new volume dialog, so this is new code: with
+Settings.System plait_volume_panel_left set (default off), the vertical panel
+anchors to the left edge and slides in from the left. The dialog is built
+for each show, so the setting is read then, for the current user. The
+horizontal (large screen) panel is unchanged.
+
+The panel timeout needs no patch: the new dialog already honors
+Settings.Secure.VOLUME_DIALOG_DISMISS_TIMEOUT.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../systemui/volume/dialog/VolumeDialog.kt    | 26 ++++++++++++++++++-
+ .../ui/binder/VolumeDialogViewBinder.kt       |  6 ++++-
+ 2 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/volume/dialog/VolumeDialog.kt b/packages/SystemUI/src/com/android/systemui/volume/dialog/VolumeDialog.kt
+index debe130e3..8103127ed 100644
+--- a/packages/SystemUI/src/com/android/systemui/volume/dialog/VolumeDialog.kt
++++ b/packages/SystemUI/src/com/android/systemui/volume/dialog/VolumeDialog.kt
+@@ -18,11 +18,14 @@ package com.android.systemui.volume.dialog
+ 
+ import android.content.Context
+ import android.os.Bundle
++import android.os.UserHandle
++import android.provider.Settings
+ import android.view.Gravity
+ import android.view.MotionEvent
+ import android.view.View
+ import android.view.ViewGroup
+ import android.view.WindowManager
++import android.widget.FrameLayout
+ import androidx.activity.ComponentDialog
+ import com.android.app.tracing.coroutines.coroutineScopeTraced
+ import com.android.systemui.dagger.qualifiers.Application
+@@ -50,6 +53,9 @@ constructor(
+         fun create(isVolumeDialogVertical: Boolean): VolumeDialog
+     }
+ 
++    // PlaitOS: the vertical panel can sit on the left edge (read per dialog; one is built per show)
++    private val isOnLeft = isVolumeDialogVertical && isVolumePanelOnLeft(context)
++
+     init {
+         with(window!!) {
+             addFlags(
+@@ -68,7 +74,7 @@ constructor(
+                 }
+             if (isVolumeDialogVertical) {
+                 setLayout(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT)
+-                setGravity(Gravity.END)
++                setGravity(if (isOnLeft) Gravity.LEFT else Gravity.END)
+             } else {
+                 setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                 setGravity(Gravity.TOP or Gravity.END)
+@@ -82,6 +88,13 @@ constructor(
+         super.onCreate(savedInstanceState)
+         if (isVolumeDialogVertical) {
+             setContentView(R.layout.volume_dialog)
++            if (isOnLeft) {
++                val root = requireViewById<View>(R.id.volume_dialog)
++                (root.layoutParams as? FrameLayout.LayoutParams)?.let {
++                    it.gravity = Gravity.LEFT
++                    root.layoutParams = it
++                }
++            }
+         } else {
+             setContentView(R.layout.volume_dialog_horizontal)
+         }
+@@ -112,3 +125,14 @@ constructor(
+         return false
+     }
+ }
++
++/** Settings.System key (written by Plait Settings): show the volume panel on the left edge. */
++const val PLAIT_VOLUME_PANEL_LEFT = "plait_volume_panel_left"
++
++fun isVolumePanelOnLeft(context: Context): Boolean =
++    Settings.System.getIntForUser(
++        context.contentResolver,
++        PLAIT_VOLUME_PANEL_LEFT,
++        0,
++        UserHandle.USER_CURRENT,
++    ) != 0
+diff --git a/packages/SystemUI/src/com/android/systemui/volume/dialog/ui/binder/VolumeDialogViewBinder.kt b/packages/SystemUI/src/com/android/systemui/volume/dialog/ui/binder/VolumeDialogViewBinder.kt
+index ea9bc1cac..aac691cb5 100644
+--- a/packages/SystemUI/src/com/android/systemui/volume/dialog/ui/binder/VolumeDialogViewBinder.kt
++++ b/packages/SystemUI/src/com/android/systemui/volume/dialog/ui/binder/VolumeDialogViewBinder.kt
+@@ -18,11 +18,13 @@ package com.android.systemui.volume.dialog.ui.binder
+ 
+ import android.app.Dialog
+ import android.content.Context
++import android.view.Gravity
+ import android.view.MotionEvent
+ import android.view.View
+ import android.view.ViewGroup
+ import android.view.WindowInsets
+ import android.view.accessibility.AccessibilityEvent
++import android.widget.FrameLayout
+ import androidx.compose.ui.util.lerp
+ import androidx.constraintlayout.widget.ConstraintLayout
+ import androidx.core.view.updateLayoutParams
+@@ -235,7 +237,9 @@ constructor(
+      */
+     private fun View.applyAnimationProgress(fraction: Float) {
+         alpha = ceil(fraction)
+-        translationX = lerp(width, 0, fraction).toFloat()
++        // PlaitOS: slide in from the left edge when the panel sits there (see VolumeDialog)
++        val onLeft = (layoutParams as? FrameLayout.LayoutParams)?.gravity == Gravity.LEFT
++        translationX = lerp(if (onLeft) -width else width, 0, fraction).toFloat()
+     }
+ 
+     private suspend fun View.applyVerticalOffset(offsetPx: Float, shouldAnimate: Boolean) {
+-- 
+2.56.0
+

@@ -1,0 +1,113 @@
+From 2ae04e7d9e46798c1d38c8cc2eb89f39a778a84a Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 21:57:16 -0600
+Subject: [PATCH 45/75] PlaitOS: adapt QS brightness slider position to
+ GrapheneOS
+
+- Keys are Settings.Secure plait_qs_brightness_slider_position (0 top,
+  1 bottom) and plait_qs_show_brightness_slider (0 hidden, 1 full Quick
+  Settings, 2 also the first pull-down); unset = stock (top, full QS only)
+- Keep the stock spacing of the full Quick Settings column; the port had
+  switched it to the tile margin for everyone
+- Show the slider at the bottom position when media sits in a row beside
+  the tiles too (it was dropped in that layout)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../qs/composefragment/QSFragmentCompose.kt   | 28 +++++++++++++------
+ 1 file changed, 20 insertions(+), 8 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/qs/composefragment/QSFragmentCompose.kt b/packages/SystemUI/src/com/android/systemui/qs/composefragment/QSFragmentCompose.kt
+index 7e5adc5b3..39263e211 100644
+--- a/packages/SystemUI/src/com/android/systemui/qs/composefragment/QSFragmentCompose.kt
++++ b/packages/SystemUI/src/com/android/systemui/qs/composefragment/QSFragmentCompose.kt
+@@ -27,6 +27,7 @@ import android.graphics.Rect
+ import android.os.Bundle
+ import android.os.Trace
+ import android.os.UserHandle
++import android.provider.Settings
+ import android.view.LayoutInflater
+ import android.view.MotionEvent
+ import android.view.View
+@@ -175,7 +176,6 @@ import kotlinx.coroutines.flow.collectLatest
+ import kotlinx.coroutines.flow.combine
+ import kotlinx.coroutines.flow.map
+ import kotlinx.coroutines.launch
+-import lineageos.providers.LineageSettings
+ 
+ @SuppressLint("ValidFragment")
+ class QSFragmentCompose
+@@ -1486,8 +1486,9 @@ fun QuickSettingsLayout(
+     val sliderAtTop = brightnessSettings.sliderAtTop
+     val showSlider = brightnessSettings.showSlider
+ 
++    // PlaitOS: keep the stock spacing of the full panel
+     Column(
+-        verticalArrangement = spacedBy(dimensionResource(R.dimen.qs_tile_margin_vertical)),
++        verticalArrangement = spacedBy(QuickSettingsShade.Dimensions.VerticalPadding),
+         horizontalAlignment = Alignment.CenterHorizontally
+     ) {
+         if (showSlider != 0 && sliderAtTop) {
+@@ -1502,6 +1503,10 @@ fun QuickSettingsLayout(
+                 Box(modifier = Modifier.weight(1f)) { tiles() }
+                 Box(modifier = Modifier.weight(1f)) { media() }
+             }
++            // PlaitOS: the bottom position also applies when media sits beside the tiles
++            if (showSlider != 0 && !sliderAtTop) {
++                brightness()
++            }
+         } else {
+             tiles()
+             if (showSlider != 0 && !sliderAtTop) {
+@@ -1567,15 +1572,15 @@ private fun rememberQsBrightnessSettings(): QsBrightnessSettings {
+ 
+     fun readCurrent(): QsBrightnessSettings {
+         val position = runCatching {
+-            LineageSettings.Secure.getIntForUser(
+-                cr, LineageSettings.Secure.QS_BRIGHTNESS_SLIDER_POSITION,
++            Settings.Secure.getIntForUser(
++                cr, PLAIT_QS_BRIGHTNESS_SLIDER_POSITION,
+                 0, UserHandle.USER_CURRENT
+             )
+         }.getOrElse { 0 }
+ 
+         val showSliderValue = runCatching {
+-            LineageSettings.Secure.getIntForUser(
+-                cr, LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER,
++            Settings.Secure.getIntForUser(
++                cr, PLAIT_QS_SHOW_BRIGHTNESS_SLIDER,
+                 1, UserHandle.USER_CURRENT
+             )
+         }.getOrElse { 1 }
+@@ -1600,11 +1605,11 @@ private fun rememberQsBrightnessSettings(): QsBrightnessSettings {
+         }
+ 
+         cr.registerContentObserver(
+-            LineageSettings.Secure.getUriFor(LineageSettings.Secure.QS_BRIGHTNESS_SLIDER_POSITION),
++            Settings.Secure.getUriFor(PLAIT_QS_BRIGHTNESS_SLIDER_POSITION),
+             false, observer, UserHandle.USER_ALL
+         )
+         cr.registerContentObserver(
+-            LineageSettings.Secure.getUriFor(LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER),
++            Settings.Secure.getUriFor(PLAIT_QS_SHOW_BRIGHTNESS_SLIDER),
+             false, observer, UserHandle.USER_ALL
+         )
+ 
+@@ -1616,6 +1621,13 @@ private fun rememberQsBrightnessSettings(): QsBrightnessSettings {
+     return state
+ }
+ 
++/**
++ * Settings.Secure keys (written by Plait Settings). Position: 0 top (default), 1 bottom.
++ * Show: 0 hidden, 1 full Quick Settings only (default, as stock), 2 also the first pull-down.
++ */
++private const val PLAIT_QS_BRIGHTNESS_SLIDER_POSITION = "plait_qs_brightness_slider_position"
++private const val PLAIT_QS_SHOW_BRIGHTNESS_SLIDER = "plait_qs_show_brightness_slider"
++
+ private data class QsBrightnessSettings(
+     val sliderAtTop: Boolean,
+     val showSlider: Int,
+-- 
+2.56.0
+

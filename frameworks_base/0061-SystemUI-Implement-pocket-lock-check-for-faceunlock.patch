@@ -1,0 +1,70 @@
+From b395d05579d31adaa2b5d020b1f3d2a65ba3451d Mon Sep 17 00:00:00 2001
+From: Fabian Leutenegger <fabian.leutenegger@bluewin.ch>
+Date: Tue, 14 Jan 2025 09:20:06 +0100
+Subject: [PATCH 61/75] SystemUI: Implement pocket lock check for faceunlock
+
+Change-Id: I36007db4e07ffb927192871edcf5bd6a3f99ed5a
+Signed-off-by: Dmitrii <bankersenator@gmail.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ .../SystemUIDeviceEntryFaceAuthInteractor.kt  | 20 ++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/deviceentry/domain/interactor/SystemUIDeviceEntryFaceAuthInteractor.kt b/packages/SystemUI/src/com/android/systemui/deviceentry/domain/interactor/SystemUIDeviceEntryFaceAuthInteractor.kt
+index f14e91a55..52b1bb421 100644
+--- a/packages/SystemUI/src/com/android/systemui/deviceentry/domain/interactor/SystemUIDeviceEntryFaceAuthInteractor.kt
++++ b/packages/SystemUI/src/com/android/systemui/deviceentry/domain/interactor/SystemUIDeviceEntryFaceAuthInteractor.kt
+@@ -20,6 +20,8 @@ import android.app.trust.TrustManager
+ import android.content.Context
+ import android.hardware.biometrics.BiometricFaceConstants
+ import android.hardware.biometrics.BiometricSourceType
++import android.pocket.IPocketCallback
++import android.pocket.PocketManager
+ import android.security.Flags.secureLockDevice
+ import android.service.dreams.Flags.dreamsV2
+ import com.android.keyguard.KeyguardUpdateMonitor
+@@ -122,7 +124,22 @@ constructor(
+ 
+     private val listeners: MutableList<FaceAuthenticationListener> = mutableListOf()
+ 
++    private var isDeviceInPocket: Boolean = false
++    private var pocketManager: PocketManager? = context.getSystemService(Context.POCKET_SERVICE) as? PocketManager
++    private val pocketCallback = object : IPocketCallback.Stub() {
++        override fun onStateChanged(state: Boolean, reason: Int) {
++            if (reason == PocketManager.REASON_SENSOR) {
++                isDeviceInPocket = state
++            } else {
++                isDeviceInPocket = false
++            }
++        }
++    }
++
+     override fun start() {
++        // Register pocket callback to detect pocket state changes
++        pocketManager?.addCallback(pocketCallback)
++
+         // Todo(b/310594096): there is a dependency cycle introduced by the repository depending on
+         //  KeyguardBypassController, which in turn depends on KeyguardUpdateMonitor through
+         //  its other dependencies. Once bypassEnabled state is available through a repository, we
+@@ -387,7 +404,7 @@ constructor(
+ 
+     fun isAuthOrDetectRunning(): Boolean = isAuthRunning() || isDetectRunning()
+ 
+-    override fun canFaceAuthRun(): Boolean = repository.canRunFaceAuth.value
++    override fun canFaceAuthRun(): Boolean = repository.canRunFaceAuth.value && !isDeviceInPocket
+ 
+     override fun isFaceAuthStrong(): Boolean =
+         facePropertyRepository.sensorInfo.value?.strength == SensorStrength.STRONG
+@@ -450,6 +467,7 @@ constructor(
+         authenticationStatus.filterIsInstance<SuccessFaceAuthenticationStatus>()
+ 
+     private fun runFaceAuth(uiEvent: FaceAuthUiEvent, fallbackToDetect: Boolean) {
++        if (isDeviceInPocket) return
+         if (
+             secureLockDevice() &&
+                 (_pendingFaceAuthConfirmationInSecureLockDevice.value ||
+-- 
+2.56.0
+

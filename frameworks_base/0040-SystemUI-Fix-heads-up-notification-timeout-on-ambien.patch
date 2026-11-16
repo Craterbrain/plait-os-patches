@@ -1,0 +1,48 @@
+From 5cb2fa11c7ef429941bfbabbe82d0a4d0b254474 Mon Sep 17 00:00:00 2001
+From: HELLBOY017 <abhaygill017@gmail.com>
+Date: Wed, 22 Mar 2023 18:35:31 +0530
+Subject: [PATCH 40/75] SystemUI: Fix heads up notification timeout on ambient
+ display
+
+Thanks to prochy-exe for pointing it out.
+
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ .../statusbar/notification/headsup/HeadsUpManagerImpl.java   | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java b/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
+index c8c4f1c2b..797272097 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
+@@ -124,6 +124,7 @@ public class HeadsUpManagerImpl
+     private int mAutoDismissTime;
+     private final DelayableExecutor mExecutor;
+     private final int mDecayDefault;
++    private boolean mDozing;
+ 
+     private final int mExtensionTime;
+ 
+@@ -1250,6 +1251,7 @@ public class HeadsUpManagerImpl
+ 
+         @Override
+         public void onDozingChanged(boolean isDozing) {
++            mDozing = isDozing;
+             if (!isDozing) {
+                 // Let's make sure all huns we got while dozing time out within the normal timeout
+                 // duration. Otherwise they could get stuck for a very long time
+@@ -1422,7 +1424,8 @@ public class HeadsUpManagerImpl
+ 
+             FinishTimeUpdater finishTimeCalculator = () -> {
+                 RemainingDuration remainingDuration =
+-                        mAvalancheController.getDuration(this, mAutoDismissTime);
++                        mAvalancheController.getDuration(this,
++                        mDozing ? mDecayDefault * 1000 : mAutoDismissTime);
+ 
+                 if (remainingDuration instanceof RemainingDuration.HideImmediately) {
+                     if (AvalancheReplaceHunWhenCritical.isEnabled()) {
+-- 
+2.56.0
+
