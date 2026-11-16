@@ -1,0 +1,92 @@
+From c7060f60a64e6fb81d7ad89f81f95e0e4fde8803 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 08:46:03 -0600
+Subject: [PATCH] PlaitOS: name PlaitOS in user-visible text, drop
+ grapheneos.org links
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ res/values/strings_app_exploit_protection.xml                 | 2 +-
+ res/values/strings_ext.xml                                    | 4 ++--
+ src/com/android/settings/applications/AppExecSpawning.kt      | 1 -
+ src/com/android/settings/applications/AppHardenedMalloc.kt    | 1 -
+ .../android/settings/security/AutoRebootPrefController.java   | 3 +--
+ 5 files changed, 4 insertions(+), 7 deletions(-)
+
+diff --git a/res/values/strings_app_exploit_protection.xml b/res/values/strings_app_exploit_protection.xml
+index 59348a1..8d45b02 100644
+--- a/res/values/strings_app_exploit_protection.xml
++++ b/res/values/strings_app_exploit_protection.xml
+@@ -34,7 +34,7 @@ This behavior can be disabled in the %2$s section.</string>
+     <string name="aep_ir_exploit_protection_compat_mode">%1$s is enabled</string>
+ 
+     <string name="aep_compat_mode_title">Exploit protection compatibility mode</string>
+-    <string name="aep_compat_mode_summary">Improves compatibility by disabling some of the GrapheneOS exploit protections for this app</string>
++    <string name="aep_compat_mode_summary">Improves compatibility by disabling some of the PlaitOS exploit protections for this app</string>
+ 
+     <string name="aep_hmalloc">Hardened memory allocator</string>
+     <string name="aep_hmalloc_footer">
+diff --git a/res/values/strings_ext.xml b/res/values/strings_ext.xml
+index 0ac5bf5..83025e7 100644
+--- a/res/values/strings_ext.xml
++++ b/res/values/strings_ext.xml
+@@ -198,7 +198,7 @@ There are HTTP, HTTPS, DNS, DNS-over-TLS and DNS-over-HTTPS connectivity checks.
+     <string name="duress_pwd_pref_title">Duress password</string>
+     <string name="duress_pwd_description">"Duress password can be entered instead of the user password in any place that asks for it, such as the lock screen of any user and any user or work profile password prompt.
+ 
+-Submitting the duress password will immediately make the storage contents permanently inaccessible, delete all eSIMs and then power off the device. GrapheneOS will remain installed.
++Submitting the duress password will immediately make the storage contents permanently inaccessible, delete all eSIMs and then power off the device. PlaitOS will remain installed.
+ 
+ Duress PIN works the same way duress password does."</string>
+     <string name="duress_pwd_enter_pin">Enter duress PIN</string>
+@@ -228,7 +228,7 @@ Duress PIN works the same way duress password does."</string>
+     <string name="alt_touchscreen_mode_confirm_button">Confirm</string>
+ 
+     <string name="app_play_integrity_api">Play Integrity API</string>
+-    <string name="app_play_integrity_top_intro">The Play Integrity API allows services to verify properties of a device through their app. Most services check for the device or strong integrity level which requires having the unmodified stock OS on a device licensing Google Mobile Services. Not every app using it will ban using GrapheneOS. GrapheneOS passes the basic integrity level and the miscellaneous checks for licensing, Play Protect, etc. work fine. We recommend leaving feedback for apps using it to ban GrapheneOS asking them to stop banning using a much more secure OS. Apps can use the standard Android hardware attestation API to verify the hardware, OS and app with GrapheneOS.</string>
++    <string name="app_play_integrity_top_intro">The Play Integrity API allows services to verify properties of a device through their app. Most services check for the device or strong integrity level which requires having the unmodified stock OS on a device licensing Google Mobile Services. Not every app using it will ban using PlaitOS. PlaitOS passes the basic integrity level and the miscellaneous checks for licensing, Play Protect, etc. work fine. We recommend leaving feedback for apps using it to ban PlaitOS asking them to stop banning using a much more secure OS. Apps can use the standard Android hardware attestation API to verify the hardware, OS and app with PlaitOS.</string>
+     <string name="app_play_integrity_contact_app_developer">Contact app developer</string>
+     <string name="app_play_integrity_show_usage_notifications">Show usage notifications</string>
+     <string name="app_play_integrity_block_usage_attempts">Block usage attempts</string>
+diff --git a/src/com/android/settings/applications/AppExecSpawning.kt b/src/com/android/settings/applications/AppExecSpawning.kt
+index 2059f81..2e9802c 100644
+--- a/src/com/android/settings/applications/AppExecSpawning.kt
++++ b/src/com/android/settings/applications/AppExecSpawning.kt
+@@ -56,7 +56,6 @@ class AppDefaultExecSpawningFragment : BoolSettingFragment() {
+ 
+     override fun makeFooterPref(builder: FooterPreference.Builder): FooterPreference {
+         val p = builder.setTitle(R.string.aep_default_exec_spawning_footer).build()
+-        setFooterPrefLearnMoreUri(p, Uri.parse("https://grapheneos.org/usage#exec-spawning"))
+         return p
+     }
+ }
+diff --git a/src/com/android/settings/applications/AppHardenedMalloc.kt b/src/com/android/settings/applications/AppHardenedMalloc.kt
+index aac4953..a080bc5 100644
+--- a/src/com/android/settings/applications/AppHardenedMalloc.kt
++++ b/src/com/android/settings/applications/AppHardenedMalloc.kt
+@@ -42,7 +42,6 @@ class AppHardenedMallocFragment : AswExploitProtectionFragment<AswUseHardenedMal
+ 
+     override fun updateFooter(fp: FooterPreference) {
+         fp.setTitle(R.string.aep_hmalloc_footer)
+-        setLearnMoreLink(fp, "https://grapheneos.org/features#exploit-mitigations")
+     }
+ }
+ 
+diff --git a/src/com/android/settings/security/AutoRebootPrefController.java b/src/com/android/settings/security/AutoRebootPrefController.java
+index 9c00e95..673d772 100644
+--- a/src/com/android/settings/security/AutoRebootPrefController.java
++++ b/src/com/android/settings/security/AutoRebootPrefController.java
+@@ -21,8 +21,7 @@ public class AutoRebootPrefController extends IntSettingPrefController {
+ 
+     @Override
+     public void addPrefsBeforeList(RadioButtonPickerFragment2 fragment, PreferenceScreen screen) {
+-        addFooterPreference(screen, R.string.auto_reboot_footer,
+-                "https://grapheneos.org/features#auto-reboot");
++        addFooterPreference(screen, R.string.auto_reboot_footer);
+     }
+ 
+     @Override
+-- 
+2.56.0
+
