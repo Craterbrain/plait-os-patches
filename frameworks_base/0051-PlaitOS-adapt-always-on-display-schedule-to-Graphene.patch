@@ -1,0 +1,235 @@
+From 996cb90c73aab7ab65d41f4b924188b202cd8a68 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:12:07 -0600
+Subject: [PATCH 51/75] PlaitOS: adapt always-on display schedule to GrapheneOS
+
+- Keys are Settings.Secure plait_doze_always_on_auto_mode (0 off, the
+  default) and plait_doze_always_on_auto_time instead of new Settings API
+  constants
+- The schedule string is parsed defensively: this runs in system_server and
+  a malformed value used to throw on every boot (bootloop); bad values now
+  fall back to 20:00-07:00 with a log line
+- Ignore settings changes until boot completed (twilight and the prefs file
+  are not ready before; initState(true) runs then anyway) and null-check the
+  remaining unguarded shared preferences uses
+- Never wake the screen fully when the schedule turns AOD on with pulsing
+  off (it lit the screen at the scheduled time, in a pocket too); refresh
+  doze with the pulse broadcast only, and drop the now unused helpers
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../server/display/AutoAODService.java        | 99 +++++++++++--------
+ 1 file changed, 60 insertions(+), 39 deletions(-)
+
+diff --git a/services/core/java/com/android/server/display/AutoAODService.java b/services/core/java/com/android/server/display/AutoAODService.java
+index f30ddc1b7..bef8479f3 100644
+--- a/services/core/java/com/android/server/display/AutoAODService.java
++++ b/services/core/java/com/android/server/display/AutoAODService.java
+@@ -24,14 +24,12 @@ import android.content.Intent;
+ import android.content.IntentFilter;
+ import android.content.SharedPreferences;
+ import android.database.ContentObserver;
+-import android.hardware.display.AmbientDisplayConfiguration;
+ import android.net.Uri;
+ import android.os.Environment;
+ import android.os.Handler;
+ import android.os.Looper;
+ import android.os.PowerManager;
+ import android.os.PowerManager.WakeLock;
+-import android.os.SystemClock;
+ import android.os.UserHandle;
+ import android.provider.Settings;
+ import android.util.Slog;
+@@ -54,6 +52,13 @@ public class AutoAODService extends SystemService {
+     private static final String PREF_STATE_KEY = TAG + "_last_state";
+     private static final String PREF_TIME_KEY = TAG + "_last_time";
+     private static final int WAKELOCK_TIMEOUT_MS = 3000;
++    private static final String DEFAULT_TIME = "20:00,07:00";
++
++    // PlaitOS: Settings.Secure keys (written by Plait Settings) instead of new Settings API
++    // constants. Mode: 0 off (default), 1 sunset to sunrise, 2 custom time, 3 sunset to a time,
++    // 4 a time to sunrise. Time: "HH:mm,HH:mm" (from, till).
++    private static final String AUTO_MODE = "plait_doze_always_on_auto_mode";
++    private static final String AUTO_TIME = "plait_doze_always_on_auto_time";
+ 
+     /**
+      * Disabled state (default)
+@@ -82,7 +87,6 @@ public class AutoAODService extends SystemService {
+     private TwilightManager mTwilightManager;
+     private TwilightState mTwilightState;
+     private SharedPreferences mSharedPreferences;
+-    private AmbientDisplayConfiguration mAmbientConfig;
+ 
+     /**
+      * Current operation mode
+@@ -102,6 +106,8 @@ public class AutoAODService extends SystemService {
+     private boolean mTimeRegistered = false;
+     private boolean mSelfChange = false;
+     private boolean mOverrideOnce = false;
++    /** PlaitOS: set at PHASE_BOOT_COMPLETED, when twilight and our prefs are available. */
++    private boolean mBootCompleted = false;
+     private long mLastSetTime = 0;
+ 
+     private final TwilightListener mTwilightListener = new TwilightListener() {
+@@ -185,10 +191,10 @@ public class AutoAODService extends SystemService {
+         void observe() {
+             ContentResolver resolver = mContext.getContentResolver();
+             resolver.registerContentObserver(Settings.Secure.getUriFor(
+-                    Settings.Secure.DOZE_ALWAYS_ON_AUTO_MODE),
++                    AUTO_MODE),
+                     false, this, UserHandle.USER_ALL);
+             resolver.registerContentObserver(Settings.Secure.getUriFor(
+-                    Settings.Secure.DOZE_ALWAYS_ON_AUTO_TIME),
++                    AUTO_TIME),
+                     false, this, UserHandle.USER_ALL);
+             resolver.registerContentObserver(Settings.Secure.getUriFor(
+                     Settings.Secure.DOZE_ALWAYS_ON),
+@@ -224,6 +230,7 @@ public class AutoAODService extends SystemService {
+                 }
+                 return;
+             }
++            if (!mBootCompleted) return; // initState(true) runs at boot completed
+             mHandler.post(() -> initState());
+         }
+     }
+@@ -263,6 +270,7 @@ public class AutoAODService extends SystemService {
+                         UserHandle.USER_SYSTEM), PREF_DIR_NAME), PREF_FILE_NAME);
+             mSharedPreferences = mContext.createDeviceProtectedStorageContext()
+                     .getSharedPreferences(prefsFile, Context.MODE_PRIVATE);
++            mBootCompleted = true;
+             mHandler.post(() -> initState(true));
+         }
+     }
+@@ -323,7 +331,7 @@ public class AutoAODService extends SystemService {
+      * @param boot true if triggered by boot
+      */
+     private void initState(boolean boot) {
+-        if (boot && mSharedPreferences.contains(PREF_TIME_KEY)) {
++        if (boot && mSharedPreferences != null && mSharedPreferences.contains(PREF_TIME_KEY)) {
+             final long prefTime = mSharedPreferences.getLong(PREF_TIME_KEY, 0);
+             Calendar cal = Calendar.getInstance();
+             cal.setTimeInMillis(prefTime);
+@@ -333,7 +341,7 @@ public class AutoAODService extends SystemService {
+         }
+ 
+         final int mode = Settings.Secure.getIntForUser(mContext.getContentResolver(),
+-                Settings.Secure.DOZE_ALWAYS_ON_AUTO_MODE, MODE_DISABLED,
++                AUTO_MODE, MODE_DISABLED,
+                 UserHandle.USER_CURRENT);
+         mMode = mode;
+         mAlarm.cancel(); // cancelling set alarm
+@@ -341,7 +349,9 @@ public class AutoAODService extends SystemService {
+         if (mTimeRegistered) setTimeReciever(false);
+         if (mTwilightRegistered) setTwilightListener(false);
+         // erase shared preferences
+-        if (!boot) mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
++        if (!boot && mSharedPreferences != null) {
++            mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
++        }
+         switch (mMode) {
+             default:
+             case MODE_DISABLED:
+@@ -421,16 +431,20 @@ public class AutoAODService extends SystemService {
+         Calendar since = Calendar.getInstance();
+         Calendar till = Calendar.getInstance();
+         String value = Settings.Secure.getStringForUser(mContext.getContentResolver(),
+-                Settings.Secure.DOZE_ALWAYS_ON_AUTO_TIME, UserHandle.USER_CURRENT);
+-        if (value == null || value.equals("")) value = "20:00,07:00";
+-        String[] times = value.split(",", 0);
+-        String[] sinceValues = times[0].split(":", 0);
+-        String[] tillValues = times[1].split(":", 0);
+-        since.set(Calendar.HOUR_OF_DAY, Integer.parseInt(sinceValues[0]));
+-        since.set(Calendar.MINUTE, Integer.parseInt(sinceValues[1]));
++                AUTO_TIME, UserHandle.USER_CURRENT);
++        if (value == null || value.equals("")) value = DEFAULT_TIME;
++        // PlaitOS: this runs in system_server, so a malformed value must not throw (it would
++        // crash system_server on every boot); fall back to the default window instead
++        int[] window = parseTimeWindow(value);
++        if (window == null) {
++            Slog.w(TAG, "Bad " + AUTO_TIME + " value \"" + value + "\", using " + DEFAULT_TIME);
++            window = parseTimeWindow(DEFAULT_TIME);
++        }
++        since.set(Calendar.HOUR_OF_DAY, window[0]);
++        since.set(Calendar.MINUTE, window[1]);
+         since.set(Calendar.SECOND, 0);
+-        till.set(Calendar.HOUR_OF_DAY, Integer.parseInt(tillValues[0]));
+-        till.set(Calendar.MINUTE, Integer.parseInt(tillValues[1]));
++        till.set(Calendar.HOUR_OF_DAY, window[2]);
++        till.set(Calendar.MINUTE, window[3]);
+         till.set(Calendar.SECOND, 0);
+ 
+         // handle mixed modes
+@@ -471,6 +485,27 @@ public class AutoAODService extends SystemService {
+                 && currentTime.before(till));
+     }
+ 
++    /** Parses "HH:mm,HH:mm" into {fromHour, fromMinute, tillHour, tillMinute}, or null. */
++    @Nullable
++    private static int[] parseTimeWindow(String value) {
++        try {
++            final String[] times = value.split(",", 0);
++            if (times.length != 2) return null;
++            final String[] since = times[0].trim().split(":", 0);
++            final String[] till = times[1].trim().split(":", 0);
++            if (since.length != 2 || till.length != 2) return null;
++            final int[] out = {Integer.parseInt(since[0]), Integer.parseInt(since[1]),
++                    Integer.parseInt(till[0]), Integer.parseInt(till[1])};
++            if (out[0] < 0 || out[0] > 23 || out[2] < 0 || out[2] > 23
++                    || out[1] < 0 || out[1] > 59 || out[3] < 0 || out[3] > 59) {
++                return null;
++            }
++            return out;
++        } catch (NumberFormatException e) {
++            return null;
++        }
++    }
++
+     /**
+      * Activates or inactivates AOD
+      * @param active Whether to enable or disable AOD
+@@ -481,7 +516,9 @@ public class AutoAODService extends SystemService {
+             mOverrideOnce = false;
+             return;
+         }
+-        mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
++        if (mSharedPreferences != null) {
++            mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
++        }
+ 
+         if (mActive == active) return;
+         mActive = active;
+@@ -496,26 +533,10 @@ public class AutoAODService extends SystemService {
+         if (powerManager.isInteractive()) return; // no need if the screen is already on
+         WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+         wakeLock.acquire(WAKELOCK_TIMEOUT_MS);
+-        if (isDozeEnabled()) {
+-            // trigger doze if it's enabled
+-            final Intent intent = new Intent(PULSE_ACTION);
+-            mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT);
+-        } else {
+-            // turn the screen on if we have to
+-            powerManager.wakeUp(SystemClock.uptimeMillis(),
+-                    PowerManager.WAKE_REASON_APPLICATION, TAG);
+-        }
+-    }
+-
+-    private boolean isDozeEnabled() {
+-        return getAmbientConfig().pulseOnNotificationEnabled(UserHandle.USER_CURRENT);
+-    }
+-
+-    private AmbientDisplayConfiguration getAmbientConfig() {
+-        if (mAmbientConfig == null) {
+-            mAmbientConfig = new AmbientDisplayConfiguration(mContext);
+-        }
+-
+-        return mAmbientConfig;
++        // PlaitOS: refresh doze with a pulse; after it SystemUI re-reads the AOD setting.
++        // Never wake the screen fully (crDroid did when pulsing was off), which would light
++        // the phone up in a pocket at the scheduled time; AOD then starts at the next screen off.
++        final Intent intent = new Intent(PULSE_ACTION);
++        mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT);
+     }
+ }
+-- 
+2.56.0
+

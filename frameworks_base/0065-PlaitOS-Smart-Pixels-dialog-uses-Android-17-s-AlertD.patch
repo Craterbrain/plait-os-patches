@@ -1,0 +1,34 @@
+From 6da29957b38248431a2b51e6c1768dff4eba39f6 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:40:11 -0600
+Subject: [PATCH 65/75] PlaitOS: Smart Pixels dialog uses Android 17's
+ AlertDialogContent
+
+AlertDialogContent moved from com.android.systemui.dialog.ui.composable to
+com.android.compose.dialog (same parameters).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt  | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt
+index e1f8c06bf..f76f6fd79 100644
+--- a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt
+@@ -44,11 +44,11 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+ import com.android.compose.PlatformButton
++import com.android.compose.dialog.AlertDialogContent
+ import com.android.compose.theme.PlatformTheme
+ import com.android.systemui.smartpixel.domain.SmartPixelSettings
+ import com.android.systemui.smartpixel.domain.SmartPixelSettings.Companion.MAX_PERCENT
+ import com.android.systemui.smartpixel.domain.SmartPixelSettings.Companion.MIN_PERCENT
+-import com.android.systemui.dialog.ui.composable.AlertDialogContent
+ import com.android.systemui.res.R
+ import com.android.systemui.shade.domain.interactor.ShadeDialogContextInteractor
+ import com.android.systemui.statusbar.phone.SystemUIDialog
+-- 
+2.56.0
+

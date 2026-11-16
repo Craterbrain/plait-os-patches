@@ -1,0 +1,700 @@
+From 6ecd26b2a6a1f82e2e632b0578247fef409393ff Mon Sep 17 00:00:00 2001
+From: LuK1337 <priv.luk@gmail.com>
+Date: Sun, 28 Dec 2025 22:49:08 +0100
+Subject: [PATCH 33/75] SystemUI: Bring back good ol' circle battery style once
+ again
+
+Change-Id: I8547891db0cecfaac703a049148c666b2b9940c8
+
+[PlaitOS: ported from LineageOS frameworks_base lineage-24.0]
+---
+ .../systemui/statusbar/events/StatusEvent.kt  |  13 +-
+ .../events/SystemEventCoordinator.kt          |  12 +-
+ .../ui/view/BatteryStatusEventComposeChip.kt  |  73 ++++++-
+ .../data/repository/BatteryRepository.kt      |  80 +++++++-
+ .../domain/interactor/BatteryInteractor.kt    |   3 +
+ .../ui/composable/BatteryWithPercent.kt       |   4 +-
+ .../battery/ui/composable/UnifiedBattery.kt   | 194 +++++++++++++++---
+ .../battery/ui/viewmodel/BatteryViewModel.kt  |   7 +
+ 8 files changed, 351 insertions(+), 35 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/events/StatusEvent.kt b/packages/SystemUI/src/com/android/systemui/statusbar/events/StatusEvent.kt
+index 204391c3b..1f5a6da57 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/events/StatusEvent.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/events/StatusEvent.kt
+@@ -74,7 +74,11 @@ class BGImageView(context: Context) : ImageView(context), BackgroundAnimatableVi
+     }
+ }
+ 
+-class BatteryEvent(@IntRange(from = 0, to = 100) val batteryLevel: Int) : StatusEvent {
++class BatteryEvent(
++    @IntRange(from = 0, to = 100) val batteryLevel: Int,
++    val batteryIconStyle: Int,
++    val showPercentNextToIcon: Boolean,
++) : StatusEvent {
+     override val priority = 50
+     override var forceVisible = false
+     override val showAnimation = true
+@@ -83,7 +87,12 @@ class BatteryEvent(@IntRange(from = 0, to = 100) val batteryLevel: Int) : Status
+ 
+     override val viewCreator: ViewCreator = { context ->
+         if (NewStatusBarIcons.isEnabled) {
+-            BatteryStatusEventComposeChip(batteryLevel, context)
++            BatteryStatusEventComposeChip(
++                batteryLevel,
++                batteryIconStyle,
++                showPercentNextToIcon,
++                context,
++            )
+         } else {
+             BatteryStatusChip(context).apply { setBatteryLevel(batteryLevel) }
+         }
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/events/SystemEventCoordinator.kt b/packages/SystemUI/src/com/android/systemui/statusbar/events/SystemEventCoordinator.kt
+index 6d6daf1d6..ffe29916f 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/events/SystemEventCoordinator.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/events/SystemEventCoordinator.kt
+@@ -35,6 +35,7 @@ import com.android.systemui.privacy.PrivacyItem
+ import com.android.systemui.privacy.PrivacyItemController
+ import com.android.systemui.privacy.PrivacyType
+ import com.android.systemui.res.R
++import com.android.systemui.statusbar.pipeline.battery.domain.interactor.BatteryInteractor
+ import com.android.systemui.statusbar.policy.BatteryController
+ import com.android.systemui.util.time.SystemClock
+ import javax.inject.Inject
+@@ -53,6 +54,7 @@ class SystemEventCoordinator
+ constructor(
+     private val systemClock: SystemClock,
+     private val batteryController: BatteryController,
++    private val batteryInteractor: BatteryInteractor,
+     private val privacyController: PrivacyItemController,
+     @DisplayAware private val context: Context,
+     @DisplayAware private val scope: CoroutineScope,
+@@ -92,7 +94,15 @@ constructor(
+     }
+ 
+     fun notifyPluggedIn(@IntRange(from = 0, to = 100) batteryLevel: Int) {
+-        scope.launch(mainCoroutineContext) { scheduler.onStatusEvent(BatteryEvent(batteryLevel)) }
++        scope.launch(mainCoroutineContext) {
++            scheduler.onStatusEvent(
++                BatteryEvent(
++                    batteryLevel,
++                    batteryInteractor.batteryIconStyle.value,
++                    batteryInteractor.showPercentNextToIcon.value,
++                )
++            )
++        }
+     }
+ 
+     fun notifyPrivacyItemsEmpty() {
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/events/ui/view/BatteryStatusEventComposeChip.kt b/packages/SystemUI/src/com/android/systemui/statusbar/events/ui/view/BatteryStatusEventComposeChip.kt
+index f17b6c793..95eee39e4 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/events/ui/view/BatteryStatusEventComposeChip.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/events/ui/view/BatteryStatusEventComposeChip.kt
+@@ -22,23 +22,31 @@ import android.util.AttributeSet
+ import android.view.View
+ import android.widget.FrameLayout
+ import android.widget.LinearLayout
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Row
+ import androidx.compose.foundation.layout.height
+ import androidx.compose.foundation.layout.wrapContentWidth
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.platform.ComposeView
+ import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.platform.LocalDensity
++import androidx.compose.ui.unit.dp
+ import com.android.compose.theme.PlatformTheme
+ import com.android.systemui.res.R
+ import com.android.systemui.statusbar.core.NewStatusBarIcons
+ import com.android.systemui.statusbar.events.BackgroundAnimatableView
++import com.android.systemui.statusbar.pipeline.battery.data.repository.BatteryRepository
+ import com.android.systemui.statusbar.pipeline.battery.domain.interactor.BatteryInteractor
+ import com.android.systemui.statusbar.pipeline.battery.shared.ui.BatteryColors
+ import com.android.systemui.statusbar.pipeline.battery.shared.ui.BatteryGlyph
+ import com.android.systemui.statusbar.pipeline.battery.ui.composable.BatteryLayout
+ import com.android.systemui.statusbar.pipeline.battery.ui.viewmodel.BatteryViewModel
+ import com.android.systemui.statusbar.pipeline.battery.ui.viewmodel.BatteryViewModel.Companion.glyphRepresentation
++import java.text.NumberFormat
+ 
+ /**
+  * [StatusEvent] chip for the battery plugged in status event. Shows the current battery level and
+@@ -49,8 +57,13 @@ import com.android.systemui.statusbar.pipeline.battery.ui.viewmodel.BatteryViewM
+ @SuppressLint("ViewConstructor")
+ class BatteryStatusEventComposeChip
+ @JvmOverloads
+-constructor(level: Int, context: Context, attrs: AttributeSet? = null) :
+-    FrameLayout(context, attrs), BackgroundAnimatableView {
++constructor(
++    level: Int,
++    batteryIconStyle: Int,
++    showPercentNextToIcon: Boolean,
++    context: Context,
++    attrs: AttributeSet? = null,
++) : FrameLayout(context, attrs), BackgroundAnimatableView {
+     private val roundedContainer: LinearLayout
+     private val composeInner: ComposeView
+     override val contentView: View
+@@ -62,7 +75,13 @@ constructor(level: Int, context: Context, attrs: AttributeSet? = null) :
+         inflate(context, R.layout.status_bar_event_chip_compose, this)
+         roundedContainer = requireViewById(R.id.rounded_container)
+         composeInner = requireViewById(R.id.compose_view)
+-        composeInner.apply { setContent { PlatformTheme { UnifiedBatteryChip(level) } } }
++        composeInner.apply {
++            setContent {
++                PlatformTheme {
++                    BatteryAndPercentChip(level, batteryIconStyle, showPercentNextToIcon)
++                }
++            }
++        }
+         updateResources()
+     }
+ 
+@@ -90,7 +109,9 @@ private fun UnifiedBatteryChip(level: Int) {
+         }
+     BatteryLayout(
+         attribution = BatteryGlyph.Bolt, // Always charging
++        iconStyleProvider = { BatteryRepository.ICON_STYLE_DEFAULT },
+         levelProvider = { level },
++        showLevelProvider = { false },
+         isFullProvider = { isFull },
+         glyphsProvider = { level.glyphRepresentation() },
+         colorsProvider = { BatteryColors.DarkTheme.Charging },
+@@ -99,3 +120,49 @@ private fun UnifiedBatteryChip(level: Int) {
+         contentDescription = "",
+     )
+ }
++
++
++@Composable
++private fun BatteryAndPercentChip(
++    level: Int,
++    batteryIconStyle: Int,
++    showPercentNextToIcon: Boolean,
++) {
++    val isFull = BatteryInteractor.isBatteryFull(level)
++    val height =
++        with(LocalDensity.current) {
++            BatteryViewModel.getStatusBarBatteryHeight(LocalContext.current).toDp()
++        }
++    Row(
++        horizontalArrangement = Arrangement.spacedBy(4.dp),
++        verticalAlignment = Alignment.CenterVertically,
++    ) {
++        val isText = batteryIconStyle == BatteryRepository.ICON_STYLE_TEXT
++        if (!isText) {
++            BatteryLayout(
++                attribution = BatteryGlyph.Bolt, // Always charging
++                iconStyleProvider = { batteryIconStyle },
++                levelProvider = { level },
++                showLevelProvider = { false },
++                isFullProvider = { isFull },
++                glyphsProvider = {
++                    if (showPercentNextToIcon) {
++                        emptyList()
++                    } else {
++                        level.glyphRepresentation()
++                    }
++                },
++                colorsProvider = { BatteryColors.DarkTheme.Charging },
++                modifier = Modifier.height(height).wrapContentWidth(),
++                contentDescription = "",
++            )
++        }
++        if (isText || showPercentNextToIcon) {
++            Text(
++                text = NumberFormat.getPercentInstance().format(level / 100f),
++                color = BatteryColors.DarkTheme.Default.fill,
++                style = MaterialTheme.typography.labelLargeEmphasized,
++            )
++        }
++    }
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
+index 260e223d8..578221cc1 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
+@@ -74,6 +74,12 @@ interface BatteryRepository {
+     /** State unknown means that we can't detect a battery */
+     val isStateUnknown: Flow<Boolean>
+ 
++    /**
++     * [LineageSettings.System.STATUS_BAR_BATTERY_STYLE]. A user setting to indicate the battery
++     * style in the home screen status bar
++     */
++    val batteryIconStyle: StateFlow<Int>
++
+     /**
+      * [LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT]. A user setting to indicate whether
+      * we should show the battery percentage in the home screen status bar
+@@ -81,6 +87,10 @@ interface BatteryRepository {
+     val showBatteryPercentMode: StateFlow<Int>
+ 
+     companion object {
++        const val ICON_STYLE_DEFAULT = 0
++        const val ICON_STYLE_CIRCLE = 1
++        const val ICON_STYLE_TEXT = 2
++        const val ICON_STYLE_CIRCLE_DOTTED = 3
+         const val SHOW_PERCENT_HIDDEN = 0
+         const val SHOW_PERCENT_INSIDE = 1
+         const val SHOW_PERCENT_NEXT_TO = 2
+@@ -254,19 +264,19 @@ constructor(
+             )
+             .stateIn(scope, SharingStarted.WhileSubscribed(), batteryState.value.isStateUnknown)
+ 
+-    override val showBatteryPercentMode =
++    override val batteryIconStyle =
+         callbackFlow {
+                 val resolver = context.contentResolver
+                 val uri =
+                     LineageSettings.System.getUriFor(
+-                        LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT
++                        LineageSettings.System.STATUS_BAR_BATTERY_STYLE
+                     )
+ 
+                 fun readMode(): Int {
+                     return LineageSettings.System.getIntForUser(
+                         resolver,
+-                        LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT,
+-                        BatteryRepository.SHOW_PERCENT_HIDDEN,
++                        LineageSettings.System.STATUS_BAR_BATTERY_STYLE,
++                        BatteryRepository.ICON_STYLE_DEFAULT,
+                         UserHandle.USER_CURRENT,
+                     )
+                 }
+@@ -290,6 +300,68 @@ constructor(
+ 
+                 awaitClose { resolver.unregisterContentObserver(observer) }
+             }
++            .distinctUntilChanged()
++            .flowOn(bgDispatcher)
++            .stateIn(
++                scope = scope,
++                started = SharingStarted.Lazily,
++                initialValue = BatteryRepository.ICON_STYLE_DEFAULT,
++            )
++
++    override val showBatteryPercentMode =
++        callbackFlow {
++                val resolver = context.contentResolver
++                val uris =
++                    listOf(
++                        LineageSettings.System.getUriFor(
++                            LineageSettings.System.STATUS_BAR_BATTERY_STYLE
++                        ),
++                        LineageSettings.System.getUriFor(
++                            LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT
++                        ),
++                    )
++
++                fun readMode(): Int {
++                    val iconStyle =
++                        LineageSettings.System.getIntForUser(
++                            resolver,
++                            LineageSettings.System.STATUS_BAR_BATTERY_STYLE,
++                            BatteryRepository.ICON_STYLE_DEFAULT,
++                            UserHandle.USER_CURRENT,
++                        )
++                    return if (iconStyle == BatteryRepository.ICON_STYLE_TEXT) {
++                        BatteryRepository.SHOW_PERCENT_NEXT_TO
++                    } else {
++                        LineageSettings.System.getIntForUser(
++                            resolver,
++                            LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT,
++                            BatteryRepository.SHOW_PERCENT_HIDDEN,
++                            UserHandle.USER_CURRENT,
++                        )
++                    }
++                }
++
++                val observer =
++                    object : ContentObserver(Handler(Looper.getMainLooper())) {
++                        override fun onChange(selfChange: Boolean) {
++                            trySend(readMode())
++                        }
++                    }
++
++                for (uri in uris) {
++                    resolver.registerContentObserver(
++                        uri,
++                        /* notifyForDescendants = */ false,
++                        observer,
++                        UserHandle.USER_ALL,
++                    )
++                }
++
++                // Emit current value immediately
++                trySend(readMode())
++
++                awaitClose { resolver.unregisterContentObserver(observer) }
++            }
+             .flowOn(bgDispatcher)
+             .distinctUntilChanged()
+             .logDiffsForTable(
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/domain/interactor/BatteryInteractor.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/domain/interactor/BatteryInteractor.kt
+index bb7d35eec..239124482 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/domain/interactor/BatteryInteractor.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/domain/interactor/BatteryInteractor.kt
+@@ -79,6 +79,9 @@ class BatteryInteractor @Inject constructor(
+     /** @see [BatteryRepository.isPowerSaveEnabled] */
+     val powerSave = repo.isPowerSaveEnabled
+ 
++    /** @see [BatteryRepository.batteryIconStyle] */
++    val batteryIconStyle: StateFlow<Int> = repo.batteryIconStyle
++
+     /** @see [BatteryRepository.showBatteryPercentMode] */
+     val showBatteryPercentMode: StateFlow<Int> = repo.showBatteryPercentMode
+ 
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/BatteryWithPercent.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/BatteryWithPercent.kt
+index 21093a0aa..dc510ba6d 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/BatteryWithPercent.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/BatteryWithPercent.kt
+@@ -37,6 +37,7 @@ import androidx.compose.ui.text.PlatformTextStyle
+ import androidx.compose.ui.text.style.LineHeightStyle
+ import androidx.compose.ui.unit.dp
+ import com.android.systemui.statusbar.phone.domain.interactor.IsAreaDark
++import com.android.systemui.statusbar.pipeline.battery.data.repository.BatteryRepository
+ import com.android.systemui.statusbar.pipeline.battery.shared.ui.BatteryColors
+ import com.android.systemui.statusbar.pipeline.battery.ui.viewmodel.BatteryViewModel
+ 
+@@ -45,7 +46,6 @@ fun BatteryWithPercent(
+     viewModel: BatteryViewModel,
+     isDarkProvider: () -> IsAreaDark,
+     modifier: Modifier = Modifier,
+-    showIcon: Boolean = true,
+     showPercent: Boolean = true,
+     showEstimate: Boolean = false,
+ ) {
+@@ -86,7 +86,7 @@ fun BatteryWithPercent(
+         horizontalArrangement = Arrangement.spacedBy(4.dp),
+         verticalAlignment = Alignment.CenterVertically,
+     ) {
+-        if (showIcon) {
++        if (viewModel.batteryIconStyle != BatteryRepository.ICON_STYLE_TEXT) {
+             UnifiedBattery(
+                 viewModel = viewModel,
+                 isDarkProvider = isDarkProvider,
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/UnifiedBattery.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/UnifiedBattery.kt
+index f1a61333a..a050bca95 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/UnifiedBattery.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/UnifiedBattery.kt
+@@ -19,6 +19,7 @@ package com.android.systemui.statusbar.pipeline.battery.ui.composable
+ import android.graphics.Rect
+ import androidx.compose.foundation.Canvas
+ import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.material3.MaterialTheme
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableFloatStateOf
+@@ -33,10 +34,12 @@ import androidx.compose.ui.geometry.Size
+ import androidx.compose.ui.graphics.BlendMode
+ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.graphics.CompositingStrategy
++import androidx.compose.ui.graphics.PathEffect
+ import androidx.compose.ui.graphics.drawscope.Stroke
+ import androidx.compose.ui.graphics.drawscope.clipRect
+ import androidx.compose.ui.graphics.drawscope.inset
+ import androidx.compose.ui.graphics.drawscope.scale
++import androidx.compose.ui.graphics.drawscope.withTransform
+ import androidx.compose.ui.graphics.graphicsLayer
+ import androidx.compose.ui.layout.Layout
+ import androidx.compose.ui.layout.Measurable
+@@ -47,13 +50,18 @@ import androidx.compose.ui.layout.Placeable
+ import androidx.compose.ui.layout.layoutId
+ import androidx.compose.ui.layout.onLayoutRectChanged
+ import androidx.compose.ui.platform.LocalLayoutDirection
++import androidx.compose.ui.text.TextStyle
++import androidx.compose.ui.text.drawText
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.rememberTextMeasurer
+ import androidx.compose.ui.unit.Constraints
+ import androidx.compose.ui.unit.LayoutDirection
+-import androidx.compose.ui.util.fastFirst
++import androidx.compose.ui.unit.sp
+ import androidx.compose.ui.util.fastFirstOrNull
+ import com.android.systemui.common.ui.compose.load
+ import com.android.systemui.compose.modifiers.sysuiResTag
+ import com.android.systemui.statusbar.phone.domain.interactor.IsAreaDark
++import com.android.systemui.statusbar.pipeline.battery.data.repository.BatteryRepository
+ import com.android.systemui.statusbar.pipeline.battery.shared.ui.BatteryColors
+ import com.android.systemui.statusbar.pipeline.battery.shared.ui.BatteryFrame
+ import com.android.systemui.statusbar.pipeline.battery.shared.ui.BatteryGlyph
+@@ -179,7 +187,9 @@ fun UnifiedBattery(
+ 
+     BatteryLayout(
+         attribution = viewModel.attribution,
++        iconStyleProvider = { viewModel.batteryIconStyle },
+         levelProvider = { viewModel.level },
++        showLevelProvider = { viewModel.isBatteryPercentInsideIconSettingEnabled },
+         isFullProvider = { viewModel.isFull },
+         glyphsProvider = { viewModel.glyphList },
+         colorsProvider = colorProvider,
+@@ -196,7 +206,9 @@ fun UnifiedBattery(
+ @Composable
+ fun BatteryLayout(
+     attribution: BatteryGlyph?,
++    iconStyleProvider: () -> Int,
+     levelProvider: () -> Int?,
++    showLevelProvider: () -> Boolean,
+     isFullProvider: () -> Boolean,
+     glyphsProvider: () -> List<BatteryGlyph>,
+     colorsProvider: () -> BatteryColors,
+@@ -205,31 +217,50 @@ fun BatteryLayout(
+ ) {
+     Layout(
+         content = {
+-            BatteryBody(
+-                pathSpec = BatteryFrame.bodyPathSpec,
+-                levelProvider = levelProvider,
+-                glyphsProvider = glyphsProvider,
+-                isFullProvider = isFullProvider,
+-                colorsProvider = colorsProvider,
+-                modifier = Modifier.layoutId(BatteryMeasurePolicy.LayoutId.Frame),
+-                contentDescription = contentDescription,
+-            )
+-            if (attribution != null) {
+-                BatteryAttribution(
++            val iconStyle = iconStyleProvider()
++
++            if (
++                iconStyle == BatteryRepository.ICON_STYLE_CIRCLE ||
++                    iconStyle == BatteryRepository.ICON_STYLE_CIRCLE_DOTTED
++            ) {
++                CircleBatteryBody(
+                     attr = attribution,
++                    iconStyleProvider = iconStyleProvider,
++                    levelProvider = levelProvider,
++                    showLevelProvider = showLevelProvider,
+                     colorsProvider = colorsProvider,
+-                    modifier =
+-                        Modifier.layoutId(
+-                            BatteryMeasurePolicy.LayoutId.Attribution(wrapped = attribution)
+-                        ),
++                    modifier = Modifier.layoutId(BatteryMeasurePolicy.LayoutId.FrameCircle),
++                    contentDescription = contentDescription,
+                 )
++            } else if (iconStyle == BatteryRepository.ICON_STYLE_TEXT) {
++                // Empty on purpose
+             } else {
+-                BatteryCap(
+-                    colorsProvider = colorsProvider,
+-                    isFullProvider = isFullProvider,
++                BatteryBody(
++                    pathSpec = BatteryFrame.bodyPathSpec,
++                    levelProvider = levelProvider,
+                     glyphsProvider = glyphsProvider,
+-                    modifier = Modifier.layoutId(BatteryMeasurePolicy.LayoutId.Cap),
++                    isFullProvider = isFullProvider,
++                    colorsProvider = colorsProvider,
++                    modifier = Modifier.layoutId(BatteryMeasurePolicy.LayoutId.Frame),
++                    contentDescription = contentDescription,
+                 )
++                if (attribution != null) {
++                    BatteryAttribution(
++                        attr = attribution,
++                        colorsProvider = colorsProvider,
++                        modifier =
++                            Modifier.layoutId(
++                                BatteryMeasurePolicy.LayoutId.Attribution(wrapped = attribution)
++                            ),
++                    )
++                } else {
++                    BatteryCap(
++                        colorsProvider = colorsProvider,
++                        isFullProvider = isFullProvider,
++                        glyphsProvider = glyphsProvider,
++                        modifier = Modifier.layoutId(BatteryMeasurePolicy.LayoutId.Cap),
++                    )
++                }
+             }
+         },
+         measurePolicy = BatteryMeasurePolicy(),
+@@ -242,6 +273,8 @@ class BatteryMeasurePolicy : MeasurePolicy {
+     sealed class LayoutId {
+         data object Frame : LayoutId()
+ 
++        data object FrameCircle : LayoutId()
++
+         data object Cap : LayoutId()
+ 
+         // We don't have to depend on the whole [BatteryGlyph] here, we just need to know the
+@@ -253,7 +286,10 @@ class BatteryMeasurePolicy : MeasurePolicy {
+         measurables: List<Measurable>,
+         constraints: Constraints,
+     ): MeasureResult {
+-        val batteryFrame = measurables.fastFirst { it.layoutId == LayoutId.Frame }
++        val batteryFrame =
++            measurables.fastFirstOrNull {
++                it.layoutId == LayoutId.Frame || it.layoutId == LayoutId.FrameCircle
++            } ?: return layout(0, 0) {}
+ 
+         // We will scale the entire battery icon based on the given height
+         val scale = constraints.maxHeight / BatteryFrame.innerHeight
+@@ -263,8 +299,18 @@ class BatteryMeasurePolicy : MeasurePolicy {
+             batteryFrame.measure(
+                 constraints =
+                     constraints.copy(
+-                        minWidth = batterySize.width.roundToInt(),
+-                        maxWidth = batterySize.width.roundToInt(),
++                        minWidth =
++                            if (batteryFrame.layoutId == LayoutId.FrameCircle) {
++                                batterySize.height.roundToInt()
++                            } else {
++                                batterySize.width.roundToInt()
++                            },
++                        maxWidth =
++                            if (batteryFrame.layoutId == LayoutId.FrameCircle) {
++                                batterySize.height.roundToInt()
++                            } else {
++                                batterySize.width.roundToInt()
++                            },
+                         minHeight = batterySize.height.roundToInt(),
+                         maxHeight = batterySize.height.roundToInt(),
+                     )
+@@ -372,6 +418,108 @@ class BatteryMeasurePolicy : MeasurePolicy {
+     }
+ }
+ 
++@Composable
++fun CircleBatteryBody(
++    attr: BatteryGlyph?,
++    iconStyleProvider: () -> Int,
++    levelProvider: () -> Int?,
++    showLevelProvider: () -> Boolean,
++    colorsProvider: () -> BatteryColors,
++    modifier: Modifier = Modifier,
++    contentDescription: String = "",
++) {
++    val colorError = MaterialTheme.colorScheme.error
++    val textMeasurer = rememberTextMeasurer()
++
++    Canvas(modifier = modifier, contentDescription = contentDescription) {
++        val iconStyle = iconStyleProvider()
++        val level = levelProvider()
++        val showLevel = showLevelProvider()
++        val colors = colorsProvider()
++
++        val strokeWidth = size.height / 6.5f
++        val radius = size.height / 2f - strokeWidth / 2f
++        val center = Offset(size.width / 2, size.height / 2)
++
++        // Draw thin gray ring first
++        drawCircle(colors.backgroundOnly, radius, center, style = Stroke(strokeWidth))
++
++        // Draw colored arc representing charge level
++        if (level != null && level > 0) {
++            drawArc(
++                if (attr is BatteryGlyph.Bolt || attr is BatteryGlyph.Defend) {
++                    BatteryColors.DarkTheme.Charging.fill
++                } else if (attr is BatteryGlyph.Plus) {
++                    BatteryColors.DarkTheme.PowerSave.fill
++                } else if (level <= 20) {
++                    colorError
++                } else {
++                    colors.attribution
++                },
++                270f,
++                3.6f * level,
++                useCenter = false,
++                topLeft = Offset(center.x - radius, center.y - radius),
++                size = Size(radius * 2, radius * 2),
++                style =
++                    Stroke(
++                        strokeWidth,
++                        pathEffect =
++                            if (iconStyle == BatteryRepository.ICON_STYLE_CIRCLE_DOTTED) {
++                                PathEffect.dashPathEffect(floatArrayOf(3f, 2f), 0f)
++                            } else {
++                                null
++                            },
++                    ),
++            )
++        }
++
++        if (attr != null) {
++            // Draw attribution
++            inset(strokeWidth * 2f) {
++                val attrScale = attr.scaleTo(size.width, size.height)
++                val pathBounds = attr.path.getBounds()
++                withTransform({
++                    scale(attrScale, Offset.Zero)
++                    translate(
++                        (size.width - (pathBounds.width * attrScale)) / 2f,
++                        (size.height - (pathBounds.height * attrScale)) / 2f,
++                    )
++                }) {
++                    drawPath(
++                        path = attr.path,
++                        color = Color.Black,
++                        style = Stroke(2f),
++                        blendMode = BlendMode.Clear,
++                    )
++                    drawPath(attr.path, colors.attribution)
++                }
++            }
++        } else if (showLevel && level != null && level < 100) {
++            // Draw charge level
++            val textLayoutResult =
++                textMeasurer.measure(
++                    text = level.toString(),
++                    style =
++                        TextStyle(
++                            color = colors.attribution,
++                            fontSize = 6.sp,
++                            fontWeight = FontWeight.Bold,
++                        ),
++                )
++
++            drawText(
++                textLayoutResult = textLayoutResult,
++                topLeft =
++                    Offset(
++                        size.width / 2 - textLayoutResult.size.width / 2f,
++                        size.height / 2 - textLayoutResult.size.height / 2f,
++                    ),
++            )
++        }
++    }
++}
++
+ /**
+  * Draws just the round-rect piece of the battery frame. If [glyphsProvider] is non-empty, then this
+  * composable also renders the glyphs centered in the frame.
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/viewmodel/BatteryViewModel.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/viewmodel/BatteryViewModel.kt
+index aa99d525a..7366cbce9 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/viewmodel/BatteryViewModel.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/viewmodel/BatteryViewModel.kt
+@@ -28,6 +28,7 @@ import com.android.systemui.common.shared.model.ContentDescription
+ import com.android.systemui.dagger.qualifiers.Application
+ import com.android.systemui.lifecycle.HydratedActivatable
+ import com.android.systemui.res.R
++import com.android.systemui.statusbar.pipeline.battery.data.repository.BatteryRepository
+ import com.android.systemui.statusbar.pipeline.battery.domain.interactor.BatteryAttributionModel.Charging
+ import com.android.systemui.statusbar.pipeline.battery.domain.interactor.BatteryAttributionModel.Defend
+ import com.android.systemui.statusbar.pipeline.battery.domain.interactor.BatteryAttributionModel.PowerSave
+@@ -61,6 +62,9 @@ sealed class BatteryViewModel(
+     val isBatteryPercentSettingEnabled: Boolean by
+         interactor.showPercentNextToIcon.hydratedStateOf(initialValue = false)
+ 
++    val isBatteryPercentInsideIconSettingEnabled: Boolean by
++        interactor.showPercentInsideIcon.hydratedStateOf(initialValue = false)
++
+     /** A [List<BatteryGlyph>] representation of the current [level] */
+     private val levelGlyphs: Flow<List<BatteryGlyph>> =
+         interactor.level.map { it?.glyphRepresentation() ?: emptyList() }
+@@ -173,6 +177,9 @@ sealed class BatteryViewModel(
+             }
+             .hydratedStateOf(initialValue = ContentDescription.Loaded(null))
+ 
++    val batteryIconStyle: Int by
++        interactor.batteryIconStyle.hydratedStateOf(initialValue = BatteryRepository.ICON_STYLE_DEFAULT)
++
+     /** For use in the shade, where we might need to show an estimate */
+     val batteryTimeRemainingEstimate: String? by
+         interactor.isCharging
+-- 
+2.56.0
+

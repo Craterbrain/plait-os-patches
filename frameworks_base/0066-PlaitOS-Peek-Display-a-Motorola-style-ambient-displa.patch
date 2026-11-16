@@ -1,0 +1,790 @@
+From 4d774f90e8d0ba48493b24b1bc728bfd3b6b27e2 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:51:45 -0600
+Subject: [PATCH 66/75] PlaitOS: Peek Display, a Motorola-style ambient display
+
+New SystemUI feature (design: plait-os docs/peek-display-design.md), off
+unless Settings.Secure plait_peek_display is 1:
+
+- A notification pulse (or a breath, below) shows a black overlay with only
+  the clock, the date and one icon per app with unseen notifications, instead
+  of the stock notification card. Other pulses (fingerprint, pickup, ...) are
+  left alone, and on under-display fingerprint phones the window stops above
+  the sensor so screen-off fingerprint unlock keeps working
+- Touch and hold an icon: that app's newest notification appears (redacted
+  exactly as the lock screen would, getRedactionType); slide up to open it
+  through ActivityStarter.startPendingIntentDismissingKeyguard (unlock first,
+  click reported for auto-cancel as on the lock screen), slide down to dismiss
+  it as an AOD dismissal (only if dismissable); the pulse is extended while
+  held. No icons when lock screen notifications are off
+- Breathing: while unseen notifications remain, re-pulse every
+  plait_peek_breathing_interval seconds (default 30) for
+  plait_peek_breathing_duration minutes (default 10) after the newest one,
+  via DozeTriggers' pulse request (which does the pocket proximity check);
+  stops when the screen turns on. plait_peek_breathing=0 turns it off
+- Silent, minimized, ongoing and foreground-service notifications are left
+  out; the content moves a few dp per pulse against burn-in
+
+DozeServiceHost gets a small PulseListener hook (pulse started with its
+reason, pulse finished); PeekDisplayController is a CoreStartable.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../SystemUI/res/values/plait_strings.xml     |   6 +
+ .../dagger/SystemUICoreStartableModule.kt     |   7 +
+ .../systemui/peek/PeekDisplayController.kt    | 356 ++++++++++++++++++
+ .../systemui/peek/PeekDisplayWindow.kt        | 295 +++++++++++++++
+ .../statusbar/phone/DozeServiceHost.java      |  21 ++
+ 5 files changed, 685 insertions(+)
+ create mode 100644 packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+ create mode 100644 packages/SystemUI/src/com/android/systemui/peek/PeekDisplayWindow.kt
+
+diff --git a/packages/SystemUI/res/values/plait_strings.xml b/packages/SystemUI/res/values/plait_strings.xml
+index ec5ac7001..5bb1ef4c0 100644
+--- a/packages/SystemUI/res/values/plait_strings.xml
++++ b/packages/SystemUI/res/values/plait_strings.xml
+@@ -50,4 +50,10 @@
+     <string name="quick_settings_smart_pixels_off">Off</string>
+     <string name="smart_pixels_percent_label">Pixel percentage</string>
+     <string name="smart_pixels_percent_format"><xliff:g id="percent" example="25">%d</xliff:g>%%</string>
++
++    <!-- Peek Display (PlaitOS) -->
++    <string name="plait_peek_contents_hidden">Contents hidden</string>
++    <string name="plait_peek_hint">Slide up to open, down to dismiss</string>
++    <string name="plait_peek_release_to_open">Release to open</string>
++    <string name="plait_peek_release_to_dismiss">Release to dismiss</string>
+ </resources>
+diff --git a/packages/SystemUI/src/com/android/systemui/dagger/SystemUICoreStartableModule.kt b/packages/SystemUI/src/com/android/systemui/dagger/SystemUICoreStartableModule.kt
+index 3190d08f6..312746e9d 100644
+--- a/packages/SystemUI/src/com/android/systemui/dagger/SystemUICoreStartableModule.kt
++++ b/packages/SystemUI/src/com/android/systemui/dagger/SystemUICoreStartableModule.kt
+@@ -49,6 +49,7 @@ import com.android.systemui.media.taptotransfer.MediaTttCommandLineHelper
+ import com.android.systemui.media.taptotransfer.receiver.MediaTttChipControllerReceiver
+ import com.android.systemui.media.taptotransfer.sender.MediaTttSenderCoordinator
+ import com.android.systemui.mediaprojection.taskswitcher.MediaProjectionTaskSwitcherCoreStartable
++import com.android.systemui.peek.PeekDisplayController
+ import com.android.systemui.shortcut.ShortcutKeyDispatcher
+ import com.android.systemui.smartpixel.ui.SmartPixelManager
+ import com.android.systemui.statusbar.ImmersiveModeConfirmation
+@@ -337,4 +338,10 @@ abstract class SystemUICoreStartableModule {
+     abstract fun bindSmartPixelManager(
+         impl: SmartPixelManager
+     ): CoreStartable
++
++    /** PlaitOS: Peek Display (Motorola-style ambient display) */
++    @Binds
++    @IntoMap
++    @ClassKey(PeekDisplayController::class)
++    abstract fun bindPeekDisplayController(impl: PeekDisplayController): CoreStartable
+ }
+diff --git a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+new file mode 100644
+index 000000000..9ed6c83d6
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+@@ -0,0 +1,356 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.systemui.peek
++
++import android.app.AlarmManager
++import android.content.Context
++import android.content.Intent
++import android.graphics.PixelFormat
++import android.os.Handler
++import android.os.UserHandle
++import android.provider.Settings
++import android.service.notification.NotificationStats
++import android.util.Log
++import android.view.Gravity
++import android.view.WindowManager
++import android.view.WindowManager.LayoutParams
++import com.android.systemui.CoreStartable
++import com.android.systemui.biometrics.AuthController
++import com.android.systemui.dagger.SysUISingleton
++import com.android.systemui.dagger.qualifiers.Application
++import com.android.systemui.dagger.qualifiers.Main
++import com.android.systemui.doze.DozeLog
++import com.android.systemui.keyguard.domain.interactor.KeyguardInteractor
++import com.android.systemui.plugins.ActivityStarter
++import com.android.systemui.statusbar.NotificationClickNotifier
++import com.android.systemui.statusbar.NotificationLockscreenUserManager
++import com.android.systemui.statusbar.notification.collection.NotifCollection
++import com.android.systemui.statusbar.notification.collection.NotificationEntry
++import com.android.systemui.statusbar.notification.collection.notifcollection.DismissedByUserStats
++import com.android.systemui.statusbar.notification.collection.provider.NotificationDismissibilityProvider
++import com.android.systemui.statusbar.notification.collection.render.NotificationVisibilityProvider
++import com.android.systemui.statusbar.notification.domain.interactor.ActiveNotificationsInteractor
++import com.android.systemui.statusbar.notification.shared.ActiveNotificationModel
++import com.android.systemui.statusbar.phone.DozeServiceHost
++import com.android.systemui.util.AlarmTimeout
++import dagger.Lazy
++import javax.inject.Inject
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.launch
++
++/**
++ * Peek Display: a Motorola-style ambient display. While the screen is off, a pulse (new
++ * notification, or a "breath" while unseen notifications remain) shows only the clock, the date
++ * and one icon per app instead of the stock notification card. Touching and holding an icon shows
++ * that app's newest notification; sliding up opens it (unlocking first when needed), sliding down
++ * dismisses it. Off unless Settings.Secure [SETTING_ENABLED] is 1.
++ *
++ * Design: plait-os docs/peek-display-design.md.
++ */
++@SysUISingleton
++class PeekDisplayController
++@Inject
++constructor(
++    @Application private val context: Context,
++    @Application private val scope: CoroutineScope,
++    @Main private val mainHandler: Handler,
++    private val windowManager: WindowManager,
++    private val alarmManager: AlarmManager,
++    private val keyguardInteractor: KeyguardInteractor,
++    private val activeNotificationsInteractor: ActiveNotificationsInteractor,
++    private val notifCollection: NotifCollection,
++    private val lockscreenUserManager: NotificationLockscreenUserManager,
++    private val dismissibilityProvider: NotificationDismissibilityProvider,
++    private val visibilityProvider: NotificationVisibilityProvider,
++    private val clickNotifier: NotificationClickNotifier,
++    private val activityStarter: ActivityStarter,
++    private val authController: AuthController,
++    private val dozeServiceHost: Lazy<DozeServiceHost>,
++) : CoreStartable, DozeServiceHost.PulseListener {
++
++    /** What the overlay shows; updated while it is up. */
++    internal val items = MutableStateFlow<List<PeekItem>>(emptyList())
++
++    private var allNotifications: Map<String, ActiveNotificationModel> = emptyMap()
++    private var isDozing = false
++    private var isPulsing = false
++    /** Wall-clock time the screen last went off: notifications posted after it are unseen. */
++    private var screenOffTime = System.currentTimeMillis()
++
++    private var window: PeekDisplayWindow? = null
++    private val breathAlarm =
++        AlarmTimeout(alarmManager, { onBreathAlarm() }, "PeekDisplay:breath", mainHandler)
++    private val extendPulseRunnable =
++        object : Runnable {
++            override fun run() {
++                if (!isPulsing) return
++                dozeServiceHost.get().extendPulse(DozeLog.PULSE_REASON_NOTIFICATION)
++                mainHandler.postDelayed(this, EXTEND_PULSE_EVERY_MS)
++            }
++        }
++
++    override fun start() {
++        dozeServiceHost.get().addPulseListener(this)
++        scope.launch {
++            activeNotificationsInteractor.allRepresentativeNotifications.collect {
++                allNotifications = it
++                if (window != null) items.value = buildItems()
++            }
++        }
++        scope.launch {
++            keyguardInteractor.isDozing.collect { dozing ->
++                if (dozing && !isDozing) screenOffTime = System.currentTimeMillis()
++                isDozing = dozing
++                if (dozing) {
++                    scheduleBreath()
++                } else {
++                    breathAlarm.cancel()
++                    hideWindow()
++                }
++            }
++        }
++    }
++
++    // DozeServiceHost.PulseListener (main thread)
++
++    override fun onPulseStarted(reason: Int) {
++        isPulsing = true
++        breathAlarm.cancel()
++        // Only notification pulses and our own breaths; never cover fingerprint or other pulses
++        if (!isEnabled() ||
++            (reason != DozeLog.PULSE_REASON_NOTIFICATION && reason != DozeLog.PULSE_REASON_INTENT)
++        ) {
++            return
++        }
++        items.value = buildItems()
++        showWindow()
++    }
++
++    override fun onPulseFinished() {
++        isPulsing = false
++        mainHandler.removeCallbacks(extendPulseRunnable)
++        hideWindow()
++        if (isDozing) scheduleBreath()
++    }
++
++    // Called by the overlay
++
++    internal fun onHoldChanged(holding: Boolean) {
++        mainHandler.removeCallbacks(extendPulseRunnable)
++        // Keep the pulse alive under the finger, as stock does while a pulsing card is touched
++        if (holding && isPulsing) extendPulseRunnable.run()
++    }
++
++    internal fun open(item: PeekItem) {
++        val entry = notifCollection.getEntry(item.key) ?: return
++        val intent = entry.sbn.notification.contentIntent ?: return
++        // Out of the way first: the bouncer comes up under it otherwise
++        hideWindow()
++        activityStarter.startPendingIntentDismissingKeyguard(intent) {
++            // Like a lock-screen tap: report the click once the intent is sent (auto-cancel)
++            clickNotifier.onNotificationClick(entry.key, visibilityProvider.obtain(entry, true))
++        }
++    }
++
++    internal fun dismiss(item: PeekItem) {
++        val entry = notifCollection.getEntry(item.key) ?: return
++        if (!dismissibilityProvider.isDismissable(entry.key)) return
++        notifCollection.dismissNotification(
++            entry,
++            DismissedByUserStats(
++                NotificationStats.DISMISSAL_AOD,
++                NotificationStats.DISMISS_SENTIMENT_NEUTRAL,
++                visibilityProvider.obtain(entry, true),
++            ),
++        )
++    }
++
++    // Content
++
++    /** One item per app: its newest unseen notification, redacted as the lock screen would. */
++    private fun buildItems(): List<PeekItem> {
++        if (!lockscreenUserManager.shouldShowLockscreenNotifications()) return emptyList()
++        return allNotifications.values
++            .asSequence()
++            .filter { isPeekable(it) }
++            .mapNotNull { model -> notifCollection.getEntry(model.key)?.let { model to it } }
++            .filter { (_, entry) -> entry.sbn.postTime >= screenOffTime }
++            .groupBy { (model, _) -> model.packageName to model.uid }
++            .values
++            .map { group -> group.maxBy { (_, entry) -> entry.sbn.postTime } }
++            .sortedByDescending { (_, entry) -> entry.sbn.postTime }
++            .take(MAX_ICONS)
++            .map { (model, entry) -> toItem(model, entry) }
++            .toList()
++    }
++
++    private fun isPeekable(model: ActiveNotificationModel): Boolean =
++        !model.isGroupSummary &&
++            !model.isSilent &&
++            !model.isAmbient &&
++            !model.isOngoingEvent &&
++            !model.isForegroundService &&
++            !model.isRowDismissed
++
++    private fun toItem(model: ActiveNotificationModel, entry: NotificationEntry): PeekItem {
++        val notification = entry.sbn.notification
++        val redacted =
++            lockscreenUserManager.getRedactionType(entry) !=
++                NotificationLockscreenUserManager.REDACTION_TYPE_NONE
++        val extras = notification.extras
++        val title = extras.getCharSequence(android.app.Notification.EXTRA_TITLE)
++        val text =
++            extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT)
++                ?: extras.getCharSequence(android.app.Notification.EXTRA_TEXT)
++        return PeekItem(
++            key = model.key,
++            appName = model.appName,
++            icon = notification.smallIcon,
++            iconPackage = entry.sbn.packageName,
++            iconUserId = entry.sbn.user.identifier,
++            title = if (redacted) null else title,
++            text = if (redacted) null else text,
++            redacted = redacted,
++            canOpen = notification.contentIntent != null,
++            canDismiss = dismissibilityProvider.isDismissable(model.key),
++        )
++    }
++
++    // Breathing
++
++    private fun scheduleBreath() {
++        if (!isEnabled() || !isDozing || isPulsing) return
++        if (Settings.Secure.getIntForUser(
++                context.contentResolver, SETTING_BREATHING, 1, UserHandle.USER_CURRENT) == 0
++        ) {
++            return
++        }
++        val newest = allNotifications.values
++            .filter { isPeekable(it) }
++            .mapNotNull { notifCollection.getEntry(it.key)?.sbn?.postTime }
++            .filter { it >= screenOffTime }
++            .maxOrNull() ?: return
++        val durationMs = readSeconds(SETTING_BREATHING_DURATION, DEFAULT_DURATION_MIN * 60) * 1000L
++        if (System.currentTimeMillis() - newest > durationMs) return
++        val intervalMs = readSeconds(SETTING_BREATHING_INTERVAL, DEFAULT_INTERVAL_S) * 1000L
++        breathAlarm.schedule(intervalMs, AlarmTimeout.MODE_RESCHEDULE_IF_SCHEDULED)
++    }
++
++    private fun onBreathAlarm() {
++        if (!isDozing || isPulsing || !isEnabled()) return
++        // The same pulse request the always-on schedule uses; DozeTriggers does the proximity
++        // (pocket) check and the pulse itself
++        context.sendBroadcastAsUser(
++            Intent(PULSE_ACTION).setPackage(context.packageName),
++            UserHandle.CURRENT,
++        )
++    }
++
++    /** Interval is stored in seconds, duration in minutes; returns seconds. */
++    private fun readSeconds(key: String, defaultSeconds: Int): Int {
++        val raw = Settings.Secure.getIntForUser(context.contentResolver, key, -1,
++            UserHandle.USER_CURRENT)
++        return when {
++            raw < 1 -> defaultSeconds
++            key == SETTING_BREATHING_DURATION -> raw.coerceAtMost(60) * 60
++            else -> raw.coerceIn(MIN_INTERVAL_S, MAX_INTERVAL_S)
++        }
++    }
++
++    private fun isEnabled(): Boolean =
++        Settings.Secure.getIntForUser(context.contentResolver, SETTING_ENABLED, 0,
++            UserHandle.USER_CURRENT) == 1
++
++    // Window
++
++    private fun showWindow() {
++        if (window != null) return
++        val peekWindow = PeekDisplayWindow(context, this)
++        val params =
++            LayoutParams(
++                LayoutParams.MATCH_PARENT,
++                windowHeight(),
++                LayoutParams.TYPE_SECURE_SYSTEM_OVERLAY,
++                LayoutParams.FLAG_NOT_FOCUSABLE or
++                    LayoutParams.FLAG_LAYOUT_IN_SCREEN or
++                    LayoutParams.FLAG_SHOW_WHEN_LOCKED or
++                    LayoutParams.FLAG_HARDWARE_ACCELERATED,
++                PixelFormat.OPAQUE,
++            )
++        params.gravity = Gravity.TOP
++        params.title = "PeekDisplay"
++        params.layoutInDisplayCutoutMode = LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
++        params.privateFlags = params.privateFlags or LayoutParams.PRIVATE_FLAG_TRUSTED_OVERLAY
++        try {
++            windowManager.addView(peekWindow, params)
++            window = peekWindow
++        } catch (e: RuntimeException) {
++            Log.w(TAG, "Could not show Peek Display", e)
++        }
++    }
++
++    private fun hideWindow() {
++        mainHandler.removeCallbacks(extendPulseRunnable)
++        window?.let {
++            try {
++                windowManager.removeViewImmediate(it)
++            } catch (e: RuntimeException) {
++                Log.w(TAG, "Could not remove Peek Display", e)
++            }
++        }
++        window = null
++    }
++
++    /**
++     * Full height, except on under-display fingerprint phones: stop above the sensor so the
++     * stock screen-off fingerprint icon and its touch area stay usable during the pulse.
++     */
++    private fun windowHeight(): Int {
++        val location = authController.udfpsLocation ?: return LayoutParams.MATCH_PARENT
++        val top = location.y - authController.udfpsRadius.toInt() -
++            context.resources.displayMetrics.density.times(UDFPS_GAP_DP).toInt()
++        return if (top > 0) top else LayoutParams.MATCH_PARENT
++    }
++
++    companion object {
++        private const val TAG = "PeekDisplay"
++
++        /** Settings.Secure keys (written by Plait Settings). */
++        const val SETTING_ENABLED = "plait_peek_display"
++        const val SETTING_BREATHING = "plait_peek_breathing"
++        /** Seconds between breaths. */
++        const val SETTING_BREATHING_INTERVAL = "plait_peek_breathing_interval"
++        /** Minutes after the newest unseen notification during which to keep breathing. */
++        const val SETTING_BREATHING_DURATION = "plait_peek_breathing_duration"
++
++        private const val DEFAULT_INTERVAL_S = 30
++        private const val MIN_INTERVAL_S = 10
++        private const val MAX_INTERVAL_S = 600
++        private const val DEFAULT_DURATION_MIN = 10
++
++        private const val MAX_ICONS = 6
++        private const val EXTEND_PULSE_EVERY_MS = 2000L
++        private const val UDFPS_GAP_DP = 24f
++
++        /** DozeTriggers' pulse request (see DozeTriggers.PULSE_ACTION). */
++        private const val PULSE_ACTION = "com.android.systemui.doze.pulse"
++    }
++}
++
++/** One app's newest unseen notification, as Peek Display shows it. */
++internal data class PeekItem(
++    val key: String,
++    val appName: String,
++    val icon: android.graphics.drawable.Icon?,
++    val iconPackage: String,
++    val iconUserId: Int,
++    val title: CharSequence?,
++    val text: CharSequence?,
++    val redacted: Boolean,
++    val canOpen: Boolean,
++    val canDismiss: Boolean,
++)
+diff --git a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayWindow.kt b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayWindow.kt
+new file mode 100644
+index 000000000..6df5e6cdb
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayWindow.kt
+@@ -0,0 +1,295 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.systemui.peek
++
++import android.content.Context
++import android.graphics.Color as AndroidColor
++import android.os.UserHandle
++import android.text.format.DateFormat
++import android.widget.FrameLayout
++import androidx.compose.foundation.Image
++import androidx.compose.foundation.background
++import androidx.compose.foundation.gestures.awaitEachGesture
++import androidx.compose.foundation.gestures.awaitFirstDown
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.offset
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.text.BasicText
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.collectAsState
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateMapOf
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.rememberUpdatedState
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.alpha
++import androidx.compose.ui.draw.scale
++import androidx.compose.ui.geometry.Rect
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.graphics.ImageBitmap
++import androidx.compose.ui.graphics.asImageBitmap
++import androidx.compose.ui.input.pointer.pointerInput
++import androidx.compose.ui.layout.boundsInRoot
++import androidx.compose.ui.layout.onGloballyPositioned
++import androidx.compose.ui.platform.ComposeView
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.platform.LocalDensity
++import androidx.compose.ui.text.TextStyle
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.style.TextAlign
++import androidx.compose.ui.text.style.TextOverflow
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++import androidx.core.graphics.drawable.toBitmap
++import com.android.systemui.compose.ComposeInitializer
++import com.android.systemui.res.R
++import java.util.Date
++import kotlin.math.abs
++import kotlin.random.Random
++
++/** The Peek Display window: a black surface with the clock, date, app icons and the held card. */
++internal class PeekDisplayWindow(context: Context, private val controller: PeekDisplayController) :
++    FrameLayout(context) {
++
++    init {
++        setBackgroundColor(AndroidColor.BLACK)
++        addView(ComposeView(context).apply { setContent { PeekDisplayContent(controller) } })
++    }
++
++    override fun onAttachedToWindow() {
++        super.onAttachedToWindow()
++        ComposeInitializer.onAttachedToWindow(this)
++    }
++
++    override fun onDetachedFromWindow() {
++        super.onDetachedFromWindow()
++        ComposeInitializer.onDetachedFromWindow(this)
++    }
++}
++
++/** Where the held finger is heading. */
++private enum class HoldAction {
++    NONE,
++    OPEN,
++    DISMISS,
++}
++
++@Composable
++private fun PeekDisplayContent(controller: PeekDisplayController) {
++    val items by controller.items.collectAsState()
++    val context = LocalContext.current
++    val density = LocalDensity.current
++    val slidePx = with(density) { SLIDE_DISTANCE.toPx() }
++
++    var heldKey by remember { mutableStateOf<String?>(null) }
++    var action by remember { mutableStateOf(HoldAction.NONE) }
++    val iconBounds = remember { mutableStateMapOf<String, Rect>() }
++    // Burn-in: a new small offset every time the window appears (once per pulse or breath)
++    val shift = remember {
++        Pair(Random.nextInt(-MAX_SHIFT_DP, MAX_SHIFT_DP + 1), Random.nextInt(-MAX_SHIFT_DP, MAX_SHIFT_DP + 1))
++    }
++    val held = items.firstOrNull { it.key == heldKey }
++    // The gesture loop reads the latest items without restarting (a restart would drop a hold)
++    val currentItems by rememberUpdatedState(items)
++    // Drop bounds of icons that are gone, so a stale area can't be held
++    LaunchedEffect(items) { iconBounds.keys.retainAll(items.map { it.key }.toSet()) }
++
++    Box(
++        modifier =
++            Modifier.fillMaxSize().background(Color.Black).pointerInput(Unit) {
++                awaitEachGesture {
++                    val down = awaitFirstDown(requireUnconsumed = false)
++                    val startKey =
++                        iconBounds.entries.firstOrNull { it.value.contains(down.position) }?.key
++                            ?: return@awaitEachGesture // touching the clock does nothing
++                    heldKey = startKey
++                    action = HoldAction.NONE
++                    controller.onHoldChanged(true)
++                    var lastPosition = down.position
++                    while (true) {
++                        val event = awaitPointerEvent()
++                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
++                        if (!change.pressed) break
++                        lastPosition = change.position
++                        val dy = change.position.y - down.position.y
++                        action =
++                            when {
++                                dy < -slidePx -> HoldAction.OPEN
++                                dy > slidePx -> HoldAction.DISMISS
++                                else -> HoldAction.NONE
++                            }
++                        // Sliding sideways along the row switches to the icon under the finger
++                        if (abs(dy) < slidePx / 2) {
++                            iconBounds.entries
++                                .firstOrNull {
++                                    it.value.left <= lastPosition.x && lastPosition.x <= it.value.right
++                                }
++                                ?.let { heldKey = it.key }
++                        }
++                        change.consume()
++                    }
++                    val item = currentItems.firstOrNull { it.key == heldKey }
++                    val finalAction = action
++                    heldKey = null
++                    action = HoldAction.NONE
++                    controller.onHoldChanged(false)
++                    if (item != null) {
++                        when (finalAction) {
++                            HoldAction.OPEN -> if (item.canOpen) controller.open(item)
++                            HoldAction.DISMISS -> if (item.canDismiss) controller.dismiss(item)
++                            HoldAction.NONE -> {}
++                        }
++                    }
++                }
++            }
++    ) {
++        Column(
++            modifier =
++                Modifier.fillMaxSize()
++                    .offset(shift.first.dp, shift.second.dp)
++                    .padding(horizontal = 32.dp),
++            horizontalAlignment = Alignment.CenterHorizontally,
++            verticalArrangement = Arrangement.Center,
++        ) {
++            Clock(context)
++            Spacer(Modifier.height(24.dp))
++            // Fixed height so the icons don't jump when the card appears
++            Box(Modifier.fillMaxWidth().height(CARD_HEIGHT), contentAlignment = Alignment.Center) {
++                if (held != null) HeldCard(held, action)
++            }
++            Spacer(Modifier.height(16.dp))
++            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
++                for (item in items) {
++                    val isHeld = item.key == heldKey
++                    Box(
++                        modifier =
++                            Modifier.size(ICON_SIZE)
++                                .onGloballyPositioned { iconBounds[item.key] = it.boundsInRoot() }
++                                .alpha(if (heldKey == null || isHeld) 1f else 0.35f)
++                                .scale(if (isHeld) 1.25f else 1f),
++                        contentAlignment = Alignment.Center,
++                    ) {
++                        AppIcon(item)
++                    }
++                }
++            }
++        }
++    }
++}
++
++@Composable
++private fun Clock(context: Context) {
++    val now = remember { Date() }
++    val is24 = DateFormat.is24HourFormat(context, UserHandle.myUserId())
++    val time = DateFormat.format(if (is24) "HH:mm" else "h:mm", now).toString()
++    val locale = context.resources.configuration.locales[0]
++    val date =
++        DateFormat.format(DateFormat.getBestDateTimePattern(locale, "EEEEMMMMd"), now).toString()
++    BasicText(
++        time,
++        style = TextStyle(color = Color.White, fontSize = 72.sp, fontWeight = FontWeight.Light),
++    )
++    BasicText(
++        date,
++        style = TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 16.sp),
++    )
++}
++
++@Composable
++private fun HeldCard(item: PeekItem, action: HoldAction) {
++    val context = LocalContext.current
++    Column(horizontalAlignment = Alignment.CenterHorizontally) {
++        BasicText(
++            item.appName,
++            style = TextStyle(color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp),
++        )
++        Spacer(Modifier.height(6.dp))
++        if (item.redacted) {
++            BasicText(
++                context.getString(R.string.plait_peek_contents_hidden),
++                style = TextStyle(color = Color.White, fontSize = 18.sp),
++            )
++        } else {
++            item.title?.let {
++                BasicText(
++                    it.toString(),
++                    maxLines = 1,
++                    overflow = TextOverflow.Ellipsis,
++                    style =
++                        TextStyle(color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium),
++                )
++            }
++            item.text?.let {
++                BasicText(
++                    it.toString(),
++                    maxLines = 3,
++                    overflow = TextOverflow.Ellipsis,
++                    style =
++                        TextStyle(
++                            color = Color.White.copy(alpha = 0.85f),
++                            fontSize = 15.sp,
++                            textAlign = TextAlign.Center,
++                        ),
++                )
++            }
++        }
++        Spacer(Modifier.height(10.dp))
++        val hint =
++            when (action) {
++                HoldAction.OPEN ->
++                    if (item.canOpen) R.string.plait_peek_release_to_open else R.string.plait_peek_hint
++                HoldAction.DISMISS ->
++                    if (item.canDismiss) R.string.plait_peek_release_to_dismiss
++                    else R.string.plait_peek_hint
++                HoldAction.NONE -> R.string.plait_peek_hint
++            }
++        BasicText(
++            context.getString(hint),
++            style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp),
++        )
++    }
++}
++
++@Composable
++private fun AppIcon(item: PeekItem) {
++    val context = LocalContext.current
++    val sizePx = with(LocalDensity.current) { ICON_SIZE.roundToPx() }
++    val bitmap: ImageBitmap? =
++        remember(item.key) {
++            try {
++                item.icon
++                    ?.loadDrawableAsUser(context, item.iconUserId)
++                    ?.mutate()
++                    ?.apply { setTint(AndroidColor.WHITE) }
++                    ?.toBitmap(sizePx, sizePx)
++                    ?.asImageBitmap()
++            } catch (e: RuntimeException) {
++                null
++            }
++        }
++    if (bitmap != null) {
++        Image(bitmap, contentDescription = item.appName, modifier = Modifier.size(ICON_SIZE))
++    } else {
++        Box(Modifier.size(ICON_SIZE).background(Color.White.copy(alpha = 0.3f)))
++    }
++}
++
++private val ICON_SIZE = 36.dp
++private val CARD_HEIGHT = 150.dp
++private val SLIDE_DISTANCE = 72.dp
++private const val MAX_SHIFT_DP = 12
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeServiceHost.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeServiceHost.java
+index d51220de2..a3fac5723 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeServiceHost.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeServiceHost.java
+@@ -304,6 +304,21 @@ public final class DozeServiceHost implements DozeHost {
+         mStatusBarStateController.setIsDozing(dozing);
+     }
+ 
++    /** PlaitOS: lets Peek Display know when a pulse starts (and why) and when it ends. */
++    public interface PulseListener {
++        /** @param reason a DozeLog.PULSE_REASON_* value */
++        void onPulseStarted(int reason);
++        void onPulseFinished();
++    }
++
++    private final java.util.List<PulseListener> mPulseListeners =
++            new java.util.concurrent.CopyOnWriteArrayList<>();
++
++    /** PlaitOS: see {@link PulseListener}. */
++    public void addPulseListener(@NonNull PulseListener listener) {
++        mPulseListeners.add(listener);
++    }
++
+     @Override
+     public void pulseWhileDozing(@NonNull PulseCallback callback, int reason) {
+         if (reason == DozeLog.PULSE_REASON_SENSOR_LONG_PRESS) {
+@@ -328,12 +343,18 @@ public final class DozeServiceHost implements DozeHost {
+             public void onPulseStarted() {
+                 callback.onPulseStarted(); // requestState(DozeMachine.State.DOZE_PULSING)
+                 mCentralSurfaces.updateNotificationPanelTouchState();
++                for (PulseListener listener : mPulseListeners) {
++                    listener.onPulseStarted(reason);
++                }
+                 setPulsing(true);
+             }
+ 
+             @Override
+             public void onPulseFinished() {
+                 mPulsing = false;
++                for (PulseListener listener : mPulseListeners) {
++                    listener.onPulseFinished();
++                }
+                 callback.onPulseFinished(); // requestState(DozeMachine.State.DOZE_PULSE_DONE)
+                 mCentralSurfaces.updateNotificationPanelTouchState();
+                 if (mScrimController != null) {
+-- 
+2.56.0
+

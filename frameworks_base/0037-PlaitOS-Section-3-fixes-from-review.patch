@@ -1,0 +1,200 @@
+From 374750c61ffe20cd5a698d8b560c5a85d9dd8112 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 21:35:29 -0600
+Subject: [PATCH 37/75] PlaitOS: Section 3 fixes from review
+
+- Battery percentage: keep GrapheneOS's Quick Settings header (always the
+  percentage plus the time-left estimate, shade-blur text color) and lock
+  screen (percentage while charging or whenever it is shown at all); the
+  PlaitOS setting now controls the home status bar only, so unset stays stock
+- Bluetooth battery: read mConnectedDevices under its lock; it is
+  @GuardedBy and changed from Bluetooth callbacks, so a disconnect between
+  isEmpty() and get(0) could crash SystemUI
+- Double tap to sleep: the panel detector only acts on the lock screen; it
+  also fired on empty space in the pulled-down shade (the status bar strip
+  is handled by QQSGestureListener)
+- Brightness control: put getDisplayWidth()'s @Override/@Deprecated back on
+  it (the inserted methods had split them off; build error)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../NotificationPanelViewController.java      |  5 +++--
+ .../systemui/shade/ShadeHeaderController.kt   | 20 +++++++++----------
+ .../statusbar/phone/CentralSurfacesImpl.java  |  4 ++--
+ .../KeyguardStatusBarViewController.java      |  4 ++--
+ .../battery/ui/viewmodel/BatteryViewModel.kt  |  8 +++++---
+ .../policy/BluetoothControllerImpl.java       |  9 ++++++---
+ 6 files changed, 28 insertions(+), 22 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/NotificationPanelViewController.java b/packages/SystemUI/src/com/android/systemui/shade/NotificationPanelViewController.java
+index 6b9a436fe..5b521f639 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/NotificationPanelViewController.java
++++ b/packages/SystemUI/src/com/android/systemui/shade/NotificationPanelViewController.java
+@@ -4027,8 +4027,9 @@ public final class NotificationPanelViewController implements
+                 return false;
+             }
+ 
+-            // The setting is checked on the double tap itself (current user, Plait Settings)
+-            if (!mPulsing && !mDozing) {
++            // Lock screen only (the status bar strip is QQSGestureListener's); the setting is
++            // checked on the double tap itself (current user, Plait Settings)
++            if (!mPulsing && !mDozing && mBarState == KEYGUARD) {
+                 mDoubleTapGesture.onTouchEvent(event);
+             }
+ 
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/ShadeHeaderController.kt b/packages/SystemUI/src/com/android/systemui/shade/ShadeHeaderController.kt
+index e19b6b2ed..2c5fa7ec7 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/ShadeHeaderController.kt
++++ b/packages/SystemUI/src/com/android/systemui/shade/ShadeHeaderController.kt
+@@ -39,6 +39,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
+ import androidx.compose.foundation.layout.wrapContentSize
+ import androidx.compose.runtime.getValue
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.platform.ComposeView
+ import androidx.constraintlayout.motion.widget.MotionLayout
+ import androidx.core.view.doOnLayout
+@@ -48,6 +49,7 @@ import com.android.app.displaylib.PerDisplayRepository
+ import com.android.compose.theme.PlatformTheme
+ import com.android.keyguard.AlphaOptimizedLinearLayout
+ import com.android.systemui.Dumpable
++import com.android.systemui.Flags
+ import com.android.systemui.Flags.notificationShadeBlur
+ import com.android.systemui.animation.ShadeInterpolation
+ import com.android.systemui.battery.BatteryMeterView.MODE_ESTIMATE
+@@ -56,7 +58,6 @@ import com.android.systemui.demomode.DemoMode
+ import com.android.systemui.demomode.DemoModeController
+ import com.android.systemui.display.dagger.SystemUIDisplaySubcomponent
+ import com.android.systemui.dump.DumpManager
+-import com.android.systemui.lifecycle.rememberViewModel
+ import com.android.systemui.plugins.ActivityStarter
+ import com.android.systemui.qs.ChipVisibilityListener
+ import com.android.systemui.qs.HeaderPrivacyIconsController
+@@ -76,7 +77,7 @@ import com.android.systemui.statusbar.phone.StatusOverlayHoverListenerFactory
+ import com.android.systemui.statusbar.phone.domain.interactor.IsAreaDark
+ import com.android.systemui.statusbar.phone.ui.StatusBarIconController
+ import com.android.systemui.statusbar.phone.ui.TintedIconManager
+-import com.android.systemui.statusbar.pipeline.battery.ui.composable.BatteryWithPercent
++import com.android.systemui.statusbar.pipeline.battery.ui.composable.BatteryWithEstimate
+ import com.android.systemui.statusbar.pipeline.battery.ui.viewmodel.BatteryViewModel
+ import com.android.systemui.statusbar.pipeline.shared.ui.view.SystemStatusIconsLayoutHelper
+ import com.android.systemui.statusbar.policy.Clock
+@@ -113,7 +114,7 @@ constructor(
+     @ShadeDisplayAware private val context: Context,
+     private val shadeDisplaysRepositoryLazy: Lazy<ShadeDisplaysRepository>,
+     private val variableDateViewControllerFactory: VariableDateViewController.Factory,
+-    private val unifiedBatteryViewModelFactory: BatteryViewModel.BasedOnUserSetting.Factory,
++    private val unifiedBatteryViewModelFactory: BatteryViewModel.AlwaysShowPercent.Factory,
+     private val dumpManager: DumpManager,
+     private val shadeCarrierGroupControllerBuilder: ShadeCarrierGroupController.Builder,
+     private val combinedShadeHeadersConstraintManager: CombinedShadeHeadersConstraintManager,
+@@ -396,15 +397,14 @@ constructor(
+                     id = R.id.battery_meter_composable_view
+                     val showBatteryEstimate by showBatteryEstimate.collectAsStateWithLifecycle()
+                     val dark = isSystemInDarkTheme()
+-                    val viewModel =
+-                        rememberViewModel(traceName = "UnifiedBattery") {
+-                            unifiedBatteryViewModelFactory.create()
+-                        }
+-                    BatteryWithPercent(
++                    BatteryWithEstimate(
+                         modifier = Modifier.wrapContentSize(),
+-                        viewModel = viewModel,
++                        viewModelFactory = unifiedBatteryViewModelFactory,
+                         isDarkProvider = { IsAreaDark { dark } },
+-                        showPercent = viewModel.isBatteryPercentSettingEnabled,
++                        textColor =
++                            if (notificationShadeBlur())
++                                Color(context.getColor(R.color.shade_header_text_color))
++                            else Color.White,
+                         showEstimate = showBatteryEstimate,
+                     )
+                 }
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
+index b771a3e7d..e6b15b703 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/CentralSurfacesImpl.java
+@@ -1546,8 +1546,6 @@ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
+         return mDisplayMetrics.density;
+     }
+ 
+-    @Override
+-    @Deprecated
+     private void adjustBrightness(int x) {
+         mBrightnessChanged = true;
+         if (mBrightnessAtTouchStart < 0f) {
+@@ -1640,6 +1638,8 @@ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
+         mLinger = BRIGHTNESS_CONTROL_LINGER_THRESHOLD + 1;
+     }
+ 
++    @Override
++    @Deprecated
+     public float getDisplayWidth() {
+         return mDisplayMetrics.widthPixels;
+     }
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/KeyguardStatusBarViewController.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/KeyguardStatusBarViewController.java
+index 7fc9b0367..b8f0d9058 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/KeyguardStatusBarViewController.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/KeyguardStatusBarViewController.java
+@@ -135,7 +135,7 @@ public class KeyguardStatusBarViewController extends ViewController<KeyguardStat
+     private final UserInfoController mUserInfoController;
+     private final StatusBarIconController mStatusBarIconController;
+     private final TintedIconManager.Factory mTintedIconManagerFactory;
+-    private final BatteryViewModel.BasedOnUserSetting.Factory mBatteryViewModel;
++    private final BatteryViewModel.ShowPercentWhenChargingOrSetting.Factory mBatteryViewModel;
+     private final ShadeViewStateProvider mShadeViewStateProvider;
+     private final KeyguardStateController mKeyguardStateController;
+     private final KeyguardBypassController mKeyguardBypassController;
+@@ -358,7 +358,7 @@ public class KeyguardStatusBarViewController extends ViewController<KeyguardStat
+             UserInfoController userInfoController,
+             StatusBarIconController statusBarIconController,
+             TintedIconManager.Factory tintedIconManagerFactory,
+-            BatteryViewModel.BasedOnUserSetting.Factory batteryViewModel,
++            BatteryViewModel.ShowPercentWhenChargingOrSetting.Factory batteryViewModel,
+             ShadeViewStateProvider shadeViewStateProvider,
+             KeyguardStateController keyguardStateController,
+             KeyguardBypassController bypassController,
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/viewmodel/BatteryViewModel.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/viewmodel/BatteryViewModel.kt
+index 7366cbce9..5309bdd1d 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/viewmodel/BatteryViewModel.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/viewmodel/BatteryViewModel.kt
+@@ -237,10 +237,12 @@ sealed class BatteryViewModel(
+         BatteryViewModel(
+             interactor = interactor,
+             shouldShowPercent =
+-                combine(interactor.isCharging, interactor.showPercentNextToIcon) {
++                // PlaitOS: lock screen keeps the stock rule, percentage while charging or
++                // whenever it is shown at all (inside or next to the icon)
++                combine(interactor.isCharging, interactor.showBatteryPercentMode) {
+                     charging,
+-                    settingEnabled ->
+-                    charging || settingEnabled
++                    mode ->
++                    charging || mode != BatteryRepository.SHOW_PERCENT_HIDDEN
+                 },
+             context = context,
+         ) {
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/policy/BluetoothControllerImpl.java b/packages/SystemUI/src/com/android/systemui/statusbar/policy/BluetoothControllerImpl.java
+index be0fe2594..1113b529c 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/policy/BluetoothControllerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/policy/BluetoothControllerImpl.java
+@@ -330,10 +330,13 @@ public class BluetoothControllerImpl implements BluetoothController, BluetoothCa
+ 
+     @Override
+     public int getBatteryLevel() {
+-        if (!mConnectedDevices.isEmpty()) {
+-            return mConnectedDevices.get(0).getBatteryLevel();
++        // PlaitOS: the list is guarded (Bluetooth callbacks change it on another thread);
++        // read the device under the lock, its battery level outside it
++        final CachedBluetoothDevice device;
++        synchronized (mConnectedDevices) {
++            device = mConnectedDevices.isEmpty() ? null : mConnectedDevices.get(0);
+         }
+-        return -1;
++        return device != null ? device.getBatteryLevel() : -1;
+     }
+ 
+     private void updateBattery() {
+-- 
+2.56.0
+

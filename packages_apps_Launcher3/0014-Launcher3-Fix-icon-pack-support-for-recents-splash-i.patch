@@ -1,0 +1,51 @@
+From d3a50878f1c6a108318c69830b874c5c64e13c6d Mon Sep 17 00:00:00 2001
+From: Pranav Vashi <neobuddy89@gmail.com>
+Date: Mon, 16 Nov 2026 01:00:28 +0530
+Subject: [PATCH 14/15] Launcher3: Fix icon-pack support for recents/splash
+ icon
+
+* The icon cache honors the selected icon pack (via ThirdPartyIconProvider), so it must
+  be used instead of the raw task-description icon when an icon pack overrides this
+  component. Otherwise the recents/splash icon would show the stock icon while the
+  workspace shows the themed icon.
+
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid packages_apps_Launcher3 17.0]
+---
+ quickstep/src/com/android/quickstep/TaskIconCache.kt | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/quickstep/src/com/android/quickstep/TaskIconCache.kt b/quickstep/src/com/android/quickstep/TaskIconCache.kt
+index 78465ac..e20ae24 100644
+--- a/quickstep/src/com/android/quickstep/TaskIconCache.kt
++++ b/quickstep/src/com/android/quickstep/TaskIconCache.kt
+@@ -39,8 +39,10 @@ import com.android.launcher3.icons.BaseIconFactory.IconOptions
+ import com.android.launcher3.icons.BitmapInfo
+ import com.android.launcher3.icons.IconCache
+ import com.android.launcher3.icons.cache.AppInfoCachingLogic
++import com.android.launcher3.icons.pack.IconPackManager
+ import com.android.launcher3.pm.UserCache
+ import com.android.launcher3.util.CancellableTask
++import com.android.launcher3.util.ComponentKey
+ import com.android.launcher3.util.DaggerSingletonTracker
+ import com.android.launcher3.util.Executors.MAIN_EXECUTOR
+ import com.android.launcher3.util.Executors.SimpleThreadFactory
+@@ -258,10 +260,12 @@ constructor(
+         val key = task.key
+ 
+         val user = UserHandle.of(key.userId)
++        val userInfo = UserCache.INSTANCE.get(context).getUserInfo(user)
++        val iconPackOverridesComponent =
++            IconPackManager.get(context).resolve(ComponentKey(key.component, user)) != null
+ 
+         // Load icon
+-        val icon = getIcon(desc, key.userId)
+-        val userInfo = UserCache.INSTANCE.get(context).getUserInfo(user)
++        val icon = if (iconPackOverridesComponent) null else getIcon(desc, key.userId)
+ 
+         if (icon != null) {
+             return ic.iconFactory.use {
+-- 
+2.56.0
+

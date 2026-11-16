@@ -1,0 +1,208 @@
+From c5f463a9fe31e00d74cbed7cbd4cc49cc4e1472a Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:16:49 -0600
+Subject: [PATCH 62/75] PlaitOS: adapt pocket lock to GrapheneOS
+
+- Switch is Settings.System plait_pocket_judge (default off, as in crDroid),
+  observed for all users, instead of a new Settings API constant
+- Resources from crDroid's cr_*.xml (final values, after the refactor and
+  the blue-area change) go to plait_config.xml, plait_dimens.xml,
+  plait_styles.xml, plait_strings.xml and plait_symbols.xml
+- config_pocketBridgeSysfsInpocket stays empty: the Pixel kernel has no
+  pocket judge driver, so PocketBridgeService is not started
+
+The service's SELinux types (pocket_service, service_contexts) come with
+rom-overlay vendor/plait/sepolicy/private.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ core/res/res/values/plait_config.xml          | 17 ++++++++++++++
+ core/res/res/values/plait_dimens.xml          | 16 ++++++++++++++
+ core/res/res/values/plait_strings.xml         |  7 ++++++
+ core/res/res/values/plait_styles.xml          | 22 +++++++++++++++++++
+ core/res/res/values/plait_symbols.xml         | 13 +++++++++++
+ .../server/pocket/PocketBridgeService.java    |  7 ++++--
+ .../android/server/pocket/PocketService.java  |  7 ++++--
+ 7 files changed, 85 insertions(+), 4 deletions(-)
+ create mode 100644 core/res/res/values/plait_config.xml
+ create mode 100644 core/res/res/values/plait_dimens.xml
+ create mode 100644 core/res/res/values/plait_styles.xml
+
+diff --git a/core/res/res/values/plait_config.xml b/core/res/res/values/plait_config.xml
+new file mode 100644
+index 000000000..7437bdd5d
+--- /dev/null
++++ b/core/res/res/values/plait_config.xml
+@@ -0,0 +1,17 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS framework config (overlayable per device). Pocket lock values from crDroid's cr_config.xml. -->
++<resources>
++    <!-- Defines the sysfs attribute path used by pocket bridge
++         to communicate pocket state to the pocket judge kernel driver.
++         Empty: no bridge (the Pixel kernel has no pocket judge driver). -->
++    <string name="config_pocketBridgeSysfsInpocket"></string>
++
++    <!-- Pocket Lock -->
++    <bool name="config_pocketModeSupported">true</bool>
++    <bool name="config_pocketUseLightSensor">true</bool>
++
++    <!-- Defines custom OEM sensor for pocket detection. -->
++    <string name="config_pocketJudgeVendorSensorName"></string>
++    <item name="config_pocketJudgeVendorSensorValue" format="float" type="dimen">1.0</item>
++    <string name="config_pocketJudgeVendorProximitySensorName"></string>
++</resources>
+diff --git a/core/res/res/values/plait_dimens.xml b/core/res/res/values/plait_dimens.xml
+new file mode 100644
+index 000000000..d4aec43fd
+--- /dev/null
++++ b/core/res/res/values/plait_dimens.xml
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS framework dimensions. Pocket mode values from crDroid's cr_dimens.xml. -->
++<resources>
++    <!-- Pocket Mode -->
++    <dimen name="pocket_mode_illustration_width">175dp</dimen>
++    <dimen name="pocket_mode_illustration_height">350dp</dimen>
++    <dimen name="pocket_mode_illustration_margin_top">56dp</dimen>
++    <dimen name="pocket_mode_title_size">24sp</dimen>
++    <dimen name="pocket_mode_title_margin_horizontal">56dp</dimen>
++    <dimen name="pocket_mode_instructions_container_margin_horizontal">24dp</dimen>
++    <dimen name="pocket_mode_instructions_container_margin_top">56dp</dimen>
++    <dimen name="pocket_mode_instructions_title_size">16sp</dimen>
++    <dimen name="pocket_mode_instructions_steps_margin_top">8dp</dimen>
++    <dimen name="pocket_mode_instructions_step_size">14sp</dimen>
++    <dimen name="pocket_mode_instructions_step_margin_top">8dp</dimen>
++</resources>
+diff --git a/core/res/res/values/plait_strings.xml b/core/res/res/values/plait_strings.xml
+index 8651e907e..7673599c3 100644
+--- a/core/res/res/values/plait_strings.xml
++++ b/core/res/res/values/plait_strings.xml
+@@ -3,4 +3,11 @@
+ <resources>
+     <!-- Toast shown after a navigation bar key killed the foreground app (from LineageOS's app_killed_message). -->
+     <string name="plait_app_killed_message">App killed</string>
++
++    <!-- Pocket Lock (from crDroid) -->
++    <string name="pocket_mode_title">Pocket mode is active</string>
++    <string name="pocket_mode_illustration_description">Illustration of phone in pocket</string>
++    <string name="pocket_mode_instructions_header">To use your phone:</string>
++    <string name="pocket_mode_instruction_step1">1. Ensure the blue area (proximity sensor) shown above is unobstructed and free from dirt or dust.</string>
++    <string name="pocket_mode_instruction_step2">2. Press and hold the power button to exit pocket mode.</string>
+ </resources>
+diff --git a/core/res/res/values/plait_styles.xml b/core/res/res/values/plait_styles.xml
+new file mode 100644
+index 000000000..dd211a15c
+--- /dev/null
++++ b/core/res/res/values/plait_styles.xml
+@@ -0,0 +1,22 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS framework styles. Pocket mode styles from crDroid's cr_styles.xml. -->
++<resources>
++    <!-- Pocket Mode -->
++    <style name="PocketModeTitle">
++        <item name="android:textSize">@dimen/pocket_mode_title_size</item>
++        <item name="android:textColor">@android:color/white</item>
++        <item name="android:alpha">0.85</item>
++    </style>
++
++    <style name="PocketModeInstructionsTitle">
++        <item name="android:textSize">@dimen/pocket_mode_instructions_title_size</item>
++        <item name="android:textColor">@android:color/white</item>
++        <item name="android:alpha">0.5</item>
++    </style>
++
++    <style name="PocketModeInstructionStep">
++        <item name="android:textSize">@dimen/pocket_mode_instructions_step_size</item>
++        <item name="android:textColor">@android:color/white</item>
++        <item name="android:alpha">0.5</item>
++    </style>
++</resources>
+diff --git a/core/res/res/values/plait_symbols.xml b/core/res/res/values/plait_symbols.xml
+index 4009642ee..289a2f761 100644
+--- a/core/res/res/values/plait_symbols.xml
++++ b/core/res/res/values/plait_symbols.xml
+@@ -2,4 +2,17 @@
+ <!-- PlaitOS framework resources used from Java (private symbols). -->
+ <resources>
+     <java-symbol type="string" name="plait_app_killed_message" />
++
++    <!-- Pocket Lock -->
++    <java-symbol type="layout" name="pocket_lock_view" />
++
++    <!-- Pocket bridge -->
++    <java-symbol type="string" name="config_pocketBridgeSysfsInpocket" />
++    <java-symbol type="bool" name="config_pocketModeSupported" />
++    <java-symbol type="bool" name="config_pocketUseLightSensor" />
++
++    <!-- Pocket Service -->
++    <java-symbol type="string" name="config_pocketJudgeVendorSensorName" />
++    <java-symbol type="dimen" name="config_pocketJudgeVendorSensorValue" />
++    <java-symbol type="string" name="config_pocketJudgeVendorProximitySensorName" />
+ </resources>
+diff --git a/services/core/java/com/android/server/pocket/PocketBridgeService.java b/services/core/java/com/android/server/pocket/PocketBridgeService.java
+index 5fc5e2721..537354144 100644
+--- a/services/core/java/com/android/server/pocket/PocketBridgeService.java
++++ b/services/core/java/com/android/server/pocket/PocketBridgeService.java
+@@ -33,7 +33,6 @@ import android.util.Slog;
+ import com.android.internal.util.FastPrintWriter;
+ import com.android.server.SystemService;
+ 
+-import static android.provider.Settings.System.POCKET_JUDGE;
+ 
+ /**
+  * This service communicates pocket state to the pocket judge kernel driver.
+@@ -44,6 +43,9 @@ import static android.provider.Settings.System.POCKET_JUDGE;
+  */
+ public class PocketBridgeService extends SystemService {
+ 
++    /** PlaitOS: Settings.System key (written by Plait Settings): pocket lock on (default off). */
++    private static final String POCKET_JUDGE = "plait_pocket_judge";
++
+     private static final String TAG = PocketBridgeService.class.getSimpleName();
+     private static final int MSG_POCKET_STATE_CHANGED = 1;
+ 
+@@ -167,7 +169,8 @@ public class PocketBridgeService extends SystemService {
+         public void register() {
+             if (!mRegistered) {
+                 mContext.getContentResolver().registerContentObserver(
+-                        System.getUriFor(POCKET_JUDGE), true, this);
++                        System.getUriFor(POCKET_JUDGE), true, this,
++                        UserHandle.USER_ALL);
+                 mRegistered = true;
+             }
+         }
+diff --git a/services/core/java/com/android/server/pocket/PocketService.java b/services/core/java/com/android/server/pocket/PocketService.java
+index 5f1fd0756..3aaabb90e 100644
+--- a/services/core/java/com/android/server/pocket/PocketService.java
++++ b/services/core/java/com/android/server/pocket/PocketService.java
+@@ -52,7 +52,6 @@ import java.io.FileDescriptor;
+ import java.io.PrintWriter;
+ import java.util.ArrayList;
+ 
+-import static android.provider.Settings.System.POCKET_JUDGE;
+ 
+ /**
+  * A service to manage multiple clients that want to listen for pocket state.
+@@ -64,6 +63,9 @@ import static android.provider.Settings.System.POCKET_JUDGE;
+  */
+ public class PocketService extends SystemService implements IBinder.DeathRecipient {
+ 
++    /** PlaitOS: Settings.System key (written by Plait Settings): pocket lock on (default off). */
++    private static final String POCKET_JUDGE = "plait_pocket_judge";
++
+     private static final String TAG = PocketService.class.getSimpleName();
+     private static final boolean DEBUG = PocketConstants.DEBUG;
+ 
+@@ -218,7 +220,8 @@ public class PocketService extends SystemService implements IBinder.DeathRecipie
+         public void register() {
+             if (!mRegistered) {
+                 mContext.getContentResolver().registerContentObserver(
+-                        System.getUriFor(POCKET_JUDGE), true, this);
++                        System.getUriFor(POCKET_JUDGE), true, this,
++                        UserHandle.USER_ALL);
+                 mRegistered = true;
+             }
+         }
+-- 
+2.56.0
+

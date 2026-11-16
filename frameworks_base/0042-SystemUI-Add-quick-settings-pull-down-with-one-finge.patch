@@ -1,0 +1,137 @@
+From b5746f2c1ce6420f58ba9c25ff21624c74360cfe Mon Sep 17 00:00:00 2001
+From: Roman Birg <roman@cyngn.com>
+Date: Sun, 9 Nov 2014 19:52:34 -0800
+Subject: [PATCH 42/75] SystemUI: Add quick settings pull down with one finger
+
+Logic is currently set to use 1/3 of right hand side of the statusbar to
+trigger a quick settings quick pull down, quickly.
+
+Co-authored-by: Bruno Martins <bgcngm@gmail.com>
+Co-authored-by: Oliver Scott <olivercscott@gmail.com>
+Co-authored-by: pppig236 <priv@pppig236.com>
+Co-authored-by: Zhao Wei Liew <zhaoweiliew@gmail.com>
+Change-Id: I3c5dcfc23f39bf8be6c402e25f61e6f57a8add2c
+
+[PlaitOS: ported from LineageOS frameworks_base lineage-24.0]
+---
+ .../shade/QuickSettingsControllerImpl.java    | 48 ++++++++++++++++++-
+ 1 file changed, 46 insertions(+), 2 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java b/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
+index 983b29312..aca00f244 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
+@@ -36,9 +36,12 @@ import android.animation.AnimatorListenerAdapter;
+ import android.animation.ValueAnimator;
+ import android.app.Fragment;
+ import android.content.res.Resources;
++import android.database.ContentObserver;
+ import android.graphics.Insets;
+ import android.graphics.Rect;
+ import android.graphics.Region;
++import android.os.Handler;
++import android.os.UserHandle;
+ import android.util.IndentingPrintWriter;
+ import android.util.Log;
+ import android.util.MathUtils;
+@@ -108,10 +111,13 @@ import com.android.systemui.statusbar.phone.StatusBarKeyguardViewManager;
+ import com.android.systemui.statusbar.policy.CastController;
+ import com.android.systemui.statusbar.policy.KeyguardStateController;
+ import com.android.systemui.statusbar.policy.SplitShadeStateController;
++import com.android.systemui.user.domain.interactor.SelectedUserInteractor;
+ import com.android.systemui.util.LargeScreenUtils;
+ import com.android.systemui.util.kotlin.JavaAdapter;
+ import com.android.systemui.utils.windowmanager.WindowManagerProvider;
+ 
++import lineageos.providers.LineageSettings;
++
+ import dalvik.annotation.optimization.NeverCompile;
+ 
+ import dagger.Lazy;
+@@ -292,6 +298,9 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+     /** The duration of the notification bounds animation. */
+     private long mNotificationBoundsAnimationDuration;
+ 
++    private int mOneFingerQuickSettingsIntercept;
++    private final ContentObserver mOneFingerQuickSettingsInterceptObserver;
++
+     private final Region mInterceptRegion = new Region();
+     /** The end bounds of a clipping animation. */
+     private final Rect mClippingAnimationEndBounds = new Rect();
+@@ -361,7 +370,8 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+             SplitShadeStateController splitShadeStateController,
+             Lazy<CommunalTransitionViewModel> communalTransitionViewModelLazy,
+             Lazy<LargeScreenHeaderHelper> largeScreenHeaderHelperLazy,
+-            WindowManagerProvider windowManagerProvider
++            WindowManagerProvider windowManagerProvider,
++            SelectedUserInteractor selectedUserInteractor
+     ) {
+         mDisplaySubcomponentRepository = displaySubcomponentRepository;
+         mShadeDisplaysInteractorLazy = shadeDisplaysInteractorLazy;
+@@ -413,6 +423,17 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+         mJavaAdapter = javaAdapter;
+ 
+         mLockscreenShadeTransitionController.addCallback(new LockscreenShadeTransitionCallback());
++
++        mOneFingerQuickSettingsInterceptObserver = new ContentObserver(null) {
++            @Override
++            public void onChange(boolean selfChange) {
++                mOneFingerQuickSettingsIntercept = LineageSettings.System.getIntForUser(
++                        mPanelView.getContext().getContentResolver(),
++                        LineageSettings.System.STATUS_BAR_QUICK_QS_PULLDOWN, 0,
++                        selectedUserInteractor.getSelectedUserId());
++            }
++        };
++
+         dumpManager.registerDumpable(this);
+ 
+         mWindowManagerProvider = windowManagerProvider;
+@@ -612,7 +633,22 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+                         MotionEvent.BUTTON_SECONDARY) || event.isButtonPressed(
+                         MotionEvent.BUTTON_TERTIARY));
+ 
+-        return twoFingerDrag || stylusButtonClickDrag || mouseButtonClickDrag;
++        final float w = mQs.getView().getMeasuredWidth();
++        final float x = event.getX();
++        float region = w * 1.f / 4.f; // TODO overlay region fraction?
++        boolean showQsOverride = false;
++
++        switch (mOneFingerQuickSettingsIntercept) {
++            case 1: // Right side pulldown
++                showQsOverride = mQs.getView().isLayoutRtl() ? x < region : w - region < x;
++                break;
++            case 2: // Left side pulldown
++                showQsOverride = mQs.getView().isLayoutRtl() ? w - region < x : x < region;
++                break;
++        }
++        showQsOverride &= mBarState == StatusBarState.SHADE;
++
++        return twoFingerDrag || showQsOverride || stylusButtonClickDrag || mouseButtonClickDrag;
+     }
+ 
+     @Override
+@@ -2291,6 +2327,12 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+ 
+             mNotificationStackScrollLayoutController.setQsHeaderBoundsProvider(provider);
+             mQs.setScrollListener(mQsScrollListener);
++            mPanelView.getContext().getContentResolver().registerContentObserver(
++                    LineageSettings.System.getUriFor(
++                            LineageSettings.System.STATUS_BAR_QUICK_QS_PULLDOWN),
++                    false, mOneFingerQuickSettingsInterceptObserver,
++                    UserHandle.USER_ALL);
++            mOneFingerQuickSettingsInterceptObserver.onChange(true);
+             updateExpansion();
+         }
+ 
+@@ -2299,6 +2341,8 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+         /** */
+         @Override
+         public void onFragmentViewDestroyed(String tag, Fragment fragment) {
++            mPanelView.getContext().getContentResolver().unregisterContentObserver(
++                    mOneFingerQuickSettingsInterceptObserver);
+             // Manual handling of fragment lifecycle is only required because this bridges
+             // non-fragment and fragment code. Once we are using a fragment for the notification
+             // panel, mQs will not need to be null cause it will be tied to the same lifecycle.
+-- 
+2.56.0
+

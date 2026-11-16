@@ -1,0 +1,263 @@
+From f0626a35b7af57b112bb3a8340fe4048807a871a Mon Sep 17 00:00:00 2001
+From: Jyotiraditya Panda <jyotiraditya@aospa.co>
+Date: Tue, 20 Aug 2024 15:14:12 +0530
+Subject: [PATCH 56/75] core: Refactor pocket mode interface code
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- New illustration created by Radosław Błędowski <rkbdi@aospa.co> for Paranoid Android
+
+Change-Id: Ic224319a7c282158fc1a1855293afb02e056b6ef
+Signed-off-by: Jyotiraditya Panda <jyotiraditya@aospa.co>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ core/res/res/drawable/ic_pocket_lock.xml      |  10 --
+ .../res/drawable/pocket_mode_illustration.xml |  19 +++
+ core/res/res/drawable/pocket_mode_img.xml     |  30 -----
+ core/res/res/layout/pocket_lock_view.xml      | 115 +++++++-----------
+ 4 files changed, 63 insertions(+), 111 deletions(-)
+ delete mode 100644 core/res/res/drawable/ic_pocket_lock.xml
+ create mode 100644 core/res/res/drawable/pocket_mode_illustration.xml
+ delete mode 100644 core/res/res/drawable/pocket_mode_img.xml
+
+diff --git a/core/res/res/drawable/ic_pocket_lock.xml b/core/res/res/drawable/ic_pocket_lock.xml
+deleted file mode 100644
+index 3494a8f38..000000000
+--- a/core/res/res/drawable/ic_pocket_lock.xml
++++ /dev/null
+@@ -1,10 +0,0 @@
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-        android:width="24dp"
+-        android:height="24dp"
+-        android:viewportWidth="24.0"
+-        android:viewportHeight="24.0"
+-        android:tint="?android:attr/colorControlActivated">
+-    <path
+-        android:fillColor="#ffffffff"
+-        android:pathData="M12,17C10.89,17 10,16.1 10,15C10,13.89 10.89,13 12,13A2,2 0 0,1 14,15A2,2 0 0,1 12,17M18,20V10H6V20H18M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V10C4,8.89 4.89,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" />
+-</vector>
+diff --git a/core/res/res/drawable/pocket_mode_illustration.xml b/core/res/res/drawable/pocket_mode_illustration.xml
+new file mode 100644
+index 000000000..b263d8a37
+--- /dev/null
++++ b/core/res/res/drawable/pocket_mode_illustration.xml
+@@ -0,0 +1,19 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: 2024 Paranoid Android
++     SPDX-License-Identifier: Apache-2.0
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="950dp"
++    android:height="1900dp"
++    android:viewportWidth="950"
++    android:viewportHeight="1900">
++    <path
++        android:fillColor="#7C8287"
++        android:fillType="evenOdd"
++        android:pathData="M933 506.1V164c0-44.2-35.8-80-80-80H97c-44.2 0-80 35.8-80 80v1573c0 44.2 35.8 80 80 80h756c44.2 0 80-35.8 80-80V930.9c9.5-0.7 17-8.7 17-18.4v-160c0-9.7-7.5-17.7-17-18.4V607.9c9.5-0.7 17-8.7 17-18.4v-65c0-9.7-7.5-17.7-17-18.4zM853 104H97c-33.1 0-60 26.9-60 60v1573c0 33.1 26.9 60 60 60h756c33.1 0 60-26.9 60-60V164c0-33.1-26.9-60-60-60z" />
++    <path
++        android:fillAlpha="0.5"
++        android:fillColor="#D5EC92"
++        android:pathData="M0 163c0-52.5 42.5-95 95-95h760c52.5 0 95 42.5 95 95v258H0V163z" />
++</vector>
+diff --git a/core/res/res/drawable/pocket_mode_img.xml b/core/res/res/drawable/pocket_mode_img.xml
+deleted file mode 100644
+index 81bb727f0..000000000
+--- a/core/res/res/drawable/pocket_mode_img.xml
++++ /dev/null
+@@ -1,30 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!--
+-    Copyright (c) 2021 Havoc-OS
+-
+-    Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-
+-        http://www.apache.org/licenses/LICENSE-2.0
+-
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
+--->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="950dp"
+-    android:height="1900dp"
+-    android:viewportWidth="950"
+-    android:viewportHeight="1900">
+-
+-    <path
+-        android:fillColor="#ffffff"
+-        android:fillAlpha="0.54"
+-        android:pathData="M935,950.46q0,396.54,0,793.07c0,39.44-14,72.48-43.62,98.59-22.19,19.56-48.37,29.49-77.86,30.86-1.83 0.08 -3.66 0.07 -5.5 0.07 q-333,0-666,0c-61.19,0-112-41.14-124.5-101A124,124,0,0,1,15,1746.73q-0.16-796.81-0.07-1593.63c0-63,45.24-115.35,107.72-124.92a128.54,128.54,0,0,1,19.42-1.3q332.78-0.09,665.54,0c64,0,116.2,44.62,126,107.64a139.18,139.18,0,0,1,1.33,21.42Q935,553.18,935,950.46ZM50.92,171q0,786.83 0.09 ,1573.64a95.72,95.72,0,0,0,2.49,22.27c10.35,42.77,45.62,70.11,90.18,70.12q331.28,0,662.55-0.09a97.66,97.66,0,0,0,22.75-2.53c42.65-10.43,70-45.52,70-89.76Q899,957.82,899,171c-0.24-10.64 0.4 -21.38-0.88-31.89-5.17-42.33-44.22-76.49-86.73-76.49q-335.67,0-671.33 0.15 c-36.16,0-62.62,17.77-79.84,49.33C50.12,130.58,49.9,150.71,50.92,171Z" />
+-    <path
+-        android:fillColor="#8ab4f8"
+-        android:pathData="M899,171c-1.83-0.05-3.66-0.15-5.49-0.15H56.41c-1.83,0-3.66 0.1 -5.49 0.15 -1-20.29-0.8-40.42,9.28-58.9C77.42,80.54,103.88,62.82,140,62.77q335.66-0.44,671.33-0.15c42.51,0,81.56,34.16,86.73,76.49C899.38,149.62,898.74,160.36,899,171Z" />
+-</vector>
+diff --git a/core/res/res/layout/pocket_lock_view.xml b/core/res/res/layout/pocket_lock_view.xml
+index 53eb560d5..41a3b9159 100644
+--- a/core/res/res/layout/pocket_lock_view.xml
++++ b/core/res/res/layout/pocket_lock_view.xml
+@@ -1,109 +1,82 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <!--
+-     Copyright (C) 2021 Wave-OS
+-
+-     Licensed under the Apache License, Version 2.0 (the "License");
+-     you may not use this file except in compliance with the License.
+-     You may obtain a copy of the License at
+-
+-          http://www.apache.org/licenses/LICENSE-2.0
+-          
+-     Unless required by applicable law or agreed to in writing, software
+-     distributed under the License is distributed on an "AS IS" BASIS,
+-     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-     See the License for the specific language governing permissions and
+-     limitations under the License.
++     SPDX-FileCopyrightText: 2021 Wave-OS
++     SPDX-FileCopyrightText: 2024 Paranoid Android
++     SPDX-License-Identifier: Apache-2.0
+ -->
+ <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:id="@+id/pocket_mode_view"
++    android:id="@+id/pocket_mode_container"
+     android:layout_width="match_parent"
+     android:layout_height="match_parent"
+     android:visibility="gone">
+ 
+     <View
+-        android:id="@+id/scrim_view"
++        android:id="@+id/background_overlay"
+         android:layout_width="match_parent"
+         android:layout_height="match_parent"
+-        android:background="#000000" />
++        android:background="@android:color/black" />
+ 
+     <LinearLayout
+-        android:id="@+id/pocket_mode_inner_view"
++        android:id="@+id/pocket_mode_content"
+         android:layout_width="match_parent"
+         android:layout_height="match_parent"
+         android:gravity="center"
+         android:orientation="vertical">
+ 
+         <TextView
+-            android:id="@+id/pocket_view_title"
+-            style="@style/pocket_view_title"
++            android:id="@+id/pocket_mode_title"
++            style="@style/PocketModeTitle"
+             android:layout_width="match_parent"
+             android:layout_height="wrap_content"
+-            android:layout_marginHorizontal="@dimen/pocket_view_title_margin_horizontal"
++            android:layout_marginHorizontal="@dimen/pocket_mode_title_margin_horizontal"
+             android:gravity="center_horizontal"
+-            android:text="@string/pocket_view_title" />
++            android:text="@string/pocket_mode_title" />
+ 
+         <ImageView
+-            android:id="@+id/pocket_mode_phone"
+-            android:layout_width="@dimen/pocket_view_img_width"
+-            android:layout_height="@dimen/pocket_view_img_height"
+-            android:layout_marginTop="@dimen/pocket_view_img_margin_top"
+-            android:src="@drawable/pocket_mode_img" />
+-
+-        <TextView
+-            android:id="@+id/pocket_view_title_cancel"
+-            style="@style/pocket_view_title_cancel"
+-            android:layout_width="match_parent"
+-            android:layout_height="wrap_content"
+-            android:layout_marginTop="@dimen/pocket_view_title_cancel_margin_top"
+-            android:layout_marginHorizontal="@dimen/pocket_view_cancel_margin_horizontal"
+-            android:gravity="center_vertical"
+-            android:text="@string/pocket_view_title_cancel" />
++            android:id="@+id/pocket_mode_illustration"
++            android:layout_width="@dimen/pocket_mode_illustration_width"
++            android:layout_height="@dimen/pocket_mode_illustration_height"
++            android:layout_marginTop="@dimen/pocket_mode_illustration_margin_top"
++            android:contentDescription="@string/pocket_mode_illustration_description"
++            android:src="@drawable/pocket_mode_illustration" />
+ 
+         <LinearLayout
+-            android:id="@+id/pocket_view_top_tag_view1"
++            android:id="@+id/pocket_mode_instructions_container"
+             android:layout_width="match_parent"
+             android:layout_height="wrap_content"
+-            android:layout_marginTop="@dimen/pocket_view_top_tag_margin_top"
+-            android:layout_marginHorizontal="@dimen/pocket_view_cancel_margin_horizontal"
+-            android:orientation="horizontal">
++            android:layout_marginHorizontal="@dimen/pocket_mode_instructions_container_margin_horizontal"
++            android:layout_marginTop="@dimen/pocket_mode_instructions_container_margin_top"
++            android:orientation="vertical">
+ 
+             <TextView
+-                android:id="@+id/pocket_view_top_tag_number1"
+-                style="@style/pocket_view_top_tag"
+-                android:layout_width="wrap_content"
++                android:id="@+id/pocket_mode_instructions_title"
++                style="@style/PocketModeInstructionsTitle"
++                android:layout_width="match_parent"
+                 android:layout_height="wrap_content"
+-                android:text="@string/pocket_view_top_tag_number1" />
++                android:text="@string/pocket_mode_instructions_header" />
+ 
+-            <TextView
+-                android:id="@+id/pocket_view_top_tag_cancel"
+-                style="@style/pocket_view_top_tag"
+-                android:layout_width="wrap_content"
++            <LinearLayout
++                android:id="@+id/pocket_mode_instructions_steps"
++                android:layout_width="match_parent"
+                 android:layout_height="wrap_content"
+-                android:text="@string/pocket_view_top_tag_cancel" />
+-        </LinearLayout>
++                android:layout_marginTop="@dimen/pocket_mode_instructions_steps_margin_top"
++                android:orientation="vertical">
+ 
+-        <LinearLayout
+-            android:id="@+id/pocket_view_top_tag_view2"
+-            android:layout_width="match_parent"
+-            android:layout_height="wrap_content"
+-            android:layout_marginTop="@dimen/pocket_view_top_tag_margin_top"
+-            android:layout_marginHorizontal="@dimen/pocket_view_cancel_margin_horizontal"
+-            android:gravity="bottom"
+-            android:orientation="horizontal">
+-
+-            <TextView
+-                android:id="@+id/pocket_view_top_tag_number2"
+-                style="@style/pocket_view_top_tag"
+-                android:layout_width="wrap_content"
+-                android:layout_height="wrap_content"
+-                android:text="@string/pocket_view_top_tag_number2" />
++                <TextView
++                    android:id="@+id/pocket_mode_instruction_step1"
++                    style="@style/PocketModeInstructionStep"
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:text="@string/pocket_mode_instruction_step1" />
+ 
+-            <TextView
+-                android:id="@+id/pocket_view_top_tag_cancel2"
+-                style="@style/pocket_view_top_tag"
+-                android:layout_width="wrap_content"
+-                android:layout_height="wrap_content"
+-                android:text="@string/pocket_view_top_tag_cancel2" />
++                <TextView
++                    android:id="@+id/pocket_mode_instruction_step2"
++                    style="@style/PocketModeInstructionStep"
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:layout_marginTop="@dimen/pocket_mode_instructions_step_margin_top"
++                    android:text="@string/pocket_mode_instruction_step2" />
++            </LinearLayout>
+         </LinearLayout>
+     </LinearLayout>
+ </RelativeLayout>
+-- 
+2.56.0
+

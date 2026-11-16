@@ -1,0 +1,449 @@
+From 9b04c69c5c571577791feee3a28aae99d2f4b9a7 Mon Sep 17 00:00:00 2001
+From: Luca Stefani <luca.stefani.ge1@gmail.com>
+Date: Sun, 19 Jul 2026 01:28:59 +0530
+Subject: [PATCH 30/75] SystemUI: Clock position customization
+
+Co-authored-by: Aditya Eka Pranata <aepranata@gmail.com>
+Co-authored-by: Hendrik Hagendorn <git@finnq.de>
+Co-authored-by: kxxt <rsworktech@outlook.com>
+Co-authored-by: LuK1337 <priv.luk@gmail.com>
+Co-authored-by: Michael W <baddaemon87@gmail.com>
+Co-authored-by: Pranav Vashi <neobuddy89@gmail.com>
+Co-authored-by: Volodymyr Zhdanov <wight554@gmail.com>
+Co-authored-by: kxxt <rsworktech@outlook.com>
+Co-authored-by: Bruno Martins <bgcngm@gmail.com>
+Change-Id: Icbd4b217ebfb78523558742bb477de56ae4b3bd0
+
+[PlaitOS: ported from LineageOS frameworks_base lineage-24.0. The System UI Tuner
+keeps its stock "Time" entry (seconds / hours and minutes / hidden), which
+writes the same "clock" icon_blacklist entry, so the tuner and cm_strings
+hunks are dropped]
+---
+ packages/SystemUI/res/layout/status_bar.xml   |  11 ++
+ packages/SystemUI/res/layout/system_icons.xml |  20 +++
+ .../statusbar/phone/PhoneStatusBarView.java   |  12 ++
+ .../phone/PhoneStatusBarViewController.kt     |   8 +
+ .../ui/binder/HomeStatusBarViewBinder.kt      | 158 +++++++++++++++++-
+ .../shared/ui/composable/StatusBarRoot.kt     |   2 +-
+ .../ui/viewmodel/HomeStatusBarViewModel.kt    |  15 +-
+ 7 files changed, 219 insertions(+), 7 deletions(-)
+
+diff --git a/packages/SystemUI/res/layout/status_bar.xml b/packages/SystemUI/res/layout/status_bar.xml
+index a13e79794..8a1044ace 100644
+--- a/packages/SystemUI/res/layout/status_bar.xml
++++ b/packages/SystemUI/res/layout/status_bar.xml
+@@ -208,6 +208,17 @@
+         android:paddingTop="@dimen/status_bar_padding_top"
+         >
+ 
++        <com.android.systemui.statusbar.policy.Clock
++            android:id="@+id/clock_center"
++            android:textAppearance="@style/TextAppearance.StatusBar.Default"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:minHeight="@dimen/status_bar_icon_container_height"
++            android:singleLine="true"
++            android:gravity="center"
++            android:visibility="gone"
++        />
++
+         <com.android.systemui.statusbar.LineageStatusBarItemHolder
+             android:id="@+id/network_traffic_holder_center"
+             android:layout_width="wrap_content"
+diff --git a/packages/SystemUI/res/layout/system_icons.xml b/packages/SystemUI/res/layout/system_icons.xml
+index 4d5ffc579..d83bfb9cc 100644
+--- a/packages/SystemUI/res/layout/system_icons.xml
++++ b/packages/SystemUI/res/layout/system_icons.xml
+@@ -33,4 +33,24 @@
+         android:gravity="center_vertical"
+         android:orientation="horizontal"/>
+ 
++    <com.android.keyguard.AlphaOptimizedLinearLayout
++        android:id="@+id/right_clock_layout"
++        android:layout_width="wrap_content"
++        android:layout_height="match_parent"
++        android:orientation="horizontal"
++        >
++        <com.android.systemui.statusbar.policy.Clock
++            android:id="@+id/clock_right"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:minHeight="@dimen/status_bar_icon_container_height"
++            android:textAppearance="@style/TextAppearance.StatusBar.Default"
++            android:singleLine="true"
++            android:paddingStart="@dimen/status_bar_clock_starting_padding"
++            android:paddingEnd="@dimen/status_bar_clock_end_padding"
++            android:gravity="center_vertical"
++            android:visibility="gone"
++        />
++    </com.android.keyguard.AlphaOptimizedLinearLayout>
++
+ </LinearLayout>
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java
+index db91ce3c1..311d0bfe6 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java
+@@ -26,8 +26,10 @@ import android.graphics.Rect;
+ import android.graphics.Region;
+ import android.util.AttributeSet;
+ import android.util.Log;
++import android.view.Display;
+ import android.view.DisplayCutout;
+ import android.view.MotionEvent;
++import android.view.Surface;
+ import android.view.View;
+ import android.view.ViewGroup;
+ import android.view.WindowInsets;
+@@ -382,6 +384,16 @@ public class PhoneStatusBarView extends FrameLayout {
+                 insets.top,
+                 insets.right,
+                 getPaddingBottom());
++
++        // Apply negative paddings to centered area layout so that we'll actually be on the center.
++        Display display = getDisplay();
++        final int winRotation = display != null ? display.getRotation() : Surface.ROTATION_0;
++        LayoutParams centeredAreaParams =
++                (LayoutParams) findViewById(R.id.centered_area).getLayoutParams();
++        centeredAreaParams.leftMargin =
++                winRotation == Surface.ROTATION_0 ? -insets.left : 0;
++        centeredAreaParams.rightMargin =
++                winRotation == Surface.ROTATION_0 ? -insets.right : 0;
+     }
+ 
+     interface HasCornerCutoutFetcher {
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarViewController.kt b/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarViewController.kt
+index 8e907fb31..2d3f497b3 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarViewController.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarViewController.kt
+@@ -89,6 +89,8 @@ private constructor(
+ ) : ViewController<PhoneStatusBarView>(view) {
+ 
+     private lateinit var clock: Clock
++    private lateinit var clockCenter: Clock
++    private lateinit var clockRight: Clock
+     private lateinit var startSideContainer: View
+     private lateinit var endSideContainer: View
+ 
+@@ -180,6 +182,8 @@ private constructor(
+ 
+     override fun onViewAttached() {
+         clock = mView.requireViewById(R.id.clock)
++        clockCenter = mView.requireViewById(R.id.clock_center)
++        clockRight = mView.requireViewById(R.id.clock_right)
+ 
+         addDarkReceivers()
+ 
+@@ -315,10 +319,14 @@ private constructor(
+ 
+     private fun addDarkReceivers() {
+         darkIconDispatcher.addDarkReceiver(clock)
++        darkIconDispatcher.addDarkReceiver(clockCenter)
++        darkIconDispatcher.addDarkReceiver(clockRight)
+     }
+ 
+     private fun removeDarkReceivers() {
+         darkIconDispatcher.removeDarkReceiver(clock)
++        darkIconDispatcher.removeDarkReceiver(clockCenter)
++        darkIconDispatcher.removeDarkReceiver(clockRight)
+     }
+ 
+     @Deprecated(
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
+index b7b5f96a5..d7884bc9e 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
+@@ -18,6 +18,13 @@ package com.android.systemui.statusbar.pipeline.shared.ui.binder
+ 
+ import android.animation.Animator
+ import android.animation.AnimatorListenerAdapter
++import android.content.ContentResolver
++import android.database.ContentObserver
++import android.net.Uri
++import android.os.Handler
++import android.os.Looper
++import android.os.UserHandle
++import android.provider.Settings
+ import android.view.View
+ import androidx.core.view.isVisible
+ import androidx.lifecycle.Lifecycle
+@@ -35,8 +42,15 @@ import com.android.systemui.statusbar.events.shared.model.SystemEventAnimationSt
+ import com.android.systemui.statusbar.events.shared.model.SystemEventAnimationState.RunningChipAnim
+ import com.android.systemui.statusbar.pipeline.shared.ui.model.VisibilityModel
+ import com.android.systemui.statusbar.pipeline.shared.ui.viewmodel.HomeStatusBarViewModel
++import com.android.systemui.statusbar.phone.ui.StatusBarIconController
++import com.android.systemui.statusbar.policy.Clock
+ import javax.inject.Inject
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.combine
++import kotlinx.coroutines.flow.update
+ import kotlinx.coroutines.launch
++import lineageos.providers.LineageSettings
+ 
+ /**
+  * Interface to assist with binding the [CollapsedStatusBarFragment] to [HomeStatusBarViewModel].
+@@ -62,6 +76,13 @@ interface HomeStatusBarViewBinder {
+ 
+ @PerDisplaySingleton
+ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinder {
++    private data class ClockState(
++        val denyListed: Boolean,
++        val hideForHun: Boolean,
++        val position: Int,
++        val visibilityModel: VisibilityModel,
++    )
++
+     override fun bind(
+         displayId: Int,
+         view: View,
+@@ -72,18 +93,84 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+     ) {
+         // Set some top-level views to gone before we get started
+         val systemInfoView = view.requireViewById<View>(R.id.status_bar_end_side_content)
+-        val clockView = view.requireViewById<View>(R.id.clock)
++        val leftClock: Clock = view.requireViewById(R.id.clock)
++        val centerClock: Clock? = view.findViewById(R.id.clock_center)
++        val rightClock: Clock? = view.findViewById(R.id.clock_right)
+         val networkTrafficCenterView = view.findViewById<View>(R.id.network_traffic_holder_center)
+         val networkTrafficStartView = view.findViewById<View>(R.id.network_traffic_holder_start)
+         val notificationIconsArea = view.requireViewById<View>(R.id.notificationIcons)
+ 
+         // GONE because this shouldn't take space in the layout
+         systemInfoView.hideInitially()
+-        clockView.hideInitially()
++        leftClock.hideInitially(state = View.GONE)
++        centerClock?.hideInitially(state = View.GONE)
++        rightClock?.hideInitially(state = View.GONE)
+         notificationIconsArea.hideInitially()
+ 
+         view.repeatWhenAttached {
+             repeatOnLifecycle(Lifecycle.State.CREATED) {
++                val context = view.context
++
++                val clockState =
++                    MutableStateFlow(
++                        ClockState(
++                            denyListed = false,
++                            hideForHun = false,
++                            position = context.contentResolver.readClockPosition(),
++                            visibilityModel = VisibilityModel(View.GONE, true),
++                        )
++                    )
++
++                val iconHideListUri: Uri =
++                    Settings.Secure.getUriFor(StatusBarIconController.ICON_HIDE_LIST)
++                val statusBarClockUri: Uri =
++                    LineageSettings.System.getUriFor(LineageSettings.System.STATUS_BAR_CLOCK)
++
++                val contentObserver =
++                    object : ContentObserver(Handler(Looper.getMainLooper())) {
++                        override fun onChange(selfChange: Boolean, uri: Uri?) {
++                            clockState.update { current ->
++                                when (uri) {
++                                    iconHideListUri ->
++                                        current.copy(
++                                            denyListed =
++                                                StatusBarIconController.getIconHideList(
++                                                        context,
++                                                        Settings.Secure.getString(
++                                                            context.contentResolver,
++                                                            StatusBarIconController.ICON_HIDE_LIST,
++                                                        ),
++                                                    )
++                                                    .contains("clock")
++                                        )
++                                    statusBarClockUri ->
++                                        current.copy(
++                                            position = context.contentResolver.readClockPosition()
++                                        )
++                                    else -> current
++                                }
++                            }
++                        }
++                    }
++
++                val urisToObserve = listOf(iconHideListUri, statusBarClockUri)
++                urisToObserve.forEach { uri ->
++                    context.contentResolver.registerContentObserver(
++                        uri,
++                        false,
++                        contentObserver,
++                        UserHandle.USER_ALL,
++                    )
++                    contentObserver.onChange(false, uri)
++                }
++
++                // Ensure cleanup when lifecycle ends
++                val job = coroutineContext[Job]
++                job?.invokeOnCompletion {
++                    runCatching {
++                        context.contentResolver.unregisterContentObserver(contentObserver)
++                    }
++                }
+                 listener?.let { listener ->
+                     launch {
+                         viewModel.isTransitioningFromLockscreenToOccluded.collect {
+@@ -143,7 +230,59 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+                 }
+ 
+                 if (!ClockModernization.isEnabled) {
+-                    launch { viewModel.isClockVisible.collect { clockView.adjustVisibility(it) } }
++                    launch {
++                        combine(
++                                viewModel.isClockVisible,
++                                viewModel.hideStartSideContentForHeadsUp,
++                            ) { visibilityModel, hideForHun ->
++                                visibilityModel to hideForHun
++                            }
++                            .collect { (visibilityModel, hideForHun) ->
++                                clockState.update { current ->
++                                    current.copy(
++                                        visibilityModel = visibilityModel,
++                                        hideForHun = hideForHun,
++                                    )
++                                }
++                            }
++                    }
++
++                    launch {
++                        clockState.collect { state ->
++                            // We only want to hide left clock for HUN
++                            val hunBlocksClock =
++                                state.position == CLOCK_POSITION_LEFT && state.hideForHun
++
++                            // Apply denylist on top of ViewModel visibility
++                            val finalVisibility =
++                                if (
++                                    state.visibilityModel.visibility == View.VISIBLE &&
++                                        !hunBlocksClock &&
++                                        !state.denyListed
++                                ) {
++                                    state.visibilityModel
++                                } else {
++                                    state.visibilityModel.copy(visibility = View.GONE)
++                                }
++
++                            // Pick active clock view
++                            val activeClock: Clock? =
++                                when (state.position) {
++                                    CLOCK_POSITION_CENTER -> centerClock ?: leftClock
++                                    CLOCK_POSITION_RIGHT -> rightClock ?: leftClock
++                                    CLOCK_POSITION_LEFT -> leftClock
++                                    else -> leftClock
++                                }
++
++                            // Hide all clocks first
++                            leftClock.visibility = View.GONE
++                            centerClock?.visibility = View.GONE
++                            rightClock?.visibility = View.GONE
++
++                            // Show only the active one
++                            activeClock?.adjustVisibility(finalVisibility)
++                        }
++                    }
+                 }
+ 
+                 launch {
+@@ -189,6 +328,15 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+         }
+     }
+ 
++    private fun ContentResolver.readClockPosition(): Int {
++        return LineageSettings.System.getIntForUser(
++            this,
++            LineageSettings.System.STATUS_BAR_CLOCK,
++            CLOCK_POSITION_LEFT,
++            UserHandle.USER_CURRENT,
++        )
++    }
++
+     private fun SystemEventAnimationState.isAnimatingChip() =
+         when (this) {
+             AnimatingIn,
+@@ -297,6 +445,10 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+     }
+ 
+     companion object {
++        private const val CLOCK_POSITION_RIGHT = 0
++        private const val CLOCK_POSITION_CENTER = 1
++        private const val CLOCK_POSITION_LEFT = 2
++
+         /** Animation durations for status bar. Used to be defined in the fragment */
+         const val FADE_IN_DURATION = 320
+         const val FADE_OUT_DURATION = 160
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/composable/StatusBarRoot.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/composable/StatusBarRoot.kt
+index 013eae5ed..68079713e 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/composable/StatusBarRoot.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/composable/StatusBarRoot.kt
+@@ -607,7 +607,7 @@ private fun addBatteryComposable(
+             }
+         }
+     phoneStatusBarView.findViewById<ViewGroup>(R.id.system_icons).apply {
+-        addView(batteryComposeView, -1)
++        addView(batteryComposeView, getChildCount() - 1)
+     }
+ }
+ 
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/viewmodel/HomeStatusBarViewModel.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/viewmodel/HomeStatusBarViewModel.kt
+index 7044e9701..2f3936d53 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/viewmodel/HomeStatusBarViewModel.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/viewmodel/HomeStatusBarViewModel.kt
+@@ -67,8 +67,10 @@ import com.android.systemui.statusbar.layout.ui.viewmodel.AppHandlesViewModel
+ import com.android.systemui.statusbar.layout.ui.viewmodel.StatusBarBoundsViewModel
+ import com.android.systemui.statusbar.layout.ui.viewmodel.StatusBarContentInsetsViewModel
+ import com.android.systemui.statusbar.notification.domain.interactor.ActiveNotificationsInteractor
++import com.android.systemui.statusbar.notification.domain.interactor.HeadsUpNotificationInteractor
+ import com.android.systemui.statusbar.notification.icon.domain.interactor.StatusBarNotificationIconsInteractor
+ import com.android.systemui.statusbar.notification.shared.StatusBarHeadline
++import com.android.systemui.statusbar.notification.domain.model.TopPinnedState
+ import com.android.systemui.statusbar.phone.domain.interactor.DarkIconInteractor
+ import com.android.systemui.statusbar.phone.domain.interactor.IsAreaDark
+ import com.android.systemui.statusbar.phone.domain.interactor.LightsOutInteractor
+@@ -206,6 +208,7 @@ interface HomeStatusBarViewModel : Activatable {
+     val shouldShowOperatorNameView: Flow<Boolean>
+     val isClockVisible: Flow<VisibilityModel>
+     val isNotificationIconContainerVisible: Flow<VisibilityModel>
++    val hideStartSideContentForHeadsUp: Flow<Boolean>
+ 
+     /**
+      * Pair of (system info visibility, event animation state). The animation state can be used to
+@@ -307,6 +310,7 @@ constructor(
+     deviceProvisioningInteractor: DeviceProvisioningInteractor,
+     private val userLogoutInteractor: UserLogoutInteractor,
+     private val scrollToTopInteractor: ScrollToTopInteractor,
++    private val headsUpNotificationInteractor: HeadsUpNotificationInteractor,
+ ) : HomeStatusBarViewModel, HydratedActivatable(enableEnqueuedActivations = true) {
+ 
+     val logger = loggerFactory.getOrCreate(logBufferName(thisDisplayId), 60)
+@@ -555,20 +559,25 @@ constructor(
+             hasChips && canShowChips
+         }
+ 
++    override val hideStartSideContentForHeadsUp: Flow<Boolean> =
++        headsUpNotificationInteractor.statusBarHeadsUpState.map {
++            it is TopPinnedState.Pinned
++        }
++
+     override val isClockVisible: Flow<VisibilityModel> =
+         combine(
+                 statusBarVisibilityInteractor.shouldHomeStatusBarBeVisible,
+                 homeStatusBarInteractor.visibilityViaDisableFlags,
+             ) { shouldStatusBarBeVisible, visibilityViaDisableFlags ->
+                 val showClock = shouldStatusBarBeVisible && visibilityViaDisableFlags.isClockAllowed
+-                // Always use View.INVISIBLE here, so that animations work
+-                VisibilityModel(showClock.toVisibleOrInvisible(), visibilityViaDisableFlags.animate)
++                // Always use View.GONE here, so that we do not get stray spaces
++                VisibilityModel(showClock.toVisibleOrGone(), visibilityViaDisableFlags.animate)
+             }
+             .distinctUntilChanged()
+             .logDiffsForTable(
+                 tableLogBuffer = tableLogger,
+                 columnPrefix = COL_PREFIX_CLOCK,
+-                initialValue = VisibilityModel(false.toVisibleOrInvisible(), false),
++                initialValue = VisibilityModel(false.toVisibleOrGone(), false),
+             )
+             .flowOn(bgDispatcher)
+ 
+-- 
+2.56.0
+

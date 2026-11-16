@@ -1,0 +1,29 @@
+From 83ec86fd2dfae217aad11481237e87fdb95bcfd9 Mon Sep 17 00:00:00 2001
+From: DennySPb <dennyspb@gmail.com>
+Date: Wed, 20 Apr 2022 11:00:33 +0300
+Subject: [PATCH 2/3] Override IconProvider class for IconPack support
+
+Signed-off-by: DennySPb <dennyspb@gmail.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_libs_systemui 17.0]
+---
+ iconloaderlib/res/values/config.xml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/iconloaderlib/res/values/config.xml b/iconloaderlib/res/values/config.xml
+index 26b59b5..e208ddc 100644
+--- a/iconloaderlib/res/values/config.xml
++++ b/iconloaderlib/res/values/config.xml
+@@ -26,6 +26,6 @@
+ 
+     <string name="calendar_component_name" translatable="false"></string>
+     <string name="clock_component_name" translatable="false"></string>
+-    <string name="icon_provider_class" translatable="false"></string>
++    <string name="icon_provider_class" translatable="false">com.android.launcher3.icons.ThirdPartyIconProvider</string>
+ 
+ </resources>
+\ No newline at end of file
+-- 
+2.56.0
+

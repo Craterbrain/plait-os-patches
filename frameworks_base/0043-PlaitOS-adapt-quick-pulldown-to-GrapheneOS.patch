@@ -1,0 +1,84 @@
+From 82040e8a085536f35dd0acf507db94c8377d4ece Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 21:56:22 -0600
+Subject: [PATCH 43/75] PlaitOS: adapt quick pulldown to GrapheneOS
+
+- Key is Settings.System plait_status_bar_quick_qs_pulldown (0 off, the
+  default; 1 right quarter of the bar; 2 left quarter) instead of
+  LineageSettings
+- Adds 3 = anywhere on the bar, so a one-finger swipe from any point opens
+  full Quick Settings (crDroid's "always")
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../shade/QuickSettingsControllerImpl.java     | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java b/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
+index aca00f244..0a8ec980d 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
+@@ -42,6 +42,7 @@ import android.graphics.Rect;
+ import android.graphics.Region;
+ import android.os.Handler;
+ import android.os.UserHandle;
++import android.provider.Settings;
+ import android.util.IndentingPrintWriter;
+ import android.util.Log;
+ import android.util.MathUtils;
+@@ -116,8 +117,6 @@ import com.android.systemui.util.LargeScreenUtils;
+ import com.android.systemui.util.kotlin.JavaAdapter;
+ import com.android.systemui.utils.windowmanager.WindowManagerProvider;
+ 
+-import lineageos.providers.LineageSettings;
+-
+ import dalvik.annotation.optimization.NeverCompile;
+ 
+ import dagger.Lazy;
+@@ -298,6 +297,11 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+     /** The duration of the notification bounds animation. */
+     private long mNotificationBoundsAnimationDuration;
+ 
++    /**
++     * Settings.System key (written by Plait Settings): one-finger quick pulldown, 0 off (default),
++     * 1 right quarter of the bar, 2 left quarter, 3 anywhere.
++     */
++    private static final String PLAIT_QUICK_QS_PULLDOWN = "plait_status_bar_quick_qs_pulldown";
+     private int mOneFingerQuickSettingsIntercept;
+     private final ContentObserver mOneFingerQuickSettingsInterceptObserver;
+ 
+@@ -427,9 +431,9 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+         mOneFingerQuickSettingsInterceptObserver = new ContentObserver(null) {
+             @Override
+             public void onChange(boolean selfChange) {
+-                mOneFingerQuickSettingsIntercept = LineageSettings.System.getIntForUser(
++                mOneFingerQuickSettingsIntercept = Settings.System.getIntForUser(
+                         mPanelView.getContext().getContentResolver(),
+-                        LineageSettings.System.STATUS_BAR_QUICK_QS_PULLDOWN, 0,
++                        PLAIT_QUICK_QS_PULLDOWN, 0,
+                         selectedUserInteractor.getSelectedUserId());
+             }
+         };
+@@ -645,6 +649,9 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+             case 2: // Left side pulldown
+                 showQsOverride = mQs.getView().isLayoutRtl() ? w - region < x : x < region;
+                 break;
++            case 3: // PlaitOS: anywhere on the status bar
++                showQsOverride = true;
++                break;
+         }
+         showQsOverride &= mBarState == StatusBarState.SHADE;
+ 
+@@ -2328,8 +2335,7 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+             mNotificationStackScrollLayoutController.setQsHeaderBoundsProvider(provider);
+             mQs.setScrollListener(mQsScrollListener);
+             mPanelView.getContext().getContentResolver().registerContentObserver(
+-                    LineageSettings.System.getUriFor(
+-                            LineageSettings.System.STATUS_BAR_QUICK_QS_PULLDOWN),
++                    Settings.System.getUriFor(PLAIT_QUICK_QS_PULLDOWN),
+                     false, mOneFingerQuickSettingsInterceptObserver,
+                     UserHandle.USER_ALL);
+             mOneFingerQuickSettingsInterceptObserver.onChange(true);
+-- 
+2.56.0
+

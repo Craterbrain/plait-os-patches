@@ -1,0 +1,25 @@
+From f0ee8325de50bb640ed651167889b01870a1f6b8 Mon Sep 17 00:00:00 2001
+From: ShevT <evgeny.shishkov@gmail.com>
+Date: Tue, 21 Nov 2023 10:45:31 +0300
+Subject: [PATCH 09/13] Settings: Add icon for 'WiFi direct'
+
+[PlaitOS: ported from crDroid packages_apps_Settings 16.0]
+---
+ res/xml/wifi_configure_settings.xml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/res/xml/wifi_configure_settings.xml b/res/xml/wifi_configure_settings.xml
+index 50be0c9..7756ef9 100644
+--- a/res/xml/wifi_configure_settings.xml
++++ b/res/xml/wifi_configure_settings.xml
+@@ -56,6 +56,7 @@
+     <Preference
+         android:key="wifi_direct"
+         android:title="@string/wifi_menu_p2p"
++        android:icon="@drawable/ic_cast_24dp"
+         android:fragment="com.android.settings.wifi.p2p.WifiP2pSettings" />
+ 
+ </PreferenceScreen>
+-- 
+2.56.0
+

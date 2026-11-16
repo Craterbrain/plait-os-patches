@@ -1,0 +1,60 @@
+From d83b10664f29d2429ccd193b97a6031c49504436 Mon Sep 17 00:00:00 2001
+From: Adithya R <gh0strider.2k18.reborn@gmail.com>
+Date: Wed, 13 Aug 2025 22:17:18 +0530
+Subject: [PATCH 08/15] Launcher3: Do not wrap icons from icon pack
+
+Otherwise we get a circle background during app/close animation or
+while dragging the shortcut.
+
+[neobuddy89: Adapted for A17]
+
+Change-Id: Ie3741c2d52c5460e8be8609264cb364d2d3ecabb
+Signed-off-by: Dmitrii <bankersenator@gmail.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid packages_apps_Launcher3 17.0]
+---
+ src/com/android/launcher3/graphics/IconLoader.kt | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/com/android/launcher3/graphics/IconLoader.kt b/src/com/android/launcher3/graphics/IconLoader.kt
+index b6e42d3..71f54e8 100644
+--- a/src/com/android/launcher3/graphics/IconLoader.kt
++++ b/src/com/android/launcher3/graphics/IconLoader.kt
+@@ -124,14 +124,22 @@ constructor(
+         if (mainIcon == null) {
+             return null
+         }
+-        var result: AdaptiveIconDrawable =
++
++        var result: AdaptiveIconDrawable? =
+             if (mainIcon is AdaptiveIconDrawable) {
+                 mainIcon
+             } else {
++                val noWrapHintSet = (mainIcon.changingConfigurations and CONFIG_HINT_NO_WRAP) != 0
++
+                 // Wrap the main icon in AID
+-                LauncherIcons.obtain(context).use { li -> li.wrapToAdaptiveIcon(mainIcon) }
++                if (!noWrapHintSet) LauncherIcons.obtain(context).use { li -> li.wrapToAdaptiveIcon(mainIcon) }
++                else null
+             }
+ 
++        if (result == null) {
++            return null
++        }
++
+         // Inject theme icon drawable
+         if (Utilities.ATLEAST_T && useTheme) {
+             val themeController = themeManager.themeController
+@@ -156,4 +164,8 @@ constructor(
+     }
+ 
+     class Result(@JvmField val icon: AdaptiveIconDrawable, @JvmField val badge: Drawable)
++
++    companion object {
++        const val CONFIG_HINT_NO_WRAP: Int = 0x1000000
++    }
+ }
+-- 
+2.56.0
+

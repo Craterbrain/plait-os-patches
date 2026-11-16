@@ -1,0 +1,788 @@
+From 8d8b8782e70838cdd9f190a156a0fdfe2f38110a Mon Sep 17 00:00:00 2001
+From: rmp22 <195054967+rmp22@users.noreply.github.com>
+Date: Mon, 9 Mar 2026 08:08:43 +0800
+Subject: [PATCH 63/75] SystemUI: Add smart pixels support
+
+Change-Id: I003b0ef78309bbf18f0c7bf3d877102108f9931f
+Co-authored-by: Saikrishna1504 <saikrishna26918@gmail.com>
+Co-authored-by: Joe Maples <joe@frap129.org>
+Co-authored-by: Sergii Pylypenko <x.pelya.x@gmail.com>
+Co-authored-by: Adin Kwok <adin.kwok@carbonrom.org>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ .../res/drawable/qs_smart_pixels_icon_off.xml |  11 ++
+ .../res/drawable/qs_smart_pixels_icon_on.xml  |  20 +++
+ .../dagger/SystemUICoreStartableModule.kt     |   8 +
+ .../smartpixel/domain/SmartPixelSettings.kt   |  89 ++++++++++
+ .../smartpixel/ui/SmartPixelDialogDelegate.kt | 154 ++++++++++++++++++
+ .../smartpixel/ui/SmartPixelManager.kt        |  31 ++++
+ .../smartpixel/ui/SmartPixelOverlay.kt        |  97 +++++++++++
+ .../systemui/smartpixel/ui/SmartPixelTile.kt  | 150 +++++++++++++++++
+ .../systemui/smartpixel/ui/SmartPixelView.kt  |  53 ++++++
+ .../smartpixel/ui/SmartPixelViewController.kt |  67 ++++++++
+ 10 files changed, 680 insertions(+)
+ create mode 100644 packages/SystemUI/res/drawable/qs_smart_pixels_icon_off.xml
+ create mode 100644 packages/SystemUI/res/drawable/qs_smart_pixels_icon_on.xml
+ create mode 100644 packages/SystemUI/src/com/android/systemui/smartpixel/domain/SmartPixelSettings.kt
+ create mode 100644 packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt
+ create mode 100644 packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelManager.kt
+ create mode 100644 packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelOverlay.kt
+ create mode 100644 packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelTile.kt
+ create mode 100644 packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelView.kt
+ create mode 100644 packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelViewController.kt
+
+diff --git a/packages/SystemUI/res/drawable/qs_smart_pixels_icon_off.xml b/packages/SystemUI/res/drawable/qs_smart_pixels_icon_off.xml
+new file mode 100644
+index 000000000..1a7a98189
+--- /dev/null
++++ b/packages/SystemUI/res/drawable/qs_smart_pixels_icon_off.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12c5.16,-1.26 9,-6.45 9,-12V5L12,1zM19,11c0,4.52 -3.13,8.69 -7,9.93C8.13,19.69 5,15.52 5,11V6.3l7,-3.11l7,3.11V11z" />
++</vector>
+diff --git a/packages/SystemUI/res/drawable/qs_smart_pixels_icon_on.xml b/packages/SystemUI/res/drawable/qs_smart_pixels_icon_on.xml
+new file mode 100644
+index 000000000..fa110b9c3
+--- /dev/null
++++ b/packages/SystemUI/res/drawable/qs_smart_pixels_icon_on.xml
+@@ -0,0 +1,20 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12c5.16,-1.26 9,-6.45 9,-12V5L12,1z" />
++    <path
++        android:fillColor="@android:color/black"
++        android:pathData="M7,6.5v9.5c0.95,1.32 2.14,2.44 3.5,3.28V6h-1.5C8.45,6 7.73,6.17 7,6.5z" />
++    <path
++        android:fillColor="@android:color/black"
++        android:pathData="M11,5.17v14.08c0.33,0.09 0.66,0.17 1,0.23c0.34,-0.06 0.67,-0.14 1,-0.23V5.17c-0.33,-0.06 -0.66,-0.11 -1,-0.14C11.66,5.06 11.33,5.11 11,5.17z" />
++    <path
++        android:fillColor="@android:color/black"
++        android:pathData="M15,6h-1.5v13.28c1.36,-0.84 2.55,-1.96 3.5,-3.28V6.5C16.27,6.17 15.55,6 15,6z" />
++</vector>
+diff --git a/packages/SystemUI/src/com/android/systemui/dagger/SystemUICoreStartableModule.kt b/packages/SystemUI/src/com/android/systemui/dagger/SystemUICoreStartableModule.kt
+index 6463529a8..3190d08f6 100644
+--- a/packages/SystemUI/src/com/android/systemui/dagger/SystemUICoreStartableModule.kt
++++ b/packages/SystemUI/src/com/android/systemui/dagger/SystemUICoreStartableModule.kt
+@@ -50,6 +50,7 @@ import com.android.systemui.media.taptotransfer.receiver.MediaTttChipControllerR
+ import com.android.systemui.media.taptotransfer.sender.MediaTttSenderCoordinator
+ import com.android.systemui.mediaprojection.taskswitcher.MediaProjectionTaskSwitcherCoreStartable
+ import com.android.systemui.shortcut.ShortcutKeyDispatcher
++import com.android.systemui.smartpixel.ui.SmartPixelManager
+ import com.android.systemui.statusbar.ImmersiveModeConfirmation
+ import com.android.systemui.statusbar.gesture.GesturePointerEventListener
+ import com.android.systemui.statusbar.notification.InstantAppNotifier
+@@ -329,4 +330,11 @@ abstract class SystemUICoreStartableModule {
+     abstract fun bindSysUIKeyGestureEventInitializer(
+         keyGestureEventInitializer: SysUIKeyGestureEventInitializer
+     ): CoreStartable
++
++    @Binds
++    @IntoMap
++    @ClassKey(SmartPixelManager::class)
++    abstract fun bindSmartPixelManager(
++        impl: SmartPixelManager
++    ): CoreStartable
+ }
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/domain/SmartPixelSettings.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/domain/SmartPixelSettings.kt
+new file mode 100644
+index 000000000..7e70977d9
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/domain/SmartPixelSettings.kt
+@@ -0,0 +1,89 @@
++/*
++ * Copyright (C) 2025-2026 AxionOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.systemui.smartpixel.domain
++
++import android.database.ContentObserver
++import android.os.UserHandle
++import android.provider.Settings
++import com.android.systemui.dagger.SysUISingleton
++import com.android.systemui.dagger.qualifiers.Main
++import com.android.systemui.util.settings.SecureSettings
++import java.util.concurrent.Executor
++import javax.inject.Inject
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.asStateFlow
++
++@SysUISingleton
++class SmartPixelSettings @Inject constructor(
++    private val secureSettings: SecureSettings,
++    @Main private val mainExecutor: Executor,
++) {
++    companion object {
++        const val KEY_ENABLED = Settings.Secure.SMART_PIXEL_FILTER_ENABLED
++        const val KEY_PERCENT = Settings.Secure.SMART_PIXEL_FILTER_PERCENT
++
++        const val DEFAULT_PERCENT = 25
++        const val MIN_PERCENT = 10
++        const val MAX_PERCENT = 75
++    }
++
++    private val _isEnabled = MutableStateFlow(false)
++    val isEnabled: StateFlow<Boolean> = _isEnabled.asStateFlow()
++
++    private val _percent = MutableStateFlow(DEFAULT_PERCENT)
++    val percent: StateFlow<Int> = _percent.asStateFlow()
++
++    private val settingsObserver =
++        object : ContentObserver(mainExecutor, 0) {
++            override fun onChange(selfChange: Boolean) {
++                refresh()
++            }
++        }
++
++    private var initialized = false
++
++    fun init() {
++        if (initialized) return
++        initialized = true
++        refresh()
++        secureSettings.registerContentObserverForUserSync(
++            KEY_ENABLED, false, settingsObserver, UserHandle.USER_ALL,
++        )
++        secureSettings.registerContentObserverForUserSync(
++            KEY_PERCENT, false, settingsObserver, UserHandle.USER_ALL,
++        )
++    }
++
++    fun setEnabled(enabled: Boolean) {
++        secureSettings.putIntForUser(KEY_ENABLED, if (enabled) 1 else 0, UserHandle.USER_CURRENT)
++    }
++
++    fun setPercent(value: Int) {
++        secureSettings.putIntForUser(
++            KEY_PERCENT, value.coerceIn(MIN_PERCENT, MAX_PERCENT), UserHandle.USER_CURRENT,
++        )
++    }
++
++    private fun refresh() {
++        _isEnabled.value =
++            secureSettings.getIntForUser(KEY_ENABLED, 0, UserHandle.USER_CURRENT) == 1
++        _percent.value =
++            secureSettings.getIntForUser(KEY_PERCENT, DEFAULT_PERCENT, UserHandle.USER_CURRENT)
++                .coerceIn(MIN_PERCENT, MAX_PERCENT)
++    }
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt
+new file mode 100644
+index 000000000..e1f8c06bf
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelDialogDelegate.kt
+@@ -0,0 +1,154 @@
++/*
++ * Copyright (C) 2025-2026 AxionOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.systemui.smartpixel.ui
++
++import androidx.compose.foundation.isSystemInDarkTheme
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.Check
++import androidx.compose.material.icons.filled.Clear
++import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
++import androidx.compose.material3.Icon
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Slider
++import androidx.compose.material3.Switch
++import androidx.compose.material3.SwitchDefaults
++import androidx.compose.material3.Text
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.collectAsState
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableFloatStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.unit.dp
++import com.android.compose.PlatformButton
++import com.android.compose.theme.PlatformTheme
++import com.android.systemui.smartpixel.domain.SmartPixelSettings
++import com.android.systemui.smartpixel.domain.SmartPixelSettings.Companion.MAX_PERCENT
++import com.android.systemui.smartpixel.domain.SmartPixelSettings.Companion.MIN_PERCENT
++import com.android.systemui.dialog.ui.composable.AlertDialogContent
++import com.android.systemui.res.R
++import com.android.systemui.shade.domain.interactor.ShadeDialogContextInteractor
++import com.android.systemui.statusbar.phone.SystemUIDialog
++import com.android.systemui.statusbar.phone.SystemUIDialogFactory
++import com.android.systemui.statusbar.phone.create
++import javax.inject.Inject
++
++class SmartPixelDialogDelegate @Inject constructor(
++    private val sysuiDialogFactory: SystemUIDialogFactory,
++    private val settings: SmartPixelSettings,
++    private val shadeDialogContextInteractor: ShadeDialogContextInteractor,
++) {
++
++    fun createDialog(): SystemUIDialog =
++        sysuiDialogFactory.create(context = shadeDialogContextInteractor.context) {
++            SmartPixelDialogContent(it)
++        }
++
++    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
++    @Composable
++    private fun SmartPixelDialogContent(dialog: SystemUIDialog) {
++        val isCurrentlyInDarkTheme = isSystemInDarkTheme()
++        val cachedDarkTheme = remember { isCurrentlyInDarkTheme }
++        PlatformTheme(isDarkTheme = cachedDarkTheme) {
++            AlertDialogContent(
++                title = { Text(stringResource(R.string.quick_settings_smart_pixels_label)) },
++                content = { SmartPixelControls() },
++                positiveButton = {
++                    PlatformButton(onClick = { dialog.dismiss() }) {
++                        Text(stringResource(R.string.quick_settings_done))
++                    }
++                },
++                contentBottomPadding = 8.dp,
++            )
++        }
++    }
++
++    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
++    @Composable
++    private fun SmartPixelControls() {
++        val isEnabled by settings.isEnabled.collectAsState()
++        val currentPercent by settings.percent.collectAsState()
++        var sliderValue by remember(currentPercent) { mutableFloatStateOf(currentPercent.toFloat()) }
++
++        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
++            Row(
++                modifier = Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                Text(
++                    text = stringResource(
++                        if (isEnabled) R.string.quick_settings_smart_pixels_on
++                        else R.string.quick_settings_smart_pixels_off,
++                    ),
++                    style = MaterialTheme.typography.bodyLarge,
++                )
++                Switch(
++                    checked = isEnabled,
++                    onCheckedChange = { settings.setEnabled(it) },
++                    thumbContent = {
++                        Icon(
++                            imageVector = if (isEnabled) Icons.Filled.Check else Icons.Filled.Clear,
++                            contentDescription = null,
++                            modifier = Modifier.size(SwitchDefaults.IconSize),
++                        )
++                    }
++                )
++            }
++
++            Column {
++                Row(
++                    modifier = Modifier.fillMaxWidth(),
++                    horizontalArrangement = Arrangement.SpaceBetween,
++                ) {
++                    Text(
++                        text = stringResource(R.string.smart_pixels_percent_label),
++                        style = MaterialTheme.typography.bodyMedium,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                    )
++                    Text(
++                        text = stringResource(
++                            R.string.smart_pixels_percent_format,
++                            sliderValue.toInt(),
++                        ),
++                        style = MaterialTheme.typography.bodyMedium,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                    )
++                }
++                Slider(
++                    value = sliderValue,
++                    onValueChange = { sliderValue = it },
++                    onValueChangeFinished = { settings.setPercent(sliderValue.toInt()) },
++                    valueRange = MIN_PERCENT.toFloat()..MAX_PERCENT.toFloat(),
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .padding(top = 4.dp),
++                    enabled = isEnabled,
++                )
++            }
++        }
++    }
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelManager.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelManager.kt
+new file mode 100644
+index 000000000..0a23cd2b8
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelManager.kt
+@@ -0,0 +1,31 @@
++/*
++ * Copyright (C) 2025-2026 AxionOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.systemui.smartpixel.ui
++
++import com.android.systemui.CoreStartable
++import com.android.systemui.dagger.SysUISingleton
++import javax.inject.Inject
++
++@SysUISingleton
++class SmartPixelManager @Inject constructor(
++    private val overlay: SmartPixelOverlay,
++) : CoreStartable {
++
++    override fun start() {
++        overlay.init()
++    }
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelOverlay.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelOverlay.kt
+new file mode 100644
+index 000000000..307966c0b
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelOverlay.kt
+@@ -0,0 +1,97 @@
++/*
++ * Copyright (C) 2025-2026 AxionOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.systemui.smartpixel.ui
++
++import android.content.Context
++import android.graphics.PixelFormat
++import android.view.WindowManager
++import android.view.WindowManager.LayoutParams
++import com.android.systemui.smartpixel.domain.SmartPixelSettings
++import com.android.systemui.dagger.SysUISingleton
++import com.android.systemui.dagger.qualifiers.Application
++import javax.inject.Inject
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.flow.combine
++import kotlinx.coroutines.flow.launchIn
++
++@SysUISingleton
++class SmartPixelOverlay @Inject constructor(
++    @Application private val context: Context,
++    private val windowManager: WindowManager,
++    @Application private val applicationScope: CoroutineScope,
++    private val settings: SmartPixelSettings,
++) {
++    private var filterView: SmartPixelView? = null
++    private var viewController: SmartPixelViewController? = null
++
++    fun init() {
++        settings.init()
++
++        combine(
++            settings.isEnabled,
++            settings.percent,
++        ) { enabled, percent ->
++            if (enabled) {
++                showOverlay()
++                viewController?.updateConfig(percent)
++            } else {
++                hideOverlay()
++            }
++        }.launchIn(applicationScope)
++    }
++
++    private fun showOverlay() {
++        if (filterView != null) return
++
++        val view = SmartPixelView(context)
++        val controller = SmartPixelViewController(view)
++
++        val params = WindowManager.LayoutParams(
++            LayoutParams.MATCH_PARENT,
++            LayoutParams.MATCH_PARENT,
++            LayoutParams.TYPE_SECURE_SYSTEM_OVERLAY,
++            LayoutParams.FLAG_NOT_FOCUSABLE or
++                LayoutParams.FLAG_NOT_TOUCHABLE or
++                LayoutParams.FLAG_LAYOUT_IN_SCREEN or
++                LayoutParams.FLAG_LAYOUT_NO_LIMITS or
++                LayoutParams.FLAG_HARDWARE_ACCELERATED or
++                LayoutParams.FLAG_SHOW_WHEN_LOCKED,
++            PixelFormat.TRANSLUCENT,
++        )
++        params.title = "SmartPixelFilter"
++        params.layoutInDisplayCutoutMode =
++            LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
++        params.privateFlags = params.privateFlags or
++            LayoutParams.PRIVATE_FLAG_TRUSTED_OVERLAY
++
++        windowManager.addView(view, params)
++        controller.init()
++        controller.updateConfig(settings.percent.value)
++
++        filterView = view
++        viewController = controller
++    }
++
++    private fun hideOverlay() {
++        viewController?.destroy()
++        filterView?.let { view ->
++            windowManager.removeViewImmediate(view)
++        }
++        filterView = null
++        viewController = null
++    }
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelTile.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelTile.kt
+new file mode 100644
+index 000000000..a6055ff63
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelTile.kt
+@@ -0,0 +1,150 @@
++/*
++ * Copyright (C) 2025-2026 AxionOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.systemui.smartpixel.ui
++
++import android.content.Intent
++import android.os.Handler
++import android.os.Looper
++import android.os.UserHandle
++import android.service.quicksettings.Tile
++import com.google.android.material.materialswitch.MaterialSwitch
++import com.android.internal.jank.InteractionJankMonitor
++import com.android.internal.logging.MetricsLogger
++import com.android.internal.logging.nano.MetricsProto.MetricsEvent
++import com.android.systemui.animation.DialogCuj
++import com.android.systemui.animation.DialogTransitionAnimator
++import com.android.systemui.animation.Expandable
++import com.android.systemui.smartpixel.domain.SmartPixelSettings
++import com.android.systemui.dagger.qualifiers.Background
++import com.android.systemui.dagger.qualifiers.Main
++import com.android.systemui.plugins.ActivityStarter
++import com.android.systemui.plugins.FalsingManager
++import com.android.systemui.plugins.qs.QSTile.BooleanState
++import com.android.systemui.plugins.statusbar.StatusBarStateController
++import com.android.systemui.qs.QSHost
++import com.android.systemui.qs.QsEventLogger
++import com.android.systemui.qs.logging.QSLogger
++import com.android.systemui.qs.tileimpl.QSTileImpl
++import com.android.systemui.res.R
++import com.android.systemui.statusbar.phone.SystemUIDialog
++import com.android.systemui.statusbar.policy.KeyguardStateController
++import com.android.systemui.util.settings.SecureSettings
++import java.util.concurrent.Executor
++import javax.inject.Inject
++import javax.inject.Provider
++
++class SmartPixelTile @Inject constructor(
++    host: QSHost,
++    uiEventLogger: QsEventLogger,
++    @Background backgroundLooper: Looper,
++    @Main mainHandler: Handler,
++    falsingManager: FalsingManager,
++    metricsLogger: MetricsLogger,
++    statusBarStateController: StatusBarStateController,
++    activityStarter: ActivityStarter,
++    qsLogger: QSLogger,
++    private val secureSettings: SecureSettings,
++    private val keyguardStateController: KeyguardStateController,
++    private val dialogTransitionAnimator: DialogTransitionAnimator,
++    private val dialogDelegateProvider: Provider<SmartPixelDialogDelegate>,
++    @Main private val mainExecutor: Executor,
++) : QSTileImpl<BooleanState>(
++    host, uiEventLogger, backgroundLooper, mainHandler, falsingManager,
++    metricsLogger, statusBarStateController, activityStarter, qsLogger,
++) {
++    companion object {
++        const val TILE_SPEC = "smart_pixels"
++        private const val INTERACTION_JANK_TAG = "smart_pixels"
++    }
++
++    override fun newTileState(): BooleanState {
++        val state = BooleanState()
++        state.handlesLongClick = true
++        return state
++    }
++
++    override fun handleClick(expandable: Expandable?) {
++        val newState = !mState.value
++        secureSettings.putIntForUser(
++            SmartPixelSettings.KEY_ENABLED,
++            if (newState) 1 else 0,
++            UserHandle.USER_CURRENT,
++        )
++        refreshState(newState)
++    }
++
++    override fun handleLongClick(expandable: Expandable?) {
++        val animateFromExpandable = expandable != null && !keyguardStateController.isShowing
++
++        val runnable = Runnable {
++            val dialog: SystemUIDialog = dialogDelegateProvider.get().createDialog()
++            if (animateFromExpandable) {
++                val controller = expandable?.dialogTransitionController(
++                    DialogCuj(
++                        InteractionJankMonitor.CUJ_SHADE_DIALOG_OPEN,
++                        INTERACTION_JANK_TAG,
++                    )
++                )
++                controller?.let { dialogTransitionAnimator.show(dialog, it) } ?: dialog.show()
++            } else {
++                dialog.show()
++            }
++        }
++
++        mainExecutor.execute {
++            mActivityStarter.executeRunnableDismissingKeyguard(
++                runnable,
++                null,
++                true,
++                true,
++                false,
++            )
++        }
++    }
++
++    override fun getLongClickIntent(): Intent? = null
++
++    override fun getTileLabel(): CharSequence =
++        mContext.getString(R.string.quick_settings_smart_pixels_label)
++
++    override fun handleUpdateState(state: BooleanState, arg: Any?) {
++        val enabled = if (arg is Boolean) {
++            arg
++        } else {
++            secureSettings.getIntForUser(
++                SmartPixelSettings.KEY_ENABLED, 0, UserHandle.USER_CURRENT,
++            ) == 1
++        }
++        state.value = enabled
++        state.label = mContext.getString(R.string.quick_settings_smart_pixels_label)
++        state.secondaryLabel = mContext.getString(
++            if (enabled) R.string.quick_settings_smart_pixels_on
++            else R.string.quick_settings_smart_pixels_off,
++        )
++        state.contentDescription = state.label
++        state.expandedAccessibilityClassName = MaterialSwitch::class.java.name
++        state.state = if (enabled) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
++        state.icon = ResourceIcon.get(
++            if (enabled) R.drawable.qs_smart_pixels_icon_on
++            else R.drawable.qs_smart_pixels_icon_off
++        )
++    }
++
++    override fun isAvailable(): Boolean = true
++
++    override fun getMetricsCategory(): Int = MetricsEvent.QS_PANEL
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelView.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelView.kt
+new file mode 100644
+index 000000000..b208f2ecb
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelView.kt
+@@ -0,0 +1,53 @@
++/*
++ * Copyright (C) 2025-2026 AxionOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.systemui.smartpixel.ui
++
++import android.content.Context
++import android.graphics.Bitmap
++import android.graphics.BitmapShader
++import android.graphics.Canvas
++import android.graphics.Paint
++import android.graphics.Shader
++import android.view.View
++
++class SmartPixelView(context: Context) : View(context) {
++
++    private val patternPaint = Paint()
++    private var patternBitmap: Bitmap? = null
++
++    init {
++        setLayerType(LAYER_TYPE_HARDWARE, null)
++    }
++
++    fun updatePattern(bitmap: Bitmap) {
++        patternBitmap?.recycle()
++        patternBitmap = bitmap
++        patternPaint.shader = BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
++        invalidate()
++    }
++
++    override fun onDraw(canvas: Canvas) {
++        if (patternBitmap == null) return
++        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), patternPaint)
++    }
++
++    override fun onDetachedFromWindow() {
++        super.onDetachedFromWindow()
++        patternBitmap?.recycle()
++        patternBitmap = null
++    }
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelViewController.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelViewController.kt
+new file mode 100644
+index 000000000..e22b73f43
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelViewController.kt
+@@ -0,0 +1,67 @@
++/*
++ * Copyright (C) 2025-2026 AxionOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.systemui.smartpixel.ui
++
++import android.graphics.Bitmap
++import android.graphics.Color
++import com.android.systemui.smartpixel.domain.SmartPixelSettings.Companion.MAX_PERCENT
++import com.android.systemui.smartpixel.domain.SmartPixelSettings.Companion.MIN_PERCENT
++import com.android.systemui.util.ViewController
++
++class SmartPixelViewController(
++    view: SmartPixelView,
++) : ViewController<SmartPixelView>(view) {
++
++    companion object {
++        private const val TILE_SIZE = 8
++        private const val TOTAL_PIXELS = TILE_SIZE * TILE_SIZE
++
++        private val BAYER_MATRIX = intArrayOf(
++             0, 32,  8, 40,  2, 34, 10, 42,
++            48, 16, 56, 24, 50, 18, 58, 26,
++            12, 44,  4, 36, 14, 46,  6, 38,
++            60, 28, 52, 20, 62, 30, 54, 22,
++             3, 35, 11, 43,  1, 33,  9, 41,
++            51, 19, 59, 27, 49, 17, 57, 25,
++            15, 47,  7, 39, 13, 45,  5, 37,
++            63, 31, 55, 23, 61, 29, 53, 21,
++        )
++    }
++
++    fun updateConfig(percent: Int) {
++        rebuildPattern(percent.coerceIn(MIN_PERCENT, MAX_PERCENT))
++    }
++
++    private fun rebuildPattern(percent: Int) {
++        val threshold = (TOTAL_PIXELS * percent / 100f).toInt().coerceIn(1, TOTAL_PIXELS - 1)
++        val bmp = Bitmap.createBitmap(TILE_SIZE, TILE_SIZE, Bitmap.Config.ARGB_8888)
++
++        for (y in 0 until TILE_SIZE) {
++            for (x in 0 until TILE_SIZE) {
++                if (BAYER_MATRIX[y * TILE_SIZE + x] < threshold) {
++                    bmp.setPixel(x, y, Color.BLACK)
++                }
++            }
++        }
++
++        mView.updatePattern(bmp)
++    }
++
++    override fun onViewAttached() {}
++
++    override fun onViewDetached() {}
++}
+-- 
+2.56.0
+

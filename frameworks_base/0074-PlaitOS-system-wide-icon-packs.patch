@@ -1,0 +1,210 @@
+From 0a80255ac3905a36cb7bddc4fc74587122bbdf87 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 14:51:10 -0600
+Subject: [PATCH 74/75] PlaitOS: system-wide icon packs
+
+App and activity icons loaded through the package manager (loadIcon,
+getApplicationIcon, getActivityIcon, IconDrawableFactory) come from the
+icon pack chosen in Wallpaper & style (Settings.Secure plait_icon_pack)
+when the pack has an icon for the app: Settings, the share sheet,
+notifications, permission dialogs and app lists then match the home
+screen. The launcher applies the pack itself.
+
+The pack is the common launcher format (appfilter.xml in res/xml or
+assets). It is read once per process; any failure, a pack the app can't
+see (package visibility) or an app the pack doesn't cover means the
+app's own icon. Not used in system_server, so no settings read happens
+under system locks. Services and providers keep their own icons.
+
+Hooking the package manager's icon loading was inspired by RichardLuo's
+Global Icon Pack (an Xposed module); no code from it is used.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../app/ApplicationPackageManager.java        |   6 +-
+ core/java/android/app/PlaitIconPack.java      | 156 ++++++++++++++++++
+ 2 files changed, 161 insertions(+), 1 deletion(-)
+ create mode 100644 core/java/android/app/PlaitIconPack.java
+
+diff --git a/core/java/android/app/ApplicationPackageManager.java b/core/java/android/app/ApplicationPackageManager.java
+index b1f0fc042..76687a889 100644
+--- a/core/java/android/app/ApplicationPackageManager.java
++++ b/core/java/android/app/ApplicationPackageManager.java
+@@ -3611,7 +3611,11 @@ public class ApplicationPackageManager extends PackageManager {
+             if (itemInfo.isArchived) {
+                 dr = getArchivedAppIcon(itemInfo.packageName);
+             } else {
+-                dr = getDrawable(itemInfo.packageName, itemInfo.icon, appInfo);
++                // PlaitOS: the system-wide icon pack's icon, if it has one for this app
++                dr = PlaitIconPack.loadIcon(mContext, itemInfo);
++                if (dr == null) {
++                    dr = getDrawable(itemInfo.packageName, itemInfo.icon, appInfo);
++                }
+             }
+         }
+         if (dr == null && itemInfo != appInfo && appInfo != null) {
+diff --git a/core/java/android/app/PlaitIconPack.java b/core/java/android/app/PlaitIconPack.java
+new file mode 100644
+index 000000000..cd05e6679
+--- /dev/null
++++ b/core/java/android/app/PlaitIconPack.java
+@@ -0,0 +1,156 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package android.app;
++
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.pm.ActivityInfo;
++import android.content.pm.ApplicationInfo;
++import android.content.pm.PackageItemInfo;
++import android.content.pm.PackageManager;
++import android.content.res.Resources;
++import android.content.res.XmlResourceParser;
++import android.graphics.drawable.Drawable;
++import android.provider.Settings;
++import android.text.TextUtils;
++import android.util.ArrayMap;
++import android.util.Log;
++import android.util.Xml;
++
++import org.xmlpull.v1.XmlPullParser;
++
++import java.io.InputStream;
++
++/**
++ * PlaitOS system-wide icon packs: the app icons that apps load through the package manager
++ * (Settings, the share sheet, notifications, permission dialogs, app lists) come from the icon
++ * pack chosen in Wallpaper &amp; style (Settings.Secure plait_icon_pack), where the pack has an
++ * icon for the app. The launcher applies the pack itself (with masking for apps the pack lacks).
++ *
++ * Icon packs are the common launcher format: an app with an appfilter.xml (res/xml or assets)
++ * mapping ComponentInfo{package/activity} to a drawable of the pack. The choice of hooking the
++ * package manager's icon loading was inspired by RichardLuo's Global Icon Pack (an Xposed module,
++ * no code from it is used).
++ *
++ * Safe by design: never in system_server (no settings reads under system locks), every failure
++ * means "use the app's own icon", and an app that can't see the pack (package visibility) just
++ * keeps the stock icons.
++ *
++ * @hide
++ */
++final class PlaitIconPack {
++    private static final String TAG = "PlaitIconPack";
++    static final String SETTING = "plait_icon_pack";
++
++    private static final Object sLock = new Object();
++    // The pack loaded in this process, and its icons by component and by package
++    private static String sPack;
++    private static Resources sPackRes;
++    private static ArrayMap<String, String> sByComponent;
++    private static ArrayMap<String, String> sByPackage;
++    private static boolean sFailed;
++
++    private PlaitIconPack() {}
++
++    /** The pack's icon for this app or activity, or null for the app's own. */
++    static Drawable loadIcon(Context context, PackageItemInfo item) {
++        // App and activity icons only: services and providers (accessibility services, VPNs,
++        // tiles) keep their own icons
++        if (item == null || item.packageName == null || ActivityThread.isSystem()
++                || !(item instanceof ActivityInfo || item instanceof ApplicationInfo)) {
++            return null;
++        }
++        try {
++            final String pack = Settings.Secure.getString(context.getContentResolver(), SETTING);
++            if (TextUtils.isEmpty(pack) || pack.equals(item.packageName)) {
++                return null;
++            }
++            synchronized (sLock) {
++                if (!pack.equals(sPack)) {
++                    load(context, pack);
++                }
++                if (sFailed) {
++                    return null;
++                }
++                String drawable = null;
++                if (item instanceof ActivityInfo) {
++                    drawable = sByComponent.get(item.packageName + "/" + item.name);
++                }
++                if (drawable == null) {
++                    // The app's icon, or an activity the pack has no own icon for
++                    drawable = sByPackage.get(item.packageName);
++                }
++                if (drawable == null) {
++                    return null;
++                }
++                final int id = sPackRes.getIdentifier(drawable, "drawable", pack);
++                return id != 0 ? sPackRes.getDrawable(id, null) : null;
++            }
++        } catch (RuntimeException e) {
++            // Never break icon loading for a pack problem
++            Log.w(TAG, "icon pack lookup failed for " + item.packageName, e);
++            return null;
++        }
++    }
++
++    private static void load(Context context, String pack) {
++        sPack = pack;
++        sFailed = true;
++        sPackRes = null;
++        sByComponent = new ArrayMap<>();
++        sByPackage = new ArrayMap<>();
++        try {
++            sPackRes = context.getPackageManager().getResourcesForApplication(pack);
++        } catch (PackageManager.NameNotFoundException e) {
++            // Not installed, or not visible to this app
++            return;
++        }
++        try {
++            final XmlPullParser parser = openAppFilter(sPackRes, pack);
++            if (parser == null) {
++                return;
++            }
++            for (int type = parser.next(); type != XmlPullParser.END_DOCUMENT;
++                    type = parser.next()) {
++                if (type != XmlPullParser.START_TAG || !"item".equals(parser.getName())) {
++                    continue;
++                }
++                final ComponentName cn = parseComponent(
++                        parser.getAttributeValue(null, "component"));
++                final String drawable = parser.getAttributeValue(null, "drawable");
++                if (cn == null || TextUtils.isEmpty(drawable)) {
++                    continue;
++                }
++                sByComponent.putIfAbsent(cn.getPackageName() + "/" + cn.getClassName(), drawable);
++                sByPackage.putIfAbsent(cn.getPackageName(), drawable);
++            }
++            sFailed = sByComponent.isEmpty();
++        } catch (Exception e) {
++            Log.w(TAG, "could not read the appfilter of " + pack, e);
++        }
++    }
++
++    private static XmlPullParser openAppFilter(Resources res, String pack) throws Exception {
++        final int id = res.getIdentifier("appfilter", "xml", pack);
++        if (id != 0) {
++            final XmlResourceParser parser = res.getXml(id);
++            return parser;
++        }
++        final InputStream in = res.getAssets().open("appfilter.xml");
++        final XmlPullParser parser = Xml.newPullParser();
++        parser.setInput(in, null);
++        return parser;
++    }
++
++    /** "ComponentInfo{package/activity}", with a relative activity name allowed. */
++    private static ComponentName parseComponent(String value) {
++        if (value == null || !value.startsWith("ComponentInfo{") || !value.endsWith("}")) {
++            return null;
++        }
++        return ComponentName.unflattenFromString(
++                value.substring("ComponentInfo{".length(), value.length() - 1));
++    }
++}
+-- 
+2.56.0
+

@@ -1,0 +1,240 @@
+From 38bfb1ec086c19da1760d580b8f7ed77e2ef8414 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:18:54 -0600
+Subject: [PATCH 64/75] PlaitOS: adapt Smart Pixels to GrapheneOS
+
+- Keys are Settings.Secure plait_smart_pixel_filter_enabled (default off)
+  and plait_smart_pixel_filter_percent instead of new Settings API constants
+- The tile is registered by a new SmartPixelModule (crDroid uses LineageOS's
+  LineageModule) and listed in quick_settings_tiles_stock, so it can be added
+  in the tile editor; strings go to plait_strings.xml
+- The pattern shifts by one pixel each minute through all 64 positions of
+  its 8x8 tile, as the original OmniROM/DU Smart Pixels did: with a fixed
+  pattern the always-lit pixels age faster and can leave a faint grid on the
+  OLED, which defeats the burn-in purpose
+- No recycle() of the replaced pattern bitmap: the render thread may still be
+  drawing with it (recycled-bitmap crash); it is 8x8 pixels, GC is enough
+
+crDroid's follow-up that turns Smart Pixels off during UDFPS scans (64f88200b,
+config default off there too) is not ported: it rewrites the saved setting
+around each scan. Revisit if fingerprint unlock suffers with it on.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ packages/SystemUI/res/values/config.xml       |  2 +-
+ .../SystemUI/res/values/plait_strings.xml     |  7 +++
+ .../dagger/ReferenceSystemUIModule.java       |  2 +
+ .../systemui/smartpixel/SmartPixelModule.kt   | 52 +++++++++++++++++++
+ .../smartpixel/domain/SmartPixelSettings.kt   |  6 +--
+ .../systemui/smartpixel/ui/SmartPixelView.kt  | 39 ++++++++++++--
+ 6 files changed, 101 insertions(+), 7 deletions(-)
+ create mode 100644 packages/SystemUI/src/com/android/systemui/smartpixel/SmartPixelModule.kt
+
+diff --git a/packages/SystemUI/res/values/config.xml b/packages/SystemUI/res/values/config.xml
+index 4d6045908..fe17d9834 100644
+--- a/packages/SystemUI/res/values/config.xml
++++ b/packages/SystemUI/res/values/config.xml
+@@ -106,7 +106,7 @@
+ 
+     <!-- Tiles native to System UI. Order should match "quick_settings_tiles_default" -->
+     <string name="quick_settings_tiles_stock" translatable="false">
+-        internet,wifi,bt,flashlight,dnd,modes_dnd,alarm,airplane,controls,wallet,rotation,battery,batteryShare,cast,screenrecord,mictoggle,cameratoggle,location,nfc,hotspot,inversion,saver,dark,work,night,reverse,reduce_brightness,qr_code_scanner,onehanded,color_correction,font_scaling,record_issue,hearing_devices,notes,desktopeffects,cell
++        internet,wifi,bt,flashlight,dnd,modes_dnd,alarm,airplane,controls,wallet,rotation,battery,batteryShare,cast,screenrecord,mictoggle,cameratoggle,location,nfc,hotspot,inversion,saver,dark,work,night,reverse,reduce_brightness,qr_code_scanner,onehanded,color_correction,font_scaling,record_issue,hearing_devices,notes,desktopeffects,cell,smart_pixels
+     </string>
+ 
+     <!-- The tiles to display in QuickSettings -->
+diff --git a/packages/SystemUI/res/values/plait_strings.xml b/packages/SystemUI/res/values/plait_strings.xml
+index e28d5c5ad..ec5ac7001 100644
+--- a/packages/SystemUI/res/values/plait_strings.xml
++++ b/packages/SystemUI/res/values/plait_strings.xml
+@@ -43,4 +43,11 @@
+     <string name="megabytespersecond_short">MB/s</string>
+     <string name="kilobytespersecond_compact">k</string>
+     <string name="megabytespersecond_compact">M</string>
++
++    <!-- Smart Pixels (from crDroid) -->
++    <string name="quick_settings_smart_pixels_label">Smart Pixels</string>
++    <string name="quick_settings_smart_pixels_on">On</string>
++    <string name="quick_settings_smart_pixels_off">Off</string>
++    <string name="smart_pixels_percent_label">Pixel percentage</string>
++    <string name="smart_pixels_percent_format"><xliff:g id="percent" example="25">%d</xliff:g>%%</string>
+ </resources>
+diff --git a/packages/SystemUI/src/com/android/systemui/dagger/ReferenceSystemUIModule.java b/packages/SystemUI/src/com/android/systemui/dagger/ReferenceSystemUIModule.java
+index 9b2c98685..554a08fdd 100644
+--- a/packages/SystemUI/src/com/android/systemui/dagger/ReferenceSystemUIModule.java
++++ b/packages/SystemUI/src/com/android/systemui/dagger/ReferenceSystemUIModule.java
+@@ -77,6 +77,7 @@ import com.android.systemui.settings.MultiUserUtilsModule;
+ import com.android.systemui.settings.UserTracker;
+ import com.android.systemui.shade.NotificationShadeWindowControllerImpl;
+ import com.android.systemui.shade.ShadeModule;
++import com.android.systemui.smartpixel.SmartPixelModule;
+ import com.android.systemui.startable.Dependencies;
+ import com.android.systemui.statusbar.CommandQueue;
+ import com.android.systemui.statusbar.NotificationLockscreenUserManager;
+@@ -137,6 +138,7 @@ import javax.inject.Provider;
+  */
+ @Module(includes = {
+         AccessibilityModule.class,
++        SmartPixelModule.class,
+         AccessibilityRepositoryModule.class,
+         AospPolicyModule.class,
+         BatterySaverModule.class,
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/SmartPixelModule.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/SmartPixelModule.kt
+new file mode 100644
+index 000000000..86d804b7c
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/SmartPixelModule.kt
+@@ -0,0 +1,52 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.systemui.smartpixel
++
++import com.android.systemui.qs.QsEventLogger
++import com.android.systemui.qs.pipeline.shared.TileSpec
++import com.android.systemui.qs.shared.model.TileCategory
++import com.android.systemui.qs.tileimpl.QSTileImpl
++import com.android.systemui.qs.tiles.base.shared.model.QSTileConfig
++import com.android.systemui.qs.tiles.base.shared.model.QSTileUIConfig
++import com.android.systemui.res.R
++import com.android.systemui.smartpixel.ui.SmartPixelTile
++import dagger.Binds
++import dagger.Module
++import dagger.Provides
++import dagger.multibindings.IntoMap
++import dagger.multibindings.StringKey
++
++/**
++ * The Smart Pixels Quick Settings tile. crDroid registers it in LineageOS's LineageModule, which
++ * GrapheneOS doesn't have; the bindings are the same (the overlay's CoreStartable is in
++ * SystemUICoreStartableModule).
++ */
++@Module
++interface SmartPixelModule {
++
++    /** Inject SmartPixelTile into tileMap in QSModule */
++    @Binds
++    @IntoMap
++    @StringKey(SmartPixelTile.TILE_SPEC)
++    fun bindSmartPixelTile(tile: SmartPixelTile): QSTileImpl<*>
++
++    companion object {
++        @Provides
++        @IntoMap
++        @StringKey(SmartPixelTile.TILE_SPEC)
++        fun provideSmartPixelsTileConfig(uiEventLogger: QsEventLogger): QSTileConfig =
++            QSTileConfig(
++                tileSpec = TileSpec.create(SmartPixelTile.TILE_SPEC),
++                uiConfig =
++                    QSTileUIConfig.Resource(
++                        iconRes = R.drawable.qs_smart_pixels_icon_off,
++                        labelRes = R.string.quick_settings_smart_pixels_label,
++                    ),
++                instanceId = uiEventLogger.getNewInstanceId(),
++                category = TileCategory.DISPLAY,
++            )
++    }
++}
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/domain/SmartPixelSettings.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/domain/SmartPixelSettings.kt
+index 7e70977d9..12d73c765 100644
+--- a/packages/SystemUI/src/com/android/systemui/smartpixel/domain/SmartPixelSettings.kt
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/domain/SmartPixelSettings.kt
+@@ -18,7 +18,6 @@ package com.android.systemui.smartpixel.domain
+ 
+ import android.database.ContentObserver
+ import android.os.UserHandle
+-import android.provider.Settings
+ import com.android.systemui.dagger.SysUISingleton
+ import com.android.systemui.dagger.qualifiers.Main
+ import com.android.systemui.util.settings.SecureSettings
+@@ -34,8 +33,9 @@ class SmartPixelSettings @Inject constructor(
+     @Main private val mainExecutor: Executor,
+ ) {
+     companion object {
+-        const val KEY_ENABLED = Settings.Secure.SMART_PIXEL_FILTER_ENABLED
+-        const val KEY_PERCENT = Settings.Secure.SMART_PIXEL_FILTER_PERCENT
++        // PlaitOS: Settings.Secure keys (written by Plait Settings and the tile); off by default
++        const val KEY_ENABLED = "plait_smart_pixel_filter_enabled"
++        const val KEY_PERCENT = "plait_smart_pixel_filter_percent"
+ 
+         const val DEFAULT_PERCENT = 25
+         const val MIN_PERCENT = 10
+diff --git a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelView.kt b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelView.kt
+index b208f2ecb..8d957e6e3 100644
+--- a/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelView.kt
++++ b/packages/SystemUI/src/com/android/systemui/smartpixel/ui/SmartPixelView.kt
+@@ -20,6 +20,7 @@ import android.content.Context
+ import android.graphics.Bitmap
+ import android.graphics.BitmapShader
+ import android.graphics.Canvas
++import android.graphics.Matrix
+ import android.graphics.Paint
+ import android.graphics.Shader
+ import android.view.View
+@@ -28,18 +29,45 @@ class SmartPixelView(context: Context) : View(context) {
+ 
+     private val patternPaint = Paint()
+     private var patternBitmap: Bitmap? = null
++    private val shiftMatrix = Matrix()
++    private var shiftStep = 0
++
++    // PlaitOS: move the pattern one pixel a minute through all 64 positions of the 8x8 tile,
++    // so every pixel spends the same share of time dark and the panel wears evenly (a fixed
++    // pattern would age the always-lit pixels faster and could leave a faint grid)
++    private val shiftRunnable =
++        object : Runnable {
++            override fun run() {
++                shiftStep = (shiftStep + 1) % (TILE * TILE)
++                applyShift()
++                invalidate()
++                postDelayed(this, SHIFT_INTERVAL_MS)
++            }
++        }
+ 
+     init {
+         setLayerType(LAYER_TYPE_HARDWARE, null)
+     }
+ 
+     fun updatePattern(bitmap: Bitmap) {
+-        patternBitmap?.recycle()
++        // PlaitOS: no recycle() of the old 8x8 bitmap; the render thread may still draw with it
+         patternBitmap = bitmap
+-        patternPaint.shader = BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
++        patternPaint.shader =
++            BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
++        applyShift()
+         invalidate()
+     }
+ 
++    private fun applyShift() {
++        shiftMatrix.setTranslate((shiftStep % TILE).toFloat(), (shiftStep / TILE).toFloat())
++        patternPaint.shader?.setLocalMatrix(shiftMatrix)
++    }
++
++    override fun onAttachedToWindow() {
++        super.onAttachedToWindow()
++        postDelayed(shiftRunnable, SHIFT_INTERVAL_MS)
++    }
++
+     override fun onDraw(canvas: Canvas) {
+         if (patternBitmap == null) return
+         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), patternPaint)
+@@ -47,7 +75,12 @@ class SmartPixelView(context: Context) : View(context) {
+ 
+     override fun onDetachedFromWindow() {
+         super.onDetachedFromWindow()
+-        patternBitmap?.recycle()
++        removeCallbacks(shiftRunnable)
+         patternBitmap = null
+     }
++
++    private companion object {
++        const val TILE = 8 // matches SmartPixelViewController's tile
++        const val SHIFT_INTERVAL_MS = 60_000L
++    }
+ }
+-- 
+2.56.0
+

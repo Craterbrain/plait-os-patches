@@ -1,0 +1,93 @@
+From 152968fab4e7d4ba586e592caf34fe2e011f6ca3 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 23:00:51 -0600
+Subject: [PATCH 67/75] PlaitOS: Peek Display fixes from review
+
+- Wake from doze before opening a notification, as a tap on a pulsing
+  notification does (NotificationClicker.wakeUpIfDozing); otherwise the
+  unlock screen could come up while the display is still dozing
+- DozeServiceHost only tells pulse listeners "finished" for pulses that
+  started: a suppressed pulse request gets onPulseFinished without
+  onPulseStarted while another pulse may still be running, which would have
+  closed Peek Display in the middle of it
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../android/systemui/peek/PeekDisplayController.kt   |  5 +++++
+ .../systemui/statusbar/phone/DozeServiceHost.java    | 12 ++++++++++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+index 9ed6c83d6..329e8927b 100644
+--- a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
++++ b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+@@ -10,6 +10,7 @@ import android.content.Context
+ import android.content.Intent
+ import android.graphics.PixelFormat
+ import android.os.Handler
++import android.os.PowerManager
+ import android.os.UserHandle
+ import android.provider.Settings
+ import android.service.notification.NotificationStats
+@@ -25,6 +26,7 @@ import com.android.systemui.dagger.qualifiers.Main
+ import com.android.systemui.doze.DozeLog
+ import com.android.systemui.keyguard.domain.interactor.KeyguardInteractor
+ import com.android.systemui.plugins.ActivityStarter
++import com.android.systemui.power.domain.interactor.PowerInteractor
+ import com.android.systemui.statusbar.NotificationClickNotifier
+ import com.android.systemui.statusbar.NotificationLockscreenUserManager
+ import com.android.systemui.statusbar.notification.collection.NotifCollection
+@@ -68,6 +70,7 @@ constructor(
+     private val visibilityProvider: NotificationVisibilityProvider,
+     private val clickNotifier: NotificationClickNotifier,
+     private val activityStarter: ActivityStarter,
++    private val powerInteractor: PowerInteractor,
+     private val authController: AuthController,
+     private val dozeServiceHost: Lazy<DozeServiceHost>,
+ ) : CoreStartable, DozeServiceHost.PulseListener {
+@@ -150,6 +153,8 @@ constructor(
+         val intent = entry.sbn.notification.contentIntent ?: return
+         // Out of the way first: the bouncer comes up under it otherwise
+         hideWindow()
++        // Wake from doze first, as a tap on a pulsing notification does (NotificationClicker)
++        powerInteractor.wakeUpIfDozing("PEEK_DISPLAY_OPEN", PowerManager.WAKE_REASON_GESTURE)
+         activityStarter.startPendingIntentDismissingKeyguard(intent) {
+             // Like a lock-screen tap: report the click once the intent is sent (auto-cancel)
+             clickNotifier.onNotificationClick(entry.key, visibilityProvider.obtain(entry, true))
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeServiceHost.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeServiceHost.java
+index a3fac5723..2e3a81284 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeServiceHost.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeServiceHost.java
+@@ -339,10 +339,15 @@ public final class DozeServiceHost implements DozeHost {
+         // are black, indicating that CentralSurfaces is ready to present the rest of the UI.
+         mPulsing = true;
+         mDozeScrimController.pulse(new PulseCallback() {
++            // A suppressed pulse gets onPulseFinished without onPulseStarted (while another
++            // pulse may still be running); listeners only hear "finished" for started pulses
++            private boolean mListenersStarted;
++
+             @Override
+             public void onPulseStarted() {
+                 callback.onPulseStarted(); // requestState(DozeMachine.State.DOZE_PULSING)
+                 mCentralSurfaces.updateNotificationPanelTouchState();
++                mListenersStarted = true;
+                 for (PulseListener listener : mPulseListeners) {
+                     listener.onPulseStarted(reason);
+                 }
+@@ -352,8 +357,11 @@ public final class DozeServiceHost implements DozeHost {
+             @Override
+             public void onPulseFinished() {
+                 mPulsing = false;
+-                for (PulseListener listener : mPulseListeners) {
+-                    listener.onPulseFinished();
++                if (mListenersStarted) {
++                    mListenersStarted = false;
++                    for (PulseListener listener : mPulseListeners) {
++                        listener.onPulseFinished();
++                    }
+                 }
+                 callback.onPulseFinished(); // requestState(DozeMachine.State.DOZE_PULSE_DONE)
+                 mCentralSurfaces.updateNotificationPanelTouchState();
+-- 
+2.56.0
+

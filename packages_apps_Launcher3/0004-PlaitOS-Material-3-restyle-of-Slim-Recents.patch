@@ -1,0 +1,1779 @@
+From 2fbbadf67bcd907a1e76ee3fdd0ad1e13d646b92 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 10:08:45 -0600
+Subject: [PATCH 04/15] PlaitOS: Material 3 restyle of Slim Recents
+
+Bring the look of Slim Recents up to current Android (Material 3 /
+Material You), keeping how it works:
+
+- The panel floats: a rounded (28dp) sheet in the surface-container
+  color, inset from the screen edge and clear of the system bars, over
+  a full-screen window that dims (and, where cross-window blur is on,
+  blurs) the app behind. A tap beside the panel closes it.
+- Header with the title and a tonal Clear all button (the pinch to
+  clear all still works, its warning is now an error-container sheet).
+- Cards: one tonal surface (20dp corners, no shadows) instead of each
+  app's own color; the app on screen is highlighted in the secondary
+  container color. 40dp launcher icons, medium-weight names, a round
+  expand button, rounded screenshots, and round tonal option buttons.
+  The favorite star is a small primary badge on the icon.
+- Every color is a Material 3 role from the system palette, with dark
+  theme versions, so the panel follows the wallpaper colors.
+- Material Symbols icons (Apache 2.0) instead of the old ones, an empty
+  state with text, and the locked notice in the same sheet.
+- Motion: the panel slides a little and fades with the M3 emphasized
+  curves (350 ms in, 200 ms out).
+- The left/right setting is now the screen edge in every language.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ slimrecent/res/anim/recent_enter.xml          |   7 +-
+ .../slim_recent_screen_enter_orig_left.xml    |   8 +-
+ .../slim_recent_screen_enter_orig_right.xml   |   8 +-
+ .../slim_recent_screen_exit_orig_left.xml     |   8 +-
+ .../slim_recent_screen_exit_orig_right.xml    |   8 +-
+ slimrecent/res/drawable/ic_done.xml           |  12 +-
+ slimrecent/res/drawable/ic_empty_recent.xml   |  37 ++---
+ slimrecent/res/drawable/ic_expand.xml         |  23 +--
+ slimrecent/res/drawable/ic_kill_app.xml       |  18 ++-
+ slimrecent/res/drawable/ic_multiwindow.xml    |  25 ++--
+ slimrecent/res/drawable/ic_options.xml        |  20 +--
+ .../res/drawable/ic_recent_app_info.xml       |  26 ++--
+ .../res/drawable/ic_recent_favorite.xml       |  32 ++---
+ .../res/drawable/ic_recent_keyguard.xml       |  18 +--
+ .../res/drawable/ic_slim_recent_delete.xml    |  12 +-
+ .../drawable/ic_slim_recents_clear_all.xml    |  15 ++
+ .../drawable/slim_recents_favorite_badge.xml  |   9 ++
+ .../drawable/slim_recents_icon_button_bg.xml  |   8 ++
+ .../drawable/slim_recents_lock_to_app_pin.xml |  30 ++--
+ .../drawable/slim_recents_membar_progress.xml |  21 +++
+ .../res/drawable/slim_recents_panel_bg.xml    |  10 ++
+ .../drawable/slim_recents_tonal_button_bg.xml |  13 ++
+ .../res/drawable/slim_recents_warning_bg.xml  |  10 ++
+ .../slim_recents_emphasized_accelerate.xml    |  11 ++
+ .../slim_recents_emphasized_decelerate.xml    |  11 ++
+ slimrecent/res/layout/card.xml                |  67 +++++----
+ slimrecent/res/layout/options_item.xml        |  12 +-
+ slimrecent/res/layout/slim_recent.xml         | 120 ++++++++++++----
+ .../res/layout/slim_recent_keyguard.xml       |  22 +--
+ slimrecent/res/layout/slim_recents_membar.xml |  26 ++--
+ slimrecent/res/values-night/colors.xml        |  29 ++++
+ slimrecent/res/values/colors.xml              |  43 +++---
+ slimrecent/res/values/config.xml              |   6 +-
+ slimrecent/res/values/dimens.xml              |  46 +++---
+ slimrecent/res/values/strings.xml             |   6 +
+ slimrecent/res/values/styles.xml              |  28 +++-
+ .../slimrecent/ExpandableCardAdapter.java     |  28 ++--
+ .../systemui/slimrecent/RecentController.java | 131 +++++++++---------
+ .../systemui/slimrecent/RecentPanelView.java  |  21 +--
+ .../systemui/slimrecent/RecentThumbView.java  |  12 ++
+ 40 files changed, 602 insertions(+), 395 deletions(-)
+ create mode 100644 slimrecent/res/drawable/ic_slim_recents_clear_all.xml
+ create mode 100644 slimrecent/res/drawable/slim_recents_favorite_badge.xml
+ create mode 100644 slimrecent/res/drawable/slim_recents_icon_button_bg.xml
+ create mode 100644 slimrecent/res/drawable/slim_recents_membar_progress.xml
+ create mode 100644 slimrecent/res/drawable/slim_recents_panel_bg.xml
+ create mode 100644 slimrecent/res/drawable/slim_recents_tonal_button_bg.xml
+ create mode 100644 slimrecent/res/drawable/slim_recents_warning_bg.xml
+ create mode 100644 slimrecent/res/interpolator/slim_recents_emphasized_accelerate.xml
+ create mode 100644 slimrecent/res/interpolator/slim_recents_emphasized_decelerate.xml
+ create mode 100644 slimrecent/res/values-night/colors.xml
+
+diff --git a/slimrecent/res/anim/recent_enter.xml b/slimrecent/res/anim/recent_enter.xml
+index 7073935..9adeebb 100644
+--- a/slimrecent/res/anim/recent_enter.xml
++++ b/slimrecent/res/anim/recent_enter.xml
+@@ -15,12 +15,13 @@
+ ** See the License for the specific language governing permissions and 
+ ** limitations under the License.
+ */
++     Modifications: PlaitOS (Material 3 motion)
+ -->
+ 
+ <set xmlns:android="http://schemas.android.com/apk/res/android"
+-        android:interpolator="@android:interpolator/decelerate_quad">
+-    <scale android:fromXScale="0.9" android:toXScale="1.0"
+-           android:fromYScale="0.9" android:toYScale="1.0"
++        android:interpolator="@interpolator/slim_recents_emphasized_decelerate">
++    <scale android:fromXScale="0.92" android:toXScale="1.0"
++           android:fromYScale="0.92" android:toYScale="1.0"
+            android:pivotX="50%" android:pivotY="50%"
+            android:duration="@integer/config_recentDefaultDur" />
+     <alpha android:fromAlpha="0.0" android:toAlpha="1.0"
+diff --git a/slimrecent/res/anim/slim_recent_screen_enter_orig_left.xml b/slimrecent/res/anim/slim_recent_screen_enter_orig_left.xml
+index e02d6b0..424ce81 100644
+--- a/slimrecent/res/anim/slim_recent_screen_enter_orig_left.xml
++++ b/slimrecent/res/anim/slim_recent_screen_enter_orig_left.xml
+@@ -15,10 +15,14 @@
+ ** See the License for the specific language governing permissions and
+ ** limitations under the License.
+ */
++     Modifications: PlaitOS (Material 3 motion)
+ -->
+ 
+ <set xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:interpolator="@android:anim/decelerate_interpolator">
+-    <translate android:fromXDelta="-100%p" android:toXDelta="0"
++    android:interpolator="@interpolator/slim_recents_emphasized_decelerate"
++    android:shareInterpolator="true">
++    <translate android:fromXDelta="-12%" android:toXDelta="0"
++        android:duration="@integer/config_slimRecentDefaultDurOrig"/>
++    <alpha android:fromAlpha="0.0" android:toAlpha="1.0"
+         android:duration="@integer/config_slimRecentDefaultDurOrig"/>
+ </set>
+diff --git a/slimrecent/res/anim/slim_recent_screen_enter_orig_right.xml b/slimrecent/res/anim/slim_recent_screen_enter_orig_right.xml
+index 605f28b..f05c1c7 100644
+--- a/slimrecent/res/anim/slim_recent_screen_enter_orig_right.xml
++++ b/slimrecent/res/anim/slim_recent_screen_enter_orig_right.xml
+@@ -15,10 +15,14 @@
+ ** See the License for the specific language governing permissions and
+ ** limitations under the License.
+ */
++     Modifications: PlaitOS (Material 3 motion)
+ -->
+ 
+ <set xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:interpolator="@android:anim/decelerate_interpolator">
+-    <translate android:fromXDelta="100%p" android:toXDelta="0"
++    android:interpolator="@interpolator/slim_recents_emphasized_decelerate"
++    android:shareInterpolator="true">
++    <translate android:fromXDelta="12%" android:toXDelta="0"
++        android:duration="@integer/config_slimRecentDefaultDurOrig"/>
++    <alpha android:fromAlpha="0.0" android:toAlpha="1.0"
+         android:duration="@integer/config_slimRecentDefaultDurOrig"/>
+ </set>
+diff --git a/slimrecent/res/anim/slim_recent_screen_exit_orig_left.xml b/slimrecent/res/anim/slim_recent_screen_exit_orig_left.xml
+index b0d8591..b977cfb 100644
+--- a/slimrecent/res/anim/slim_recent_screen_exit_orig_left.xml
++++ b/slimrecent/res/anim/slim_recent_screen_exit_orig_left.xml
+@@ -15,10 +15,14 @@
+ ** See the License for the specific language governing permissions and
+ ** limitations under the License.
+ */
++     Modifications: PlaitOS (Material 3 motion)
+ -->
+ 
+ <set xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:interpolator="@android:anim/decelerate_interpolator">
+-    <translate android:fromXDelta="0" android:toXDelta="-100%p"
++    android:interpolator="@interpolator/slim_recents_emphasized_accelerate"
++    android:shareInterpolator="true">
++    <translate android:fromXDelta="0" android:toXDelta="-8%"
++        android:duration="@integer/config_slimRecentExitDur"/>
++    <alpha android:fromAlpha="1.0" android:toAlpha="0.0"
+         android:duration="@integer/config_slimRecentExitDur"/>
+ </set>
+diff --git a/slimrecent/res/anim/slim_recent_screen_exit_orig_right.xml b/slimrecent/res/anim/slim_recent_screen_exit_orig_right.xml
+index 4e03cda..3165504 100644
+--- a/slimrecent/res/anim/slim_recent_screen_exit_orig_right.xml
++++ b/slimrecent/res/anim/slim_recent_screen_exit_orig_right.xml
+@@ -15,10 +15,14 @@
+ ** See the License for the specific language governing permissions and
+ ** limitations under the License.
+ */
++     Modifications: PlaitOS (Material 3 motion)
+ -->
+ 
+ <set xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:interpolator="@android:anim/decelerate_interpolator">
+-    <translate android:fromXDelta="0" android:toXDelta="100%p"
++    android:interpolator="@interpolator/slim_recents_emphasized_accelerate"
++    android:shareInterpolator="true">
++    <translate android:fromXDelta="0" android:toXDelta="8%"
++        android:duration="@integer/config_slimRecentExitDur"/>
++    <alpha android:fromAlpha="1.0" android:toAlpha="0.0"
+         android:duration="@integer/config_slimRecentExitDur"/>
+ </set>
+diff --git a/slimrecent/res/drawable/ic_done.xml b/slimrecent/res/drawable/ic_done.xml
+index b08c85c..277f346 100644
+--- a/slimrecent/res/drawable/ic_done.xml
++++ b/slimrecent/res/drawable/ic_done.xml
+@@ -1,13 +1,15 @@
+ <?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "close" (PlaitOS restyle of Slim Recents)
++-->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="24"
+     android:viewportHeight="24">
+-
+     <path
+-        android:pathData="M0 0h24v24H0z" />
+-    <path
+-        android:fillColor="#ffffff"
+-        android:pathData="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" />
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_empty_recent.xml b/slimrecent/res/drawable/ic_empty_recent.xml
+index 6fa3a7b..42e6213 100644
+--- a/slimrecent/res/drawable/ic_empty_recent.xml
++++ b/slimrecent/res/drawable/ic_empty_recent.xml
+@@ -1,34 +1,15 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <!--
+-    Copyright (c) 2015-2016 SlimRoms Project
+-
+-    Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-
+-        http://www.apache.org/licenses/LICENSE-2.0
+-
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "history" (PlaitOS restyle of Slim Recents)
+ -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="61.517dp"
+-    android:height="75.16dp"
+-    android:viewportWidth="61.517"
+-    android:viewportHeight="75.16">
+-
++    android:width="48dp"
++    android:height="48dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
+     <path
+-        android:fillColor="#b3b3b3"
+-        android:pathData="M6.5138 75.065c-4.01-0.11-7.03-4.16-6.44-8.05-0.009983-20.16-0.009983-40.32
+-0.000017-60.48 0.090003-3.9905 4.07-7.0205 7.94-6.4705 15.73 0.000018
+-31.45-0.019982 47.18 0.020018 4.05 0.23 6.85 4.37 6.24 8.24 0.01 5.2005 0.01
+-10.4 0.01 15.6l-6.79 0.001v-17.04l-47.83-0.0005c-0.0002 20.46-0.0002
+-40.92-0.0202 61.37l47.85 0.001v-17.04h6.79c-0.07 6.14 0.15 12.3-0.15 18.42-0.67
+-3.76-4.64 6-8.27 5.44-15.5 0.01-31.01
+-0-46.51-0.01zm41.28-28.97v-5.11h-32.95v-6.82h32.95c0.01-3.41 0-6.82 0.01-10.22
+-4.55 4.54 9.09 9.08 13.63 13.63-4.54 4.54-9.08 9.09-13.63
+-13.63-0.01-1.7-0.01-3.41-0.01-5.11z" />
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M13,3c-4.97,0 -9,4.03 -9,9L1,12l3.89,3.89 0.07,0.14L9,12L6,12c0,-3.87 3.13,-7 7,-7s7,3.13 7,7 -3.13,7 -7,7c-1.93,0 -3.68,-0.79 -4.94,-2.06l-1.42,1.42C8.27,19.99 10.51,21 13,21c4.97,0 9,-4.03 9,-9s-4.03,-9 -9,-9zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08L13.5,8L12,8z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_expand.xml b/slimrecent/res/drawable/ic_expand.xml
+index 24d8fae..b690aca 100644
+--- a/slimrecent/res/drawable/ic_expand.xml
++++ b/slimrecent/res/drawable/ic_expand.xml
+@@ -1,28 +1,15 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <!--
+-    Copyright (c) 2017 SlimRoms Project
+-
+-    Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-
+-        http://www.apache.org/licenses/LICENSE-2.0
+-
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "expand_more" (PlaitOS restyle of Slim Recents)
+ -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="24"
+     android:viewportHeight="24">
+-
+     <path
+-        android:fillColor="#ffffff"
+-        android:pathData="M7.41 7.84L12 12.42l4.59-4.58L18 9.25l-6 6-6-6z" />
+-    <path
+-        android:pathData="M0-.75h24v24H0z" />
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M16.59,8.59L12,13.17 7.41,8.59 6,10l6,6 6,-6z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_kill_app.xml b/slimrecent/res/drawable/ic_kill_app.xml
+index 9b40532..1512645 100644
+--- a/slimrecent/res/drawable/ic_kill_app.xml
++++ b/slimrecent/res/drawable/ic_kill_app.xml
+@@ -1,17 +1,15 @@
++<?xml version="1.0" encoding="utf-8"?>
+ <!--
+-Copyright (C) 2017 Japan Yoshi @japanyoshilol (https://twitter.com/japanyoshilol)
+-
+-found on materialdesignicons.com
+-
+-Licensed under the SIL Open Font License, Version 1.1.
+-
+-http://scripts.sil.org/OFL
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "block" (PlaitOS restyle of Slim Recents)
+ -->
+-
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:height="24dp"
+     android:width="24dp"
++    android:height="24dp"
+     android:viewportWidth="24"
+     android:viewportHeight="24">
+-    <path android:fillColor="#FFFFFF" android:pathData="M12,2A9,9 0 0,0 3,11C3,14.03 4.53,16.82 7,18.47V22H9V19H11V22H13V19H15V22H17V18.46C19.47,16.81 21,14 21,11A9,9 0 0,0 12,2M8,11A2,2 0 0,1 10,13A2,2 0 0,1 8,15A2,2 0 0,1 6,13A2,2 0 0,1 8,11M16,11A2,2 0 0,1 18,13A2,2 0 0,1 16,15A2,2 0 0,1 14,13A2,2 0 0,1 16,11M12,14L13.5,17H10.5L12,14Z" />
++    <path
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM4,12c0,-4.42 3.58,-8 8,-8 1.85,0 3.55,0.63 4.9,1.69L5.69,16.9C4.63,15.55 4,13.85 4,12zM12,20c-1.85,0 -3.55,-0.63 -4.9,-1.69L18.31,7.1C19.37,8.45 20,10.15 20,12c0,4.42 -3.58,8 -8,8z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_multiwindow.xml b/slimrecent/res/drawable/ic_multiwindow.xml
+index 6d8333c..d406d45 100644
+--- a/slimrecent/res/drawable/ic_multiwindow.xml
++++ b/slimrecent/res/drawable/ic_multiwindow.xml
+@@ -1,22 +1,15 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <!--
+-    Copyright (c) 2017 SlimRoms Project
+-    Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-        http://www.apache.org/licenses/LICENSE-2.0
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "splitscreen" (PlaitOS restyle of Slim Recents)
+ -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+-        android:width="24dp"
+-        android:height="24dp"
+-        android:viewportWidth="24.000002"
+-        android:viewportHeight="24.0">
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
+     <path
+-        android:pathData="M3.782,20.988C3.594,20.964 3.417,20.874 3.281,20.733 3.133,20.58 3.063,20.426 3.041,20.204 3.034,20.139 3.032,18.914 3.034,16.644 3.037,13.425 3.039,13.18 3.055,13.116 3.136,12.792 3.371,12.552 3.692,12.467L3.777,12.444 12.002,12.444 20.227,12.444 20.312,12.467C20.469,12.509 20.59,12.577 20.705,12.688 20.824,12.803 20.901,12.938 20.944,13.106L20.967,13.194 20.967,16.719 20.967,20.244 20.944,20.332C20.901,20.5 20.824,20.635 20.705,20.75 20.592,20.859 20.473,20.927 20.317,20.972L20.237,20.994 12.042,20.996C7.534,20.996 3.818,20.993 3.782,20.988ZM18.752,16.719 L18.752,14.689 12.002,14.689 5.252,14.689 5.252,16.719 5.252,18.749 12.002,18.749 18.752,18.749 18.752,16.719ZM3.788,11.549C3.503,11.515 3.24,11.322 3.116,11.056 3.097,11.015 3.072,10.943 3.059,10.897L3.037,10.814 3.034,7.354C3.032,5.087 3.034,3.86 3.041,3.794 3.054,3.669 3.073,3.594 3.116,3.502 3.163,3.402 3.218,3.325 3.298,3.248 3.413,3.137 3.535,3.069 3.692,3.027L3.777,3.004 12.002,3.004 20.227,3.004 20.312,3.027C20.451,3.063 20.589,3.139 20.689,3.233 20.823,3.36 20.899,3.49 20.944,3.666L20.967,3.754 20.967,7.279 20.967,10.804 20.944,10.892C20.903,11.054 20.837,11.172 20.722,11.293 20.614,11.406 20.479,11.486 20.317,11.532L20.237,11.554 12.047,11.556C7.542,11.556 3.826,11.553 3.788,11.549ZM18.752,7.279 L18.752,5.249 12.002,5.249 5.252,5.249 5.252,7.279 5.252,9.309 12.002,9.309 18.752,9.309 18.752,7.279Z"
+-        android:fillColor="#FFFFFF"/>
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M18,4v5H6V4H18M18,2H6C4.9,2 4,2.9 4,4v5c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V4C20,2.9 19.1,2 18,2zM18,15v5H6v-5H18M18,13H6c-1.1,0 -2,0.9 -2,2v5c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2v-5C20,13.9 19.1,13 18,13z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_options.xml b/slimrecent/res/drawable/ic_options.xml
+index 35b0628..cf15894 100644
+--- a/slimrecent/res/drawable/ic_options.xml
++++ b/slimrecent/res/drawable/ic_options.xml
+@@ -1,18 +1,8 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <!--
+-    Copyright (c) 2017 ABC rom
+-
+-    Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-
+-        http://www.apache.org/licenses/LICENSE-2.0
+-
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "more_vert" (PlaitOS restyle of Slim Recents)
+ -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+@@ -20,6 +10,6 @@
+     android:viewportWidth="24"
+     android:viewportHeight="24">
+     <path
+-        android:fillColor="#ffffff"
+-        android:pathData="m 15,11 v 2 h 2 v -2 z m -2,0 h -2 v 2 h 2 z M 9,11 H 7 v 2 h 2 z" />
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_recent_app_info.xml b/slimrecent/res/drawable/ic_recent_app_info.xml
+index 878dd8a..37ae17c 100644
+--- a/slimrecent/res/drawable/ic_recent_app_info.xml
++++ b/slimrecent/res/drawable/ic_recent_app_info.xml
+@@ -1,21 +1,15 @@
++<?xml version="1.0" encoding="utf-8"?>
+ <!--
+-    Copyright (C) 2016 The Android Open Source Project
+-    Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-         http://www.apache.org/licenses/LICENSE-2.0
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "info" (PlaitOS restyle of Slim Recents)
+ -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+-        android:width="24dp"
+-        android:height="24dp"
+-        android:viewportWidth="24"
+-        android:viewportHeight="24">
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
+     <path
+-        android:fillColor="#ffffff"
+-        android:pathData="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M11,7h2v2h-2zM11,11h2v6h-2zM12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,20c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_recent_favorite.xml b/slimrecent/res/drawable/ic_recent_favorite.xml
+index 8627d20..1bd4066 100644
+--- a/slimrecent/res/drawable/ic_recent_favorite.xml
++++ b/slimrecent/res/drawable/ic_recent_favorite.xml
+@@ -1,29 +1,15 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <!--
+-    Copyright (c) 2015-2016 SlimRoms Project
+-
+-    Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-
+-        http://www.apache.org/licenses/LICENSE-2.0
+-
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "star" (PlaitOS restyle of Slim Recents)
+ -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="23.98dp"
+-    android:height="22.98dp"
+-    android:viewportWidth="23.98"
+-    android:viewportHeight="22.98">
+-
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
+     <path
+-        android:fillColor="#ffda00"
+-        android:pathData="M4.57 22.95c0.94-2.89 1.89-5.79 2.83-8.68-2.47-1.76-4.93-3.51-7.4-5.27 3.03-0.03
+-6.06-0.01 9.08-0.02 0.97-2.99 1.92-5.99 2.9-8.98 0.97 3 1.93 5.99 2.9
+-8.98h9.1c-2.47 1.77-4.95 3.53-7.42 5.29 0.94 2.9 1.89 5.8 2.83
+-8.71-2.47-1.79-4.93-3.6-7.41-5.38-2.47 1.77-4.95 3.63-7.41 5.35z" />
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M12,17.27L18.18,21l-1.64,-7.03L22,9.24l-7.19,-0.61L12,2 9.19,8.63 2,9.24l5.46,4.73L5.82,21z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_recent_keyguard.xml b/slimrecent/res/drawable/ic_recent_keyguard.xml
+index 146ae40..92dbafd 100644
+--- a/slimrecent/res/drawable/ic_recent_keyguard.xml
++++ b/slimrecent/res/drawable/ic_recent_keyguard.xml
+@@ -1,15 +1,15 @@
+ <?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "lock" (PlaitOS restyle of Slim Recents)
++-->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="72dp"
+-    android:height="72dp"
++    android:width="48dp"
++    android:height="48dp"
+     android:viewportWidth="24"
+     android:viewportHeight="24">
+-
+     <path
+-        android:pathData="M0 0h24v24H0z" />
+-    <path
+-        android:fillColor="#b3b3b3"
+-        android:pathData="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1 .9 2 2
+-2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9
+-2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M12,17c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2zM18,8h-1V6c0,-2.76 -2.24,-5 -5,-5S7,3.24 7,6v2H6c-1.1,0 -2,0.9 -2,2v10c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V10c0,-1.1 -0.9,-2 -2,-2zM8.9,6c0,-1.71 1.39,-3.1 3.1,-3.1s3.1,1.39 3.1,3.1v2H8.9V6zM18,20H6V10h12v10z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_slim_recent_delete.xml b/slimrecent/res/drawable/ic_slim_recent_delete.xml
+index c2f78dc..6fe4fa6 100644
+--- a/slimrecent/res/drawable/ic_slim_recent_delete.xml
++++ b/slimrecent/res/drawable/ic_slim_recent_delete.xml
+@@ -1,13 +1,15 @@
+ <?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "delete" (PlaitOS restyle of Slim Recents)
++-->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="32dp"
+     android:height="32dp"
+     android:viewportWidth="24"
+     android:viewportHeight="24">
+-
+     <path
+-        android:fillColor="#ffffff"
+-        android:pathData="M6 19c0 1.1 .9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+-    <path
+-        android:pathData="M0 0h24v24H0z" />
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12zM19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/ic_slim_recents_clear_all.xml b/slimrecent/res/drawable/ic_slim_recents_clear_all.xml
+new file mode 100644
+index 0000000..e3e9571
+--- /dev/null
++++ b/slimrecent/res/drawable/ic_slim_recents_clear_all.xml
+@@ -0,0 +1,15 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "clear_all" (PlaitOS restyle of Slim Recents)
++-->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M5,13h14v-2H5v2zM3,17h14v-2H3v2zM7,7v2h14V7H7z" />
++</vector>
+diff --git a/slimrecent/res/drawable/slim_recents_favorite_badge.xml b/slimrecent/res/drawable/slim_recents_favorite_badge.xml
+new file mode 100644
+index 0000000..18697ab
+--- /dev/null
++++ b/slimrecent/res/drawable/slim_recents_favorite_badge.xml
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="oval">
++    <solid android:color="@color/recent_favorite_background" />
++</shape>
+diff --git a/slimrecent/res/drawable/slim_recents_icon_button_bg.xml b/slimrecent/res/drawable/slim_recents_icon_button_bg.xml
+new file mode 100644
+index 0000000..62c5069
+--- /dev/null
++++ b/slimrecent/res/drawable/slim_recents_icon_button_bg.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<ripple xmlns:android="http://schemas.android.com/apk/res/android"
++    android:color="@color/recent_ripple"
++    android:radius="20dp" />
+diff --git a/slimrecent/res/drawable/slim_recents_lock_to_app_pin.xml b/slimrecent/res/drawable/slim_recents_lock_to_app_pin.xml
+index 317f858..9a415bf 100644
+--- a/slimrecent/res/drawable/slim_recents_lock_to_app_pin.xml
++++ b/slimrecent/res/drawable/slim_recents_lock_to_app_pin.xml
+@@ -1,25 +1,15 @@
++<?xml version="1.0" encoding="utf-8"?>
+ <!--
+-Copyright (C) 2014 The Android Open Source Project
+-
+-   Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-
+-         http://www.apache.org/licenses/LICENSE-2.0
+-
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
++     SPDX-FileCopyrightText: The Android Open Source Project
++     SPDX-License-Identifier: Apache-2.0
++     Material icon "push_pin" (PlaitOS restyle of Slim Recents)
+ -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+-        android:width="24.0dp"
+-        android:height="24.0dp"
+-        android:viewportWidth="24.0"
+-        android:viewportHeight="24.0">
+-
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
+     <path
+-        android:fillColor="#FFffffff"
+-        android:pathData="M16.000000,12.000000L16.000000,4.000000l1.000000,0.000000L17.000000,2.000000L7.000000,2.000000l0.000000,2.000000l1.000000,0.000000l0.000000,8.000000l-2.000000,2.000000l0.000000,2.000000l5.200000,0.000000l0.000000,6.000000l1.600000,0.000000l0.000000,-6.000000L18.000000,16.000000l0.000000,-2.000000L16.000000,12.000000z"/>
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M16,9V4l1,0c0.55,0 1,-0.45 1,-1v0c0,-0.55 -0.45,-1 -1,-1H7C6.45,2 6,2.45 6,3v0c0,0.55 0.45,1 1,1l1,0v5c0,1.66 -1.34,3 -3,3h0v2h5.97v7l1,1l1,-1v-7H19v-2h0C17.34,12 16,10.66 16,9z" />
+ </vector>
+diff --git a/slimrecent/res/drawable/slim_recents_membar_progress.xml b/slimrecent/res/drawable/slim_recents_membar_progress.xml
+new file mode 100644
+index 0000000..aab9e95
+--- /dev/null
++++ b/slimrecent/res/drawable/slim_recents_membar_progress.xml
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:id="@android:id/background">
++        <shape>
++            <corners android:radius="4dp" />
++            <solid android:color="@color/recents_membar_track_color" />
++        </shape>
++    </item>
++    <item android:id="@android:id/progress">
++        <clip>
++            <shape>
++                <corners android:radius="4dp" />
++                <solid android:color="@color/recents_membar_color" />
++            </shape>
++        </clip>
++    </item>
++</layer-list>
+diff --git a/slimrecent/res/drawable/slim_recents_panel_bg.xml b/slimrecent/res/drawable/slim_recents_panel_bg.xml
+new file mode 100644
+index 0000000..b2c2758
+--- /dev/null
++++ b/slimrecent/res/drawable/slim_recents_panel_bg.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <corners android:radius="@dimen/slim_recents_panel_radius" />
++    <solid android:color="@color/recent_background" />
++</shape>
+diff --git a/slimrecent/res/drawable/slim_recents_tonal_button_bg.xml b/slimrecent/res/drawable/slim_recents_tonal_button_bg.xml
+new file mode 100644
+index 0000000..a5f7f1b
+--- /dev/null
++++ b/slimrecent/res/drawable/slim_recents_tonal_button_bg.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<ripple xmlns:android="http://schemas.android.com/apk/res/android"
++    android:color="@color/recent_ripple">
++    <item>
++        <shape android:shape="oval">
++            <solid android:color="@color/recent_option_background" />
++        </shape>
++    </item>
++</ripple>
+diff --git a/slimrecent/res/drawable/slim_recents_warning_bg.xml b/slimrecent/res/drawable/slim_recents_warning_bg.xml
+new file mode 100644
+index 0000000..3304bc3
+--- /dev/null
++++ b/slimrecent/res/drawable/slim_recents_warning_bg.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <corners android:radius="@dimen/slim_recents_panel_radius" />
++    <solid android:color="@color/recent_warning_background" />
++</shape>
+diff --git a/slimrecent/res/interpolator/slim_recents_emphasized_accelerate.xml b/slimrecent/res/interpolator/slim_recents_emphasized_accelerate.xml
+new file mode 100644
+index 0000000..974059b
+--- /dev/null
++++ b/slimrecent/res/interpolator/slim_recents_emphasized_accelerate.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<!-- Material 3 emphasized accelerate -->
++<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
++    android:controlX1="0.3"
++    android:controlY1="0"
++    android:controlX2="0.8"
++    android:controlY2="0.15" />
+diff --git a/slimrecent/res/interpolator/slim_recents_emphasized_decelerate.xml b/slimrecent/res/interpolator/slim_recents_emphasized_decelerate.xml
+new file mode 100644
+index 0000000..02f9ef4
+--- /dev/null
++++ b/slimrecent/res/interpolator/slim_recents_emphasized_decelerate.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<!-- Material 3 emphasized decelerate -->
++<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
++    android:controlX1="0.05"
++    android:controlY1="0.7"
++    android:controlX2="0.1"
++    android:controlY2="1" />
+diff --git a/slimrecent/res/layout/card.xml b/slimrecent/res/layout/card.xml
+index 64947f7..dee4f3c 100644
+--- a/slimrecent/res/layout/card.xml
++++ b/slimrecent/res/layout/card.xml
+@@ -13,77 +13,91 @@
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
++
++    Modifications: PlaitOS (Material 3 restyle)
+ -->
+-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+-    xmlns:app="http://schemas.android.com/apk/res-auto"
+-    android:orientation="vertical" android:layout_width="match_parent"
+-    android:layout_height="wrap_content">
++<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:paddingTop="@dimen/recent_card_layout_marginTop"
++    android:paddingBottom="@dimen/recent_card_layout_marginBottom">
+ 
+     <androidx.cardview.widget.CardView
+         android:id="@+id/card"
++        xmlns:card="http://schemas.android.com/apk/res-auto"
+         android:layout_width="match_parent"
+-        android:padding="@dimen/recent_card_padding"
++        android:layout_height="wrap_content"
+         android:layout_marginLeft="@dimen/recent_card_layout_margin_horizontal"
+         android:layout_marginRight="@dimen/recent_card_layout_margin_horizontal"
+-        android:layout_marginTop="@dimen/recent_card_layout_marginTop"
+-        android:layout_marginBottom="@dimen/recent_card_layout_marginBottom"
+-        android:layout_height="match_parent">
++        android:foreground="?android:attr/selectableItemBackground"
++        android:duplicateParentState="true"
++        card:cardElevation="0dp"
++        card:cardCornerRadius="@dimen/recent_card_radius"
++        card:cardBackgroundColor="@color/recent_card_background"
++        card:cardPreventCornerOverlap="false">
+ 
+         <LinearLayout
+             android:id="@+id/card_content"
+             android:orientation="vertical"
+             android:layout_width="match_parent"
+-            android:layout_height="match_parent">
++            android:layout_height="wrap_content">
+ 
+             <FrameLayout
+                 android:layout_width="match_parent"
+                 android:layout_height="@dimen/recent_card_height">
++
+                 <LinearLayout
+                     android:orientation="horizontal"
++                    android:gravity="center_vertical"
++                    android:paddingStart="@dimen/recent_card_padding"
++                    android:paddingEnd="4dp"
+                     android:layout_width="match_parent"
+                     android:layout_height="match_parent">
+ 
+                     <FrameLayout
+                         android:id="@+id/thumbnail"
+-                        android:layout_gravity="center_vertical"
+                         android:layout_width="wrap_content"
+-                        android:layout_height="wrap_content" >
++                        android:layout_height="wrap_content">
+ 
+                         <com.android.systemui.slimrecent.AppIconImageView
+                             android:id="@+id/app_icon"
+                             android:padding="@dimen/recent_app_icon_padding"
+-                            android:layout_width="wrap_content"
+-                            android:layout_height="wrap_content" />
++                            android:layout_width="@dimen/recent_app_icon_size"
++                            android:layout_height="@dimen/recent_app_icon_size" />
+ 
+                         <com.android.systemui.slimrecent.RecentImageView
+                             android:id="@+id/favorite_icon"
+                             android:src="@drawable/ic_recent_favorite"
+-                            android:layout_gravity="end|top"
++                            android:layout_gravity="end|bottom"
+                             style="@style/card_header_favorite_icon" />
+-
+                     </FrameLayout>
+ 
+                     <TextView
+                         android:id="@+id/app_name"
+-                        android:gravity="center_vertical"
++                        android:textAppearance="@style/SlimRecents.Text.AppName"
++                        android:gravity="center_vertical|start"
+                         android:maxLines="2"
+-                        android:padding="@dimen/recent_app_name_padding"
++                        android:ellipsize="end"
++                        android:paddingStart="@dimen/recent_app_name_padding"
++                        android:paddingEnd="4dp"
+                         android:layout_weight="1"
+                         android:layout_width="0dp"
+-                        android:layout_height="match_parent" />
++                        android:layout_height="wrap_content" />
+ 
+                     <ImageView
+                         android:id="@+id/expand"
+                         android:src="@drawable/ic_expand"
+-                        android:layout_gravity="center_vertical"
+-                        android:layout_width="wrap_content"
+-                        android:layout_height="wrap_content"
++                        android:tint="@color/recent_foreground_variant"
++                        android:background="@drawable/slim_recents_icon_button_bg"
++                        android:layout_width="@dimen/recent_expand_button_size"
++                        android:layout_height="@dimen/recent_expand_button_size"
+                         android:padding="@dimen/recent_expand_button_padding" />
+-
+                 </LinearLayout>
++
+                 <LinearLayout
+                     android:orientation="horizontal"
+                     android:id="@+id/card_options"
++                    android:gravity="center"
+                     android:visibility="gone"
+                     android:layout_width="match_parent"
+                     android:layout_height="match_parent" />
+@@ -95,10 +109,9 @@
+                 android:layout_width="match_parent"
+                 android:layout_height="wrap_content"
+                 android:visibility="gone"
+-                android:layout_margin="4dp" />
+-
++                android:layout_marginStart="@dimen/recent_thumbnail_margin"
++                android:layout_marginEnd="@dimen/recent_thumbnail_margin"
++                android:layout_marginBottom="@dimen/recent_thumbnail_margin" />
+         </LinearLayout>
+-
+     </androidx.cardview.widget.CardView>
+-
+-</LinearLayout>
++</FrameLayout>
+diff --git a/slimrecent/res/layout/options_item.xml b/slimrecent/res/layout/options_item.xml
+index f812d9f..ee6d2dd 100644
+--- a/slimrecent/res/layout/options_item.xml
++++ b/slimrecent/res/layout/options_item.xml
+@@ -13,8 +13,14 @@
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
++
++    Modifications: PlaitOS (Material 3 restyle)
+ -->
+ <ImageView xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:layout_weight="1"
+-    android:layout_width="wrap_content"
+-    android:layout_height="match_parent" />
++    android:layout_width="@dimen/recent_option_size"
++    android:layout_height="@dimen/recent_option_size"
++    android:layout_marginStart="@dimen/recent_option_margin"
++    android:layout_marginEnd="@dimen/recent_option_margin"
++    android:padding="@dimen/recent_option_padding"
++    android:background="@drawable/slim_recents_tonal_button_bg"
++    android:tint="@color/recent_option_foreground" />
+diff --git a/slimrecent/res/layout/slim_recent.xml b/slimrecent/res/layout/slim_recent.xml
+index f282e02..eb40d3c 100644
+--- a/slimrecent/res/layout/slim_recent.xml
++++ b/slimrecent/res/layout/slim_recent.xml
+@@ -14,15 +14,15 @@
+ ** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ ** See the License for the specific language governing permissions and
+ ** limitations under the License.
++**
++** Modifications: PlaitOS (Material 3 restyle)
+ */
+ -->
+-
++<!-- The window is the whole screen (a scrim to tap); this is the floating panel in it -->
+ <RelativeLayout
+     xmlns:android="http://schemas.android.com/apk/res/android"
+-    xmlns:card="http://schemas.android.com/apk/res-auto"
+     android:id="@+id/main"
+-    android:paddingStart="@dimen/slim_recents_elevation"
+-    android:elevation="@dimen/slim_recents_elevation"
++    android:padding="@dimen/slim_recents_panel_margin"
+     android:clipToPadding="false"
+     android:layout_width="@dimen/recent_width"
+     android:layout_height="match_parent" >
+@@ -32,48 +32,112 @@
+         android:layout_width="match_parent"
+         android:layout_height="match_parent"
+         android:orientation="vertical"
+-        android:gravity="center" >
++        android:background="@drawable/slim_recents_panel_bg"
++        android:elevation="@dimen/slim_recents_elevation"
++        android:clipToOutline="true"
++        android:clickable="true"
++        android:gravity="center_horizontal" >
++
++        <LinearLayout
++            android:id="@+id/recent_header"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:orientation="horizontal"
++            android:gravity="center_vertical"
++            android:paddingStart="20dp"
++            android:paddingEnd="12dp"
++            android:paddingTop="16dp"
++            android:paddingBottom="8dp">
++
++            <TextView
++                android:id="@+id/recent_title"
++                android:layout_width="0dp"
++                android:layout_height="wrap_content"
++                android:layout_weight="1"
++                android:text="@string/slim_recents_title"
++                android:textAppearance="@style/SlimRecents.Text.Title" />
++
++            <ImageView
++                android:id="@+id/recent_clear_all"
++                android:layout_width="@dimen/recent_option_size"
++                android:layout_height="@dimen/recent_option_size"
++                android:padding="@dimen/recent_option_padding"
++                android:src="@drawable/ic_slim_recents_clear_all"
++                android:tint="@color/recent_option_foreground"
++                android:background="@drawable/slim_recents_tonal_button_bg"
++                android:contentDescription="@string/slim_recents_clear_all" />
++        </LinearLayout>
+ 
+         <include layout="@layout/slim_recents_membar" />
+ 
+-        <androidx.recyclerview.widget.RecyclerView
+-            android:id="@+id/recent_list"
++        <FrameLayout
+             android:layout_width="match_parent"
+-            android:layout_height="match_parent"
+-            android:stackFromBottom="true"
+-            android:scrollbars="none"
+-            android:overScrollMode="never"
+-            android:background="@android:color/transparent"
+-            android:cacheColorHint="@android:color/transparent"
+-            android:fitsSystemWindows="true"
+-            android:clipToPadding="false"
+-            android:clipChildren="false" />
++            android:layout_height="0dp"
++            android:layout_weight="1">
+ 
+-        <ImageView
+-            android:id="@+id/empty_recent"
+-            android:layout_width="wrap_content"
+-            android:layout_height="wrap_content"
+-            android:visibility="gone"
+-            android:src="@drawable/ic_empty_recent"
+-            />
++            <androidx.recyclerview.widget.RecyclerView
++                android:id="@+id/recent_list"
++                android:layout_width="match_parent"
++                android:layout_height="match_parent"
++                android:paddingStart="@dimen/slim_recents_list_padding"
++                android:paddingEnd="@dimen/slim_recents_list_padding"
++                android:paddingBottom="@dimen/slim_recents_list_padding"
++                android:scrollbars="none"
++                android:overScrollMode="never"
++                android:background="@android:color/transparent"
++                android:clipToPadding="false"
++                android:clipChildren="false" />
++
++            <LinearLayout
++                android:id="@+id/empty_recent_group"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_gravity="center"
++                android:orientation="vertical"
++                android:gravity="center_horizontal">
+ 
++                <ImageView
++                    android:id="@+id/empty_recent"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:visibility="gone"
++                    android:src="@drawable/ic_empty_recent" />
++
++                <TextView
++                    android:id="@+id/empty_recent_text"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:layout_marginTop="12dp"
++                    android:visibility="gone"
++                    android:text="@string/slim_recents_empty"
++                    android:textAppearance="@style/SlimRecents.Text.Body" />
++            </LinearLayout>
++        </FrameLayout>
+     </LinearLayout>
+ 
++    <!-- Shown while pinching to clear all -->
+     <LinearLayout
+         android:id="@+id/recent_warning_content"
+         android:layout_width="match_parent"
+         android:layout_height="match_parent"
+-        android:gravity="top|center_horizontal"
++        android:gravity="center"
+         android:orientation="vertical"
+         android:visibility="gone"
+-        android:background="#ffff0000" >
++        android:elevation="@dimen/slim_recents_elevation"
++        android:background="@drawable/slim_recents_warning_bg" >
+ 
+         <ImageView
+             android:layout_width="wrap_content"
+             android:layout_height="wrap_content"
+-            android:layout_marginTop="30dp"
+-            android:src="@drawable/ic_slim_recent_delete"
+-            />
++            android:tint="@color/recent_warning_foreground"
++            android:src="@drawable/ic_slim_recent_delete" />
+ 
++        <TextView
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layout_marginTop="12dp"
++            android:text="@string/slim_recents_release_to_clear"
++            android:textAppearance="@style/SlimRecents.Text.AppName"
++            android:textColor="@color/recent_warning_foreground" />
+     </LinearLayout>
+ </RelativeLayout>
+diff --git a/slimrecent/res/layout/slim_recent_keyguard.xml b/slimrecent/res/layout/slim_recent_keyguard.xml
+index d670de0..5ea946c 100644
+--- a/slimrecent/res/layout/slim_recent_keyguard.xml
++++ b/slimrecent/res/layout/slim_recent_keyguard.xml
+@@ -14,39 +14,41 @@
+ ** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ ** See the License for the specific language governing permissions and
+ ** limitations under the License.
++**
++** Modifications: PlaitOS (Material 3 restyle)
+ */
+ -->
+-
+ <RelativeLayout
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     android:id="@+id/main"
+-    android:paddingStart="@dimen/slim_recents_elevation"
+-    android:elevation="@dimen/slim_recents_elevation"
++    android:padding="@dimen/slim_recents_panel_margin"
++    android:clipToPadding="false"
+     android:layout_width="@dimen/recent_width"
+     android:layout_height="match_parent">
+ 
+     <LinearLayout
+         android:layout_width="match_parent"
+-        android:layout_height="wrap_content"
++        android:layout_height="match_parent"
+         android:orientation="vertical"
+-        android:layout_centerVertical="true">
++        android:gravity="center"
++        android:padding="24dp"
++        android:clickable="true"
++        android:background="@drawable/slim_recents_panel_bg"
++        android:elevation="@dimen/slim_recents_elevation">
+ 
+         <ImageView
+             android:id="@+id/keyguard_recent_img"
+-            android:layout_width="match_parent"
++            android:layout_width="wrap_content"
+             android:layout_height="wrap_content"
+-            android:layout_gravity="center_horizontal"
+             android:src="@drawable/ic_recent_keyguard" />
+ 
+         <TextView
+             android:id="@+id/keyguard_recent_text"
+             android:layout_width="match_parent"
+             android:layout_height="wrap_content"
+-            android:layout_gravity="center"
+             android:gravity="center_horizontal"
+             android:layout_marginTop="@dimen/recent_keyguard_text_margin"
++            android:textAppearance="@style/SlimRecents.Text.Body"
+             android:text="@string/slim_recent_keyguard" />
+-
+     </LinearLayout>
+-
+ </RelativeLayout>
+diff --git a/slimrecent/res/layout/slim_recents_membar.xml b/slimrecent/res/layout/slim_recents_membar.xml
+index 2ff0416..c9c9879 100644
+--- a/slimrecent/res/layout/slim_recents_membar.xml
++++ b/slimrecent/res/layout/slim_recents_membar.xml
+@@ -12,36 +12,30 @@
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+--->
+ 
+-<!-- This expects to be included inside a RelativeLayout -->
++    Modifications: PlaitOS (Material 3 restyle)
++-->
++<!-- This expects to be included inside a vertical LinearLayout -->
+ <LinearLayout
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     android:id="@+id/recents_membar"
+     android:layout_width="match_parent"
+     android:layout_height="wrap_content"
+-    android:fitsSystemWindows="true"
+     android:orientation="vertical"
+-    android:layout_gravity="top"
++    android:paddingStart="20dp"
++    android:paddingEnd="20dp"
++    android:paddingBottom="8dp"
+     android:elevation="@dimen/recent_membar_elevation">
+ 
+     <TextView android:id="@+id/recents_memory_text"
+         android:layout_width="wrap_content"
+         android:layout_height="wrap_content"
+-        android:layout_gravity="top|start"
+-        android:layout_marginTop="5dp"
+-        android:layout_marginRight="5dp"
+-        android:textColor="@color/recents_membar_text_color"
+-        android:layout_marginLeft="25dp"
+-        />
++        android:textAppearance="@style/SlimRecents.Text.Label" />
+ 
+     <ProgressBar android:id="@+id/recents_memory_bar"
+         style="?android:attr/progressBarStyleHorizontal"
+-        android:layout_height="wrap_content"
++        android:progressDrawable="@drawable/slim_recents_membar_progress"
++        android:layout_height="@dimen/recent_membar_height"
+         android:layout_width="match_parent"
+-        android:layout_gravity="top|left"
+-        android:layout_marginTop="7dp"
+-        android:layout_marginRight="25dp"
+-        android:layout_marginLeft="25dp"
+-        />
++        android:layout_marginTop="6dp" />
+ </LinearLayout>
+diff --git a/slimrecent/res/values-night/colors.xml b/slimrecent/res/values-night/colors.xml
+new file mode 100644
+index 0000000..cbf7b5d
+--- /dev/null
++++ b/slimrecent/res/values-night/colors.xml
+@@ -0,0 +1,29 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<!-- Material 3 roles from the system (wallpaper) palette; values-night holds the dark ones -->
++<resources>
++    <!-- Panel -->
++    <color name="recent_background">@android:color/system_surface_container_dark</color>
++    <color name="recent_foreground">@android:color/system_on_surface_dark</color>
++    <color name="recent_foreground_variant">@android:color/system_on_surface_variant_dark</color>
++    <color name="recent_ripple">#1FFFFFFF</color>
++    <!-- Cards: the current app is highlighted -->
++    <color name="recent_card_background">@android:color/system_surface_container_highest_dark</color>
++    <color name="recent_card_current_background">@android:color/system_secondary_container_dark</color>
++    <color name="recent_card_current_foreground">@android:color/system_on_secondary_container_dark</color>
++    <color name="recent_option_background">@android:color/system_secondary_container_dark</color>
++    <color name="recent_option_foreground">@android:color/system_on_secondary_container_dark</color>
++    <color name="recent_favorite_background">@android:color/system_primary_dark</color>
++    <color name="recent_favorite_foreground">@android:color/system_on_primary_dark</color>
++    <!-- Empty, locked and clear-all states -->
++    <color name="recents_empty_color">@android:color/system_on_surface_variant_dark</color>
++    <color name="recent_warning_background">@android:color/system_error_container_dark</color>
++    <color name="recent_warning_foreground">@android:color/system_on_error_container_dark</color>
++    <!-- Memory bar -->
++    <color name="recents_membar_text_color">@android:color/system_on_surface_variant_dark</color>
++    <color name="recents_membar_color">@android:color/system_primary_dark</color>
++    <color name="recents_membar_track_color">@android:color/system_surface_container_highest_dark</color>
++</resources>
+diff --git a/slimrecent/res/values/colors.xml b/slimrecent/res/values/colors.xml
+index 9db43c2..45b19e2 100644
+--- a/slimrecent/res/values/colors.xml
++++ b/slimrecent/res/values/colors.xml
+@@ -1,20 +1,29 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-
++<!--
++     SPDX-FileCopyrightText: PlaitOS
++     SPDX-License-Identifier: Apache-2.0
++-->
++<!-- Material 3 roles from the system (wallpaper) palette; values-night holds the dark ones -->
+ <resources>
+-    <!-- Recents -->
+-    <color name="recents_empty_dark_color">#ff4d4d4d</color>
+-    <color name="recents_empty_light_color">#ffb3b3b3</color>
+-
+-    <!-- Slim recent -->
+-    <color name="recent_background">#80000000</color>
+-    <color name="recent_foreground">@color/recent_foreground_light</color>
+-    <color name="recent_foreground_light">#ffeeeeee</color>
+-    <color name="recent_foreground_dark">#cc000000</color>
+-
+-    <!-- Card Color -->
+-    <color name="recent_card_background">#ffe6e6e6</color>
+-
+-    <!-- Recents membar colors -->
+-    <color name="recents_membar_text_color">@android:color/white</color>
+-    <color name="recents_membar_color">@*android:color/accent_device_default_dark</color>
++    <!-- Panel -->
++    <color name="recent_background">@android:color/system_surface_container_light</color>
++    <color name="recent_foreground">@android:color/system_on_surface_light</color>
++    <color name="recent_foreground_variant">@android:color/system_on_surface_variant_light</color>
++    <color name="recent_ripple">#1F000000</color>
++    <!-- Cards: the current app is highlighted -->
++    <color name="recent_card_background">@android:color/system_surface_container_highest_light</color>
++    <color name="recent_card_current_background">@android:color/system_secondary_container_light</color>
++    <color name="recent_card_current_foreground">@android:color/system_on_secondary_container_light</color>
++    <color name="recent_option_background">@android:color/system_secondary_container_light</color>
++    <color name="recent_option_foreground">@android:color/system_on_secondary_container_light</color>
++    <color name="recent_favorite_background">@android:color/system_primary_light</color>
++    <color name="recent_favorite_foreground">@android:color/system_on_primary_light</color>
++    <!-- Empty, locked and clear-all states -->
++    <color name="recents_empty_color">@android:color/system_on_surface_variant_light</color>
++    <color name="recent_warning_background">@android:color/system_error_container_light</color>
++    <color name="recent_warning_foreground">@android:color/system_on_error_container_light</color>
++    <!-- Memory bar -->
++    <color name="recents_membar_text_color">@android:color/system_on_surface_variant_light</color>
++    <color name="recents_membar_color">@android:color/system_primary_light</color>
++    <color name="recents_membar_track_color">@android:color/system_surface_container_highest_light</color>
+ </resources>
+diff --git a/slimrecent/res/values/config.xml b/slimrecent/res/values/config.xml
+index 643be8f..4580eb7 100644
+--- a/slimrecent/res/values/config.xml
++++ b/slimrecent/res/values/config.xml
+@@ -22,15 +22,15 @@
+ <resources>
+ 
+     <!-- The duration (in milliseconds) of slim recent app screen animation. -->
+-    <integer name="config_recentDefaultDur">150</integer>
++    <integer name="config_recentDefaultDur">300</integer>
+ 
+     <!-- The duration (in milliseconds) of slim recent app screen animation. -->
+-    <integer name="config_slimRecentDefaultDurOrig">150</integer>
++    <integer name="config_slimRecentDefaultDurOrig">350</integer>
+ 
+     <!-- Default value how much apps show the app screenshot on recents view entry -->
+     <integer name="expanded_items_default">2</integer>
+ 
+     <!-- The duration (in milliseconds) of recent app screen exit animation. -->
+-    <integer name="config_slimRecentExitDur">450</integer>
++    <integer name="config_slimRecentExitDur">200</integer>
+ 
+ </resources>
+diff --git a/slimrecent/res/values/dimens.xml b/slimrecent/res/values/dimens.xml
+index 25ad180..d46aa9e 100644
+--- a/slimrecent/res/values/dimens.xml
++++ b/slimrecent/res/values/dimens.xml
+@@ -2,25 +2,35 @@
+ 
+ <resources>
+ 
+-    <!-- Slim recent -->
+-    <dimen name="recent_width">230dp</dimen>
+-    <dimen name="slim_recents_elevation">20dp</dimen>
+-    <dimen name="recent_app_icon_size">48dp</dimen>
+-    <dimen name="recent_app_icon_padding">3dp</dimen>
+-    <dimen name="recent_app_name_padding">3dp</dimen>
+-    <dimen name="recent_expand_button_padding">5dp</dimen>
++    <!-- Slim recent (PlaitOS: Material 3 sizes) -->
++    <!-- Width of the panel itself; the window adds slim_recents_panel_margin on each side -->
++    <dimen name="recent_width">288dp</dimen>
++    <dimen name="slim_recents_panel_margin">12dp</dimen>
++    <dimen name="slim_recents_panel_radius">28dp</dimen>
++    <dimen name="slim_recents_elevation">6dp</dimen>
++    <dimen name="slim_recents_blur_radius">32dp</dimen>
++    <dimen name="slim_recents_list_padding">8dp</dimen>
++    <dimen name="recent_app_icon_size">40dp</dimen>
++    <dimen name="recent_app_icon_padding">0dp</dimen>
++    <dimen name="recent_app_name_padding">12dp</dimen>
++    <dimen name="recent_expand_button_padding">8dp</dimen>
++    <dimen name="recent_expand_button_size">40dp</dimen>
+     <dimen name="recent_favorite_icon_size">18dp</dimen>
+     <integer name="recent_thumbnail_height_to_width_ratio_percent">75</integer>
+-    <dimen name="recent_header_width">120dp</dimen>
+-    <dimen name="recent_text_size">20dp</dimen>
+-    <dimen name="recent_thumbnail_bottom_padding">3dp</dimen>
+-    <dimen name="recent_keyguard_text_margin">8dp</dimen>
+-    <dimen name="recent_card_height">48dp</dimen>
+-    <dimen name="recent_card_padding">5dp</dimen>
+-    <dimen name="recent_card_layout_margin_horizontal">5dp</dimen>
+-    <dimen name="recent_card_layout_marginTop">5dp</dimen>
+-    <dimen name="recent_card_layout_marginBottom">5dp</dimen>
+-
+-    <dimen name="recent_membar_elevation">6dp</dimen>
++    <dimen name="recent_text_size">16sp</dimen>
++    <dimen name="recent_keyguard_text_margin">12dp</dimen>
++    <dimen name="recent_card_height">64dp</dimen>
++    <dimen name="recent_card_radius">20dp</dimen>
++    <dimen name="recent_card_padding">12dp</dimen>
++    <dimen name="recent_card_layout_margin_horizontal">0dp</dimen>
++    <dimen name="recent_card_layout_marginTop">3dp</dimen>
++    <dimen name="recent_card_layout_marginBottom">3dp</dimen>
++    <dimen name="recent_thumbnail_margin">8dp</dimen>
++    <dimen name="recent_thumbnail_radius">14dp</dimen>
++    <dimen name="recent_option_size">44dp</dimen>
++    <dimen name="recent_option_padding">10dp</dimen>
++    <dimen name="recent_option_margin">4dp</dimen>
++    <dimen name="recent_membar_elevation">0dp</dimen>
++    <dimen name="recent_membar_height">8dp</dimen>
+ 
+ </resources>
+diff --git a/slimrecent/res/values/strings.xml b/slimrecent/res/values/strings.xml
+index 5e9d4fb..e0e6b74 100644
+--- a/slimrecent/res/values/strings.xml
++++ b/slimrecent/res/values/strings.xml
+@@ -23,6 +23,12 @@
+     <string name="slim_recent_pinned">Unpin the screen to view recents</string>
+ 
+ 
++    <!-- PlaitOS: panel header, empty state and clear all -->
++    <string name="slim_recents_title">Recent apps</string>
++    <string name="slim_recents_clear_all">Clear all</string>
++    <string name="slim_recents_empty">No recent apps</string>
++    <string name="slim_recents_release_to_clear">Release to clear all</string>
++
+     <!-- Slim recents membar -->
+     <string name="slim_recents_free_ram">RAM: %1$d MB free</string>
+ 
+diff --git a/slimrecent/res/values/styles.xml b/slimrecent/res/values/styles.xml
+index be13880..a8a7fc9 100644
+--- a/slimrecent/res/values/styles.xml
++++ b/slimrecent/res/values/styles.xml
+@@ -22,7 +22,33 @@
+     <style name="card_header_favorite_icon">
+         <item name="android:layout_width">@dimen/recent_favorite_icon_size</item>
+         <item name="android:layout_height">@dimen/recent_favorite_icon_size</item>
+-        <item name="android:layout_margin">-2dp</item>
++        <item name="android:layout_margin">-3dp</item>
++        <item name="android:padding">3dp</item>
++        <item name="android:background">@drawable/slim_recents_favorite_badge</item>
++        <item name="android:tint">@color/recent_favorite_foreground</item>
++    </style>
++
++    <!-- PlaitOS: Material 3 type scale on the device default font -->
++    <style name="SlimRecents.Text.Title" parent="@android:style/TextAppearance.DeviceDefault">
++        <item name="android:textSize">22sp</item>
++        <item name="android:textColor">@color/recent_foreground</item>
++    </style>
++
++    <style name="SlimRecents.Text.AppName" parent="@android:style/TextAppearance.DeviceDefault">
++        <item name="android:textSize">@dimen/recent_text_size</item>
++        <item name="android:textFontWeight">500</item>
++        <item name="android:textColor">@color/recent_foreground</item>
++    </style>
++
++    <style name="SlimRecents.Text.Body" parent="@android:style/TextAppearance.DeviceDefault">
++        <item name="android:textSize">14sp</item>
++        <item name="android:textColor">@color/recent_foreground_variant</item>
++    </style>
++
++    <style name="SlimRecents.Text.Label" parent="@android:style/TextAppearance.DeviceDefault">
++        <item name="android:textSize">12sp</item>
++        <item name="android:textFontWeight">500</item>
++        <item name="android:textColor">@color/recents_membar_text_color</item>
+     </style>
+ 
+ 
+diff --git a/slimrecent/src/com/android/systemui/slimrecent/ExpandableCardAdapter.java b/slimrecent/src/com/android/systemui/slimrecent/ExpandableCardAdapter.java
+index 1e77543..8337606 100644
+--- a/slimrecent/src/com/android/systemui/slimrecent/ExpandableCardAdapter.java
++++ b/slimrecent/src/com/android/systemui/slimrecent/ExpandableCardAdapter.java
+@@ -90,23 +90,17 @@ public class ExpandableCardAdapter extends RecyclerView.Adapter<ExpandableCardAd
+                 (mFastMode || screenshotAvailable || card.pinAppIcon) ? View.VISIBLE : View.GONE);
+ 
+         if (card.cardBackgroundColor != 0) {
+-            // we need to override tint list instead of setting cardview background color
+-            // because some dark themes could change system colors being used by
+-            // cardview code to set default ColorStateList.
+-            ColorStateList cl = ColorStateList.valueOf(card.cardBackgroundColor);
+-            holder.card.setBackgroundTintList(cl);
+-            holder.optionsView.setBackgroundTintList(cl);
++            holder.card.setCardBackgroundColor(card.cardBackgroundColor);
++            // The options cover the card's header, on the same color
+             holder.optionsView.setBackgroundColor(0xff000000 | card.cardBackgroundColor);
+-            int color;
+-            if (ColorUtils.isDarkColor(card.cardBackgroundColor)) {
+-                color = mContext.getColor(R.color.recent_foreground_light);
+-            } else {
+-                color = mContext.getColor(R.color.recent_foreground_dark);
+-            }
+-            holder.appName.setTextColor(color);
+-            holder.expandButton.setColorFilter(color, PorterDuff.Mode.MULTIPLY);
+-            card.textColor = color;
+         }
++        // Material 3 roles: on-surface text on cards, on-secondary-container on the current app
++        int color = mContext.getColor(card.current
++                ? R.color.recent_card_current_foreground : R.color.recent_foreground);
++        holder.appName.setTextColor(color);
++        holder.expandButton.setImageTintList(ColorStateList.valueOf(card.current
++                ? color : mContext.getColor(R.color.recent_foreground_variant)));
++        card.textColor = color;
+ 
+         if (card.appIcon != null) {
+             holder.appIcon.setImageDrawable(card.appIcon);
+@@ -178,8 +172,6 @@ public class ExpandableCardAdapter extends RecyclerView.Adapter<ExpandableCardAd
+             cardContent = (LinearLayout) itemView.findViewById(R.id.card_content);
+             favorite = (ImageView) itemView.findViewById(R.id.favorite_icon);
+             appName = (TextView) itemView.findViewById(R.id.app_name);
+-            appName.setTypeface(
+-                    Typeface.create(appName.getTypeface(), Typeface.BOLD));
+             screenshot = (RecentThumbView) itemView.findViewById(R.id.screenshot);
+             card = (CardView) itemView.findViewById(R.id.card);
+             optionsView = (LinearLayout) itemView.findViewById(R.id.card_options);
+@@ -270,7 +262,6 @@ public class ExpandableCardAdapter extends RecyclerView.Adapter<ExpandableCardAd
+                 OptionsItem item = expCard.mOptions.get(i);
+                 ImageView option = (ImageView) inflater.inflate(
+                         R.layout.options_item, optionsView, false);
+-                item.icon.setColorFilter(expCard.textColor, PorterDuff.Mode.MULTIPLY);
+                 option.setImageDrawable(item.icon);
+                 option.setId(item.id);
+                 option.setOnClickListener(new View.OnClickListener() {
+@@ -357,6 +348,7 @@ public class ExpandableCardAdapter extends RecyclerView.Adapter<ExpandableCardAd
+         boolean pinAppIcon = false;
+         boolean noIcon = false;
+         boolean favorite = false;
++        boolean current = false;
+         Context context;
+         String identifier;
+         int index;
+diff --git a/slimrecent/src/com/android/systemui/slimrecent/RecentController.java b/slimrecent/src/com/android/systemui/slimrecent/RecentController.java
+index 5693169..422548e 100644
+--- a/slimrecent/src/com/android/systemui/slimrecent/RecentController.java
++++ b/slimrecent/src/com/android/systemui/slimrecent/RecentController.java
+@@ -51,6 +51,7 @@ import android.graphics.drawable.Drawable;
+ import android.graphics.drawable.VectorDrawable;
+ import android.graphics.PixelFormat;
+ import android.graphics.Point;
++import android.graphics.Insets;
+ import android.graphics.Rect;
+ import android.hardware.display.DisplayManager;
+ import android.media.MediaMetadata;
+@@ -71,6 +72,7 @@ import android.view.MotionEvent;
+ import android.view.ScaleGestureDetector;
+ import android.view.ScaleGestureDetector.SimpleOnScaleGestureListener;
+ import android.view.ViewConfiguration;
++import android.view.WindowInsets;
+ import android.view.WindowManager;
+ import android.view.WindowManagerGlobal;
+ import android.view.View;
+@@ -115,6 +117,8 @@ public class RecentController implements RecentPanelView.OnExitListener,
+ 
+     static final String SYSTEM_DIALOG_REASON_RECENT_APPS = "recentapps";
+ 
++    private static final float DIM_AMOUNT = 0.32f;
++
+     // Animation control values.
+     private static final int ANIMATION_STATE_NONE = 0;
+     private static final int ANIMATION_STATE_OUT  = 1;
+@@ -160,6 +164,9 @@ public class RecentController implements RecentPanelView.OnExitListener,
+ 
+     private float mScaleFactor;
+ 
++    // System bars and cutout, kept clear by the floating panel
++    private Insets mInsets = Insets.NONE;
++
+     // Main panel view.
+     private RecentPanelView mRecentPanelView;
+ 
+@@ -302,15 +309,20 @@ public class RecentController implements RecentPanelView.OnExitListener,
+         mParentView.setFocusableInTouchMode(true);
+         mParentView.addView(mRecentContainer);
+         mParentView.addView(mKeyguardView);
+-        mParentView.setOnTouchListener(new View.OnTouchListener() {
+-            @Override
+-            public boolean onTouch(View v, MotionEvent event) {
+-                if (event.getAction() == MotionEvent.ACTION_OUTSIDE) {
+-                    // Touch outside the recents window....hide recents window.
+-                    onExit();
+-                    return true;
+-                }
+-                return false;
++        // The window covers the screen: a tap on the scrim (outside the panel) closes it
++        mParentView.setOnClickListener(v -> onExit());
++        mParentView.setOnApplyWindowInsetsListener((v, insets) -> {
++            mInsets = insets.getInsets(WindowInsets.Type.systemBars()
++                    | WindowInsets.Type.displayCutout());
++            applyPanelLayout();
++            return WindowInsets.CONSUMED;
++        });
++
++        mRecentContainer.findViewById(R.id.recent_clear_all).setOnClickListener(v -> {
++            cancelClearAllWaiting();
++            if (mRecentPanelView.hasClearableTasks()
++                    && mRecentPanelView.removeAllApplications()) {
++                hideRecents(false);
+             }
+         });
+ 
+@@ -353,11 +365,6 @@ public class RecentController implements RecentPanelView.OnExitListener,
+     public void rebuildRecentsScreen() {
+         // Set new layout parameters and backgrounds.
+         if (mRecentContainer != null) {
+-            final ViewGroup.LayoutParams layoutParams = mRecentContainer.getLayoutParams();
+-            layoutParams.width = (int) (mContext.getResources()
+-                    .getDimensionPixelSize(R.dimen.recent_width) * mScaleFactor);
+-            mRecentContainer.setLayoutParams(layoutParams);
+-
+             setGravityAndImageResources();
+         }
+         // Rebuild complete adapter and lists to force style updates.
+@@ -371,26 +378,15 @@ public class RecentController implements RecentPanelView.OnExitListener,
+      * Set and update all resources and notify the different layouts about the change.
+      */
+     private void setGravityAndImageResources() {
+-        // Calculate and set gravitiy.
+-        if (mLayoutDirection == View.LAYOUT_DIRECTION_RTL) {
+-            mMainGravity = reverseGravity(mUserGravity);
+-        } else {
+-            mMainGravity = mUserGravity;
+-        }
++        // The setting is a screen edge (left or right), the same in every language
++        mMainGravity = mUserGravity;
+ 
+         // Set layout direction.
+         mRecentContainer.setLayoutDirection(mLayoutDirection);
+ 
+-        // Reset all backgrounds.
+-        mRecentContent.setBackgroundResource(0);
+-        mRecentWarningContent.setBackgroundResource(0);
+         mEmptyRecentView.setImageResource(0);
+ 
+-        // Set correct backgrounds based on calculated main gravity.
+-        mRecentWarningContent.setBackgroundColor(Color.RED);
+-
+         int tintColor = getEmptyRecentColor();
+-        int backgroundColor = mContext.getColor(R.color.recent_background);
+ 
+         // Default empty recents drawable
+         VectorDrawable emptyVd = (VectorDrawable)
+@@ -404,37 +400,34 @@ public class RecentController implements RecentPanelView.OnExitListener,
+         mKeyguardImage.setImageDrawable(vd);
+         mKeyguardText.setTextColor(tintColor);
+ 
+-        int padding = mContext.getResources().getDimensionPixelSize(R.dimen.slim_recents_elevation);
+-        if (mMainGravity == Gravity.START) {
+-            mRecentContainer.setPadding(0, 0, padding, 0);
+-            mEmptyRecentView.setRotation(180);
+-        } else {
+-            mRecentContainer.setPadding(padding, 0, 0, 0);
+-            mEmptyRecentView.setRotation(0);
+-        }
+-
+-
+-        // Set custom background color (or reset to default, as the case may be
+-        if (mRecentContent != null) {
+-            mRecentContent.setElevation(50);
+-            mRecentContent.setBackgroundColor(backgroundColor);
+-        }
++        applyPanelLayout();
++    }
+ 
+-        if (mKeyguardView != null) {
+-            mKeyguardView.setBackgroundColor(backgroundColor);
++    /**
++     * Width and side of the floating panel (and of the locked notice): the panel width times
++     * the user scale, plus the margin and the system bars on each side.
++     */
++    private void applyPanelLayout() {
++        final Resources res = mContext.getResources();
++        final int margin = res.getDimensionPixelSize(R.dimen.slim_recents_panel_margin);
++        final int width = (int) (res.getDimensionPixelSize(R.dimen.recent_width) * mScaleFactor)
++                + 2 * margin + mInsets.left + mInsets.right;
++        for (View panel : new View[] {mRecentContainer, mKeyguardView}) {
++            panel.setPadding(margin + mInsets.left, margin + mInsets.top,
++                    margin + mInsets.right, margin + mInsets.bottom);
++            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) panel.getLayoutParams();
++            if (lp == null) {
++                continue;
++            }
++            lp.width = width;
++            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
++            lp.gravity = mMainGravity | Gravity.CENTER_VERTICAL;
++            panel.setLayoutParams(lp);
+         }
+     }
+ 
+     private int getEmptyRecentColor() {
+-        int color = mContext.getColor(R.color.recent_background);
+-        if (Utilities.computeContrastBetweenColors(color,
+-                Color.WHITE) < 3f) {
+-            return mContext.getResources().getColor(
+-                    R.color.recents_empty_dark_color);
+-        } else {
+-            return mContext.getResources().getColor(
+-                    R.color.recents_empty_light_color);
+-        }
++        return mContext.getColor(R.color.recents_empty_color);
+     }
+ 
+     private int getLayoutDirection() {
+@@ -682,28 +675,33 @@ public class RecentController implements RecentPanelView.OnExitListener,
+      * @return LayoutParams
+      */
+     private WindowManager.LayoutParams generateLayoutParameter() {
+-        int width = (int) (mContext.getResources().getDimensionPixelSize(R.dimen.recent_width)
+-                * mScaleFactor);
++        // The whole screen: the app behind is dimmed (and blurred where the device supports
++        // cross-window blur), the panel floats on one side and a tap beside it closes it
+         final WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+-                width,
++                WindowManager.LayoutParams.MATCH_PARENT,
+                 WindowManager.LayoutParams.MATCH_PARENT,
+                 WindowManager.LayoutParams.TYPE_SYSTEM_DIALOG,
+                 WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+-                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                         | WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
+-                        | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
++                        | WindowManager.LayoutParams.FLAG_DIM_BEHIND
+                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                         | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR,
+                 PixelFormat.TRANSLUCENT);
++        params.dimAmount = DIM_AMOUNT;
++        params.layoutInDisplayCutoutMode =
++                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
++        params.setFitInsetsTypes(0);
++        if (mWindowManager.isCrossWindowBlurEnabled()) {
++            params.flags |= WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
++            params.setBlurBehindRadius(mContext.getResources()
++                    .getDimensionPixelSize(R.dimen.slim_recents_blur_radius));
++        }
+         // Hardware acceleration (Android 17 dropped the private "force" flag; windows of
+         // hardware accelerated apps are accelerated anyway)
+         params.flags |= WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
+ 
+-        // Set gravitiy.
+-        params.gravity = mMainGravity | Gravity.CENTER_VERTICAL;
+-
+         // Set animation for our recent window.
+-        if (mMainGravity == Gravity.START) {
++        if (mMainGravity == Gravity.LEFT) {
+             params.windowAnimations = R.style.Animation_SlimRecentScreenOrig_Left;
+         } else {
+             params.windowAnimations = R.style.Animation_SlimRecentScreenOrig_Right;
+@@ -918,7 +916,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
+ 
+             // Get user gravity.
+             mUserGravity = SlimSettings.get(mContext, SlimSettings.GRAVITY, 0) == 1
+-                    ? Gravity.START : Gravity.END;
++                    ? Gravity.LEFT : Gravity.RIGHT;
+ 
+             // Set main gravity and background images.
+             setGravityAndImageResources();
+@@ -1134,9 +1132,6 @@ public class RecentController implements RecentPanelView.OnExitListener,
+         }
+     }
+ 
+-    private int reverseGravity(int gravity){
+-        return gravity == Gravity.START ? Gravity.END : Gravity.START;
+-    }
+ 
+     private boolean showMemDisplay() {
+         if (!enableMemDisplay) {
+@@ -1163,9 +1158,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
+                     available));
+             mMemBar.setMax(max);
+             mMemBar.setProgress(available);
+-            mMemBar.getProgressDrawable().setColorFilter(
+-                    mContext.getColor(R.color.recents_membar_color), Mode.MULTIPLY);
+-            mMemText.setTextColor(mContext.getColor(R.color.recents_membar_text_color));
++
+     }
+ 
+     public long getTotalMemory() {
+diff --git a/slimrecent/src/com/android/systemui/slimrecent/RecentPanelView.java b/slimrecent/src/com/android/systemui/slimrecent/RecentPanelView.java
+index bcbbe38..c5b07e3 100644
+--- a/slimrecent/src/com/android/systemui/slimrecent/RecentPanelView.java
++++ b/slimrecent/src/com/android/systemui/slimrecent/RecentPanelView.java
+@@ -313,6 +313,7 @@ public class RecentPanelView {
+             final boolean isExpanded =
+                     ((isSystemExpanded && !isUserCollapsed) || isUserExpanded) && !isTopTask;
+ 
++            current = isTopTask;
+             expanded = !mFastMode && !isTopTask && isExpanded;
+             expandVisible = !mFastMode && !isTopTask;
+             noIcon = isTopTask && !mIsScreenPinningEnabled && !mFastMode;
+@@ -382,6 +383,7 @@ public class RecentPanelView {
+         mRes = context.getResources();
+         mFirstExpandedItems =
+                 mRes.getInteger(R.integer.expanded_items_default);
++        mCornerRadius = mRes.getDimension(R.dimen.recent_card_radius);
+ 
+         buildCardListAndAdapter();
+ 
+@@ -762,6 +764,11 @@ public class RecentPanelView {
+                 mCardAdapter.getItemCount() == 0) ? View.VISIBLE : View.GONE);
+         mCardRecyclerView.setVisibility((
+                 mCardAdapter.getItemCount() == 0) ? View.GONE : View.VISIBLE);
++        final View emptyText = ((View) mEmptyRecentView.getParent())
++                .findViewById(R.id.empty_recent_text);
++        if (emptyText != null) {
++            emptyText.setVisibility(mEmptyRecentView.getVisibility());
++        }
+ 
+         if (mEmptyRecentView.getDrawable() instanceof AnimatedVectorDrawable) {
+             AnimatedVectorDrawable vd = (AnimatedVectorDrawable) mEmptyRecentView.getDrawable();
+@@ -1229,16 +1236,12 @@ public class RecentPanelView {
+     }
+ 
+     private int getCardBackgroundColor(TaskDescription task) {
+-        if (mCardColor != 0x0ffffff/* &&
+-                !(task != null && task.isMediaPlayingTask() && mMediaColor != -1)*/) {
+-            // uncomment above lines in the "if" and in the setMediaColors method to get the albumart color
+-            // also if the user sets a custom cards color
+-            return mCardColor;
+-        } else if (task != null && task.cardColor != 0) {
+-            return task.cardColor;
+-        } else {
+-            return mRes.getColor(R.color.recent_card_background);
++        // Material 3: one tonal surface for every card (instead of each app's own color),
++        // the app on screen right now stands out in the secondary container color
++        if (task != null && (task.getExpandedState() & EXPANDED_STATE_TOPTASK) != 0) {
++            return mRes.getColor(R.color.recent_card_current_background);
+         }
++        return mRes.getColor(R.color.recent_card_background);
+     }
+ 
+     private static ActivityManager.RunningTaskInfo
+diff --git a/slimrecent/src/com/android/systemui/slimrecent/RecentThumbView.java b/slimrecent/src/com/android/systemui/slimrecent/RecentThumbView.java
+index 9e68997..e47f666 100644
+--- a/slimrecent/src/com/android/systemui/slimrecent/RecentThumbView.java
++++ b/slimrecent/src/com/android/systemui/slimrecent/RecentThumbView.java
+@@ -19,6 +19,7 @@ package com.android.systemui.slimrecent;
+ import android.content.Context;
+ import android.graphics.Bitmap;
+ import android.graphics.Canvas;
++import android.graphics.Outline;
+ import android.graphics.Paint;
+ import android.graphics.PaintFlagsDrawFilter;
+ import android.graphics.Rect;
+@@ -28,6 +29,8 @@ import android.graphics.drawable.BitmapDrawable;
+ import android.graphics.drawable.Drawable;
+ import android.util.AttributeSet;
+ import android.util.Log;
++import android.view.View;
++import android.view.ViewOutlineProvider;
+ import android.widget.ImageView;
+ 
+ import com.android.launcher3.R;
+@@ -72,6 +75,15 @@ public class RecentThumbView extends ImageView {
+     private void init(Context context) {
+         mThumbnailHeightToWidthRatio = context.getResources()
+                 .getInteger(R.integer.recent_thumbnail_height_to_width_ratio_percent) / 100f;
++        // Material 3: rounded screenshot inside the rounded card
++        final float radius = context.getResources().getDimension(R.dimen.recent_thumbnail_radius);
++        setOutlineProvider(new ViewOutlineProvider() {
++            @Override
++            public void getOutline(View view, Outline outline) {
++                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
++            }
++        });
++        setClipToOutline(true);
+     }
+ 
+ 
+-- 
+2.56.0
+

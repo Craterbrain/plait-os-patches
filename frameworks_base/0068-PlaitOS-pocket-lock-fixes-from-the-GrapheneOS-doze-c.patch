@@ -1,0 +1,102 @@
+From d91fe96aea1837db2252f4551377e75e433ffb5f Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 23:08:17 -0600
+Subject: [PATCH 68/75] PlaitOS: pocket lock fixes from the GrapheneOS doze
+ check
+
+- KeyguardUpdateMonitor: register the pocket callback after mHandler is
+  created (the binder callback posts to it; an early state change would have
+  crashed SystemUI), make mIsDeviceInPocket volatile (binder thread writes,
+  main thread reads) and null-check mPocketManager in isPocketLockVisible()
+- SystemServer: restore the stock "final boolean safeMode =
+  wm.detectSafeMode()"; the pocket port had turned it into a public field
+  with a null check that nothing uses
+
+Checked against GrapheneOS's own changes to the same files (second-factor
+fingerprint unlock, face auth prevention, fingerprint mode fix, alternative
+touchscreen mode, USB port security, system_server extensions): no overlap
+in the changed lines; the fingerprint listen condition only gains
+!mIsDeviceInPocket, which is always false while pocket mode is off.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../android/keyguard/KeyguardUpdateMonitor.java  | 16 +++++++++-------
+ .../java/com/android/server/SystemServer.java    |  7 +------
+ 2 files changed, 10 insertions(+), 13 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/keyguard/KeyguardUpdateMonitor.java b/packages/SystemUI/src/com/android/keyguard/KeyguardUpdateMonitor.java
+index 4816a10ce..b05c108c3 100644
+--- a/packages/SystemUI/src/com/android/keyguard/KeyguardUpdateMonitor.java
++++ b/packages/SystemUI/src/com/android/keyguard/KeyguardUpdateMonitor.java
+@@ -460,7 +460,8 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, CoreSt
+ 
+     private final Handler mHandler;
+     private PocketManager mPocketManager;
+-    private boolean mIsDeviceInPocket;
++    // Written on a binder thread, read on the main thread
++    private volatile boolean mIsDeviceInPocket;
+     private final IPocketCallback mPocketCallback = new IPocketCallback.Stub() {
+         @Override
+         public void onStateChanged(boolean isDeviceInPocket, int reason) {
+@@ -477,7 +478,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, CoreSt
+     };
+ 
+     public boolean isPocketLockVisible(){
+-        return mPocketManager.isPocketLockVisible();
++        return mPocketManager != null && mPocketManager.isPocketLockVisible();
+     }
+ 
+     private final IBiometricEnabledOnKeyguardCallback mBiometricEnabledCallback =
+@@ -2466,11 +2467,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, CoreSt
+         mKeyguardServiceShowLockscreenInteractor = keyguardServiceShowLockscreenInteractor;
+         mDeviceUnlockedInteractor = deviceUnlockedInteractor;
+ 
+-        mPocketManager = (PocketManager) context.getSystemService(Context.POCKET_SERVICE);
+-        if (mPocketManager != null) {
+-            mPocketManager.addCallback(mPocketCallback);
+-        }
+-
+         mHandler = new Handler(mainLooper) {
+             @Override
+             public void handleMessage(Message msg) {
+@@ -2585,6 +2581,12 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, CoreSt
+             }
+         };
+ 
++        // PlaitOS: register after mHandler exists; the callback posts to it (binder thread)
++        mPocketManager = (PocketManager) context.getSystemService(Context.POCKET_SERVICE);
++        if (mPocketManager != null) {
++            mPocketManager.addCallback(mPocketCallback);
++        }
++
+         mTimeFormatChangeObserver = new ContentObserver(mHandler) {
+             @Override
+             public void onChange(boolean selfChange) {
+diff --git a/services/java/com/android/server/SystemServer.java b/services/java/com/android/server/SystemServer.java
+index 1cc168131..fb3a9e758 100644
+--- a/services/java/com/android/server/SystemServer.java
++++ b/services/java/com/android/server/SystemServer.java
+@@ -549,8 +549,6 @@ public final class SystemServer implements Dumpable {
+     private final long mRuntimeStartElapsedTime;
+     private final long mRuntimeStartUptime;
+ 
+-    public boolean safeMode = false;
+-
+     private static final String START_HIDL_SERVICES = "StartHidlServices";
+     private static final String START_SENSOR_MANAGER_SERVICE = "StartISensorManagerService";
+     private static final String START_BLOB_STORE_SERVICE = "startBlobStoreManagerService";
+@@ -1901,10 +1899,7 @@ public final class SystemServer implements Dumpable {
+ 
+         // Before things start rolling, be sure we have decided whether
+         // we are in safe mode.
+-
+-        if(wm != null) {
+-            safeMode = wm.detectSafeMode();
+-        }
++        final boolean safeMode = wm.detectSafeMode();
+         if (safeMode) {
+             // If yes, immediately turn on the global setting for airplane mode.
+             // Note that this does not send broadcasts at this stage because
+-- 
+2.56.0
+

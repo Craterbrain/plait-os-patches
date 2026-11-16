@@ -1,0 +1,65 @@
+From 94f4d6b9949de8ad84ae41fbbf157133bcba0d5c Mon Sep 17 00:00:00 2001
+From: Ghosuto <clash.raja10@gmail.com>
+Date: Fri, 6 Mar 2026 12:38:12 +0000
+Subject: [PATCH 11/15] Launcher3: Prevent clock icon crash on LayerDrawable
+ cast
+
+Signed-off-by: Ghosuto <clash.raja10@gmail.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid packages_apps_Launcher3 17.0]
+---
+ .../launcher3/icons/clock/ClockLayers.java    | 25 ++++++++++++++++---
+ 1 file changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/src/com/android/launcher3/icons/clock/ClockLayers.java b/src/com/android/launcher3/icons/clock/ClockLayers.java
+index c6014b0..bef174a 100644
+--- a/src/com/android/launcher3/icons/clock/ClockLayers.java
++++ b/src/com/android/launcher3/icons/clock/ClockLayers.java
+@@ -29,14 +29,27 @@ class ClockLayers {
+     }
+ 
+     public final void setDrawable(Drawable drawable) {
+-        mDrawable = (AdaptiveIconDrawable) drawable;
+-        mLayerDrawable = (LayerDrawable) mDrawable.getForeground();
++        if (drawable instanceof AdaptiveIconDrawable) {
++            mDrawable = (AdaptiveIconDrawable) drawable;
++            Drawable foreground = mDrawable.getForeground();
++            if (foreground instanceof LayerDrawable) {
++                mLayerDrawable = (LayerDrawable) foreground;
++            } else {
++                mLayerDrawable = null;
++            }
++        } else if (drawable instanceof LayerDrawable) {
++            mDrawable = null;
++            mLayerDrawable = (LayerDrawable) drawable;
++        } else {
++            mDrawable = null;
++            mLayerDrawable = null;
++        }
+     }
+ 
+     @Override
+     public ClockLayers clone() {
+         ClockLayers ret = null;
+-        if (mDrawable == null) {
++        if (mDrawable == null && mLayerDrawable == null) {
+             return null;
+         }
+         ClockLayers clone = new ClockLayers();
+@@ -48,7 +61,11 @@ class ClockLayers {
+         clone.mDefaultHour = mDefaultHour;
+         clone.mDefaultMinute = mDefaultMinute;
+         clone.mDefaultSecond = mDefaultSecond;
+-        clone.setDrawable(mDrawable.getConstantState().newDrawable());
++        if (mDrawable != null) {
++            clone.setDrawable(mDrawable.getConstantState().newDrawable());
++        } else {
++            clone.setDrawable(mLayerDrawable.getConstantState().newDrawable());
++        }
+         clone.bitmap = bitmap;
+         if (clone.mLayerDrawable != null) {
+             ret = clone;
+-- 
+2.56.0
+

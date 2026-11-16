@@ -1,0 +1,29 @@
+From 7a19c5678be75f4218f49e4e2a1e50203f4f9f44 Mon Sep 17 00:00:00 2001
+From: Fabian Leutenegger <fabian.leutenegger@bluewin.ch>
+Date: Wed, 7 Aug 2024 15:10:15 +0200
+Subject: [PATCH 58/75] base: Ensure pocket sensor is wakeup
+
+Change-Id: I2784c23ad456e1ce5b042e5cc31f919f6b5a5436
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ services/core/java/com/android/server/pocket/PocketService.java | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/services/core/java/com/android/server/pocket/PocketService.java b/services/core/java/com/android/server/pocket/PocketService.java
+index 639a41f72..5f1fd0756 100644
+--- a/services/core/java/com/android/server/pocket/PocketService.java
++++ b/services/core/java/com/android/server/pocket/PocketService.java
+@@ -870,7 +870,7 @@ public class PocketService extends SystemService implements IBinder.DeathRecipie
+ 
+     private static Sensor getSensor(SensorManager sm, String type) {
+         for (Sensor sensor : sm.getSensorList(Sensor.TYPE_ALL)) {
+-            if (type.equals(sensor.getStringType())) {
++            if (type.equals(sensor.getStringType()) && sensor.isWakeUpSensor()) {
+                 return sensor;
+             }
+         }
+-- 
+2.56.0
+

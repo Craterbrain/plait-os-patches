@@ -1,0 +1,196 @@
+From 0002eb31155e4b5bfcd20de6069e5462476a2260 Mon Sep 17 00:00:00 2001
+From: Sam Mortimer <sam@mortimer.me.uk>
+Date: Sun, 8 Feb 2026 19:28:34 -0500
+Subject: [PATCH 28/75] SystemUI: Network Traffic
+
+Co-authored-by: Bruno Martins <bgcngm@gmail.com>
+Co-authored-by: LuK1337 <priv.luk@gmail.com>
+Co-authored-by: Wolfram Liebchen <achalmgucker@googlemail.com>
+Change-Id: Ib947832860970a3bccfac70d27a4761f6164d3d5
+
+[PlaitOS: ported from LineageOS frameworks_base lineage-24.0]
+---
+ packages/SystemUI/res/layout/status_bar.xml   | 61 +++++++++++++++++++
+ .../phone/PhoneStatusBarTransitions.java      | 17 +++++-
+ .../ui/binder/HomeStatusBarViewBinder.kt      |  8 +++
+ 3 files changed, 85 insertions(+), 1 deletion(-)
+
+diff --git a/packages/SystemUI/res/layout/status_bar.xml b/packages/SystemUI/res/layout/status_bar.xml
+index e0912a896..8edcd1ba4 100644
+--- a/packages/SystemUI/res/layout/status_bar.xml
++++ b/packages/SystemUI/res/layout/status_bar.xml
+@@ -116,6 +116,23 @@
+                             android:clipChildren="false"/>
+                     </FrameLayout>
+ 
++                    <com.android.systemui.statusbar.LineageStatusBarItemHolder
++                        android:id="@+id/network_traffic_holder_start"
++                        android:layout_width="wrap_content"
++                        android:layout_height="wrap_content"
++                        android:layoutDirection="ltr"
++                        android:gravity="center"
++                        android:paddingStart="4dp">
++
++                        <org.lineageos.internal.statusbar.NetworkTraffic
++                            android:id="@+id/network_traffic_start"
++                            android:layout_width="wrap_content"
++                            android:layout_height="match_parent"
++                            android:maxLines="2"
++                            android:gravity="center" />
++
++                    </com.android.systemui.statusbar.LineageStatusBarItemHolder>
++
+                 </LinearLayout>
+             </FrameLayout>
+         </FrameLayout>
+@@ -150,6 +167,23 @@
+                 android:gravity="center_vertical|end"
+                 android:clipChildren="false">
+ 
++                <com.android.systemui.statusbar.LineageStatusBarItemHolder
++                    android:id="@+id/network_traffic_holder_end"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:layoutDirection="ltr"
++                    android:gravity="center"
++                    android:paddingLeft="2dp">
++
++                    <org.lineageos.internal.statusbar.NetworkTraffic
++                        android:id="@+id/network_traffic_end"
++                        android:layout_width="wrap_content"
++                        android:layout_height="match_parent"
++                        android:maxLines="2"
++                        android:gravity="center" />
++
++                </com.android.systemui.statusbar.LineageStatusBarItemHolder>
++
+                 <include
+                     android:id="@+id/user_switcher_container"
+                     android:layout_width="wrap_content"
+@@ -165,4 +199,31 @@
+         </FrameLayout>
+     </LinearLayout>
+ 
++    <com.android.keyguard.AlphaOptimizedLinearLayout
++        android:id="@+id/centered_area"
++        android:gravity="center"
++        android:orientation="horizontal"
++        android:layout_width="match_parent"
++        android:layout_height="match_parent"
++        android:paddingTop="@dimen/status_bar_padding_top"
++        >
++
++        <com.android.systemui.statusbar.LineageStatusBarItemHolder
++            android:id="@+id/network_traffic_holder_center"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layoutDirection="ltr"
++            android:gravity="center">
++
++            <org.lineageos.internal.statusbar.NetworkTraffic
++                android:id="@+id/network_traffic_center"
++                android:layout_width="wrap_content"
++                android:layout_height="match_parent"
++                android:maxLines="2"
++                android:gravity="center" />
++
++        </com.android.systemui.statusbar.LineageStatusBarItemHolder>
++
++    </com.android.keyguard.AlphaOptimizedLinearLayout>
++
+ </com.android.systemui.statusbar.phone.PhoneStatusBarView>
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarTransitions.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarTransitions.java
+index c560c9eba..da75464b7 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarTransitions.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarTransitions.java
+@@ -25,6 +25,8 @@ import android.view.View;
+ import com.android.systemui.res.R;
+ import com.android.systemui.shared.statusbar.phone.BarTransitions;
+ 
++import org.lineageos.internal.statusbar.NetworkTraffic;
++
+ public final class PhoneStatusBarTransitions extends BarTransitions {
+     private static final float ICON_ALPHA_WHEN_NOT_OPAQUE = 1;
+     private static final float ICON_ALPHA_WHEN_LIGHTS_OUT_BATTERY_CLOCK = 0.5f;
+@@ -35,6 +37,7 @@ public final class PhoneStatusBarTransitions extends BarTransitions {
+     private boolean mIsHeadsUp;
+ 
+     private View mStartSide, mStatusIcons;
++    private NetworkTraffic mNetworkTrafficStart, mNetworkTrafficCenter, mNetworkTrafficEnd;
+     private Animator mCurrentAnimation;
+ 
+     /**
+@@ -46,6 +49,12 @@ public final class PhoneStatusBarTransitions extends BarTransitions {
+         mIconAlphaWhenOpaque = res.getFraction(R.dimen.status_bar_icon_drawing_alpha, 1, 1);
+         mStartSide = statusBarView.findViewById(R.id.status_bar_start_side_except_heads_up);
+         mStatusIcons = statusBarView.findViewById(R.id.statusIcons);
++        mNetworkTrafficStart = statusBarView.findViewById(R.id.network_traffic_start);
++        mNetworkTrafficCenter = statusBarView.findViewById(R.id.network_traffic_center);
++        mNetworkTrafficEnd = statusBarView.findViewById(R.id.network_traffic_end);
++        mNetworkTrafficStart.setViewPosition(0);        /* start side display */
++        mNetworkTrafficCenter.setViewPosition(1);       /* center display */
++        mNetworkTrafficEnd.setViewPosition(2);          /* end side display */
+         applyModeBackground(-1, getMode(), false /*animate*/);
+         applyMode(getMode(), false /*animate*/);
+     }
+@@ -112,7 +121,10 @@ public final class PhoneStatusBarTransitions extends BarTransitions {
+             AnimatorSet anims = new AnimatorSet();
+             anims.playTogether(
+                     animateTransitionTo(mStartSide, newStartSideAlpha),
+-                    animateTransitionTo(mStatusIcons, newStatusIconsAlpha)
++                    animateTransitionTo(mStatusIcons, newStatusIconsAlpha),
++                    animateTransitionTo(mNetworkTrafficStart, newStatusIconsAlpha),
++                    animateTransitionTo(mNetworkTrafficCenter, newStatusIconsAlpha),
++                    animateTransitionTo(mNetworkTrafficEnd, newStatusIconsAlpha)
+                     );
+             if (isLightsOut(mode)) {
+                 anims.setDuration(LIGHTS_OUT_DURATION);
+@@ -122,6 +134,9 @@ public final class PhoneStatusBarTransitions extends BarTransitions {
+         } else {
+             mStartSide.setAlpha(newStartSideAlpha);
+             mStatusIcons.setAlpha(newStatusIconsAlpha);
++            mNetworkTrafficStart.setAlpha(newStatusIconsAlpha);
++            mNetworkTrafficCenter.setAlpha(newStatusIconsAlpha);
++            mNetworkTrafficEnd.setAlpha(newStatusIconsAlpha);
+         }
+     }
+ }
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
+index 8ece7f069..b7b5f96a5 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
+@@ -73,6 +73,8 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+         // Set some top-level views to gone before we get started
+         val systemInfoView = view.requireViewById<View>(R.id.status_bar_end_side_content)
+         val clockView = view.requireViewById<View>(R.id.clock)
++        val networkTrafficCenterView = view.findViewById<View>(R.id.network_traffic_holder_center)
++        val networkTrafficStartView = view.findViewById<View>(R.id.network_traffic_holder_start)
+         val notificationIconsArea = view.requireViewById<View>(R.id.notificationIcons)
+ 
+         // GONE because this shouldn't take space in the layout
+@@ -163,9 +165,13 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+                             // Now apply the animation state, with its animator
+                             when (animState) {
+                                 AnimatingIn -> {
++                                    systemEventChipAnimateIn?.invoke(networkTrafficCenterView)
++                                    systemEventChipAnimateIn?.invoke(networkTrafficStartView)
+                                     systemEventChipAnimateIn?.invoke(systemInfoView)
+                                 }
+                                 AnimatingOut -> {
++                                    systemEventChipAnimateOut?.invoke(networkTrafficCenterView)
++                                    systemEventChipAnimateOut?.invoke(networkTrafficStartView)
+                                     systemEventChipAnimateOut?.invoke(systemInfoView)
+                                 }
+                                 else -> {
+@@ -173,6 +179,8 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+                                 }
+                             }
+                         } else {
++                            networkTrafficCenterView.adjustVisibility(baseVis)
++                            networkTrafficStartView.adjustVisibility(baseVis)
+                             systemInfoView.adjustVisibility(baseVis)
+                         }
+                     }
+-- 
+2.56.0
+

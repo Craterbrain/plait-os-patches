@@ -1,0 +1,29 @@
+From d30be8b363faa943d777a41e1603e0090cab03ba Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 17:18:11 -0600
+Subject: [PATCH 02/75] PlaitOS: BackupManager off by default without Seedvault
+
+Seedvault is removed; Plait Backup does not use the BackupManager service.
+---
+ packages/SettingsProvider/res/values/defaults.xml | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/packages/SettingsProvider/res/values/defaults.xml b/packages/SettingsProvider/res/values/defaults.xml
+index 14e08c553..02ad3265a 100644
+--- a/packages/SettingsProvider/res/values/defaults.xml
++++ b/packages/SettingsProvider/res/values/defaults.xml
+@@ -54,8 +54,9 @@
+     <bool name="def_wifi_wakeup_enabled">true</bool>
+     <bool name="def_networks_available_notification_on">true</bool>
+ 
+-    <bool name="def_backup_enabled">true</bool>
+-    <string name="def_backup_transport" translatable="false">com.stevesoltys.seedvault.transport.ConfigurableBackupTransport</string>
++    <!-- PlaitOS: Seedvault removed; Plait Backup does not use the BackupManager service -->
++    <bool name="def_backup_enabled">false</bool>
++    <string name="def_backup_transport" translatable="false"></string>
+ 
+     <!-- Default value for whether or not to pulse the notification LED when there is a
+          pending notification -->
+-- 
+2.56.0
+

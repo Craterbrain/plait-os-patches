@@ -1,0 +1,1790 @@
+From 86ce3f4a12e2b6002fe11bf13e2e5c8f31a558da Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 23:38:54 -0600
+Subject: [PATCH 01/13] PlaitOS: settings for the PlaitOS features
+
+Rows for every PlaitOS framework option, in two homes
+(design: plait-os docs/plait-settings-layout.md):
+
+- Slotted into the stock page that already holds the related setting:
+  Press & hold power button (torch with screen off and its auto-off timer,
+  advanced restart, power menu entries), Gestures (double-tap to sleep),
+  3-button navigation (long-press home, back and recents actions),
+  Lock screen (Peek Display, always-on schedule with from/till times, AOD
+  while charging, pocket mode), Display (Smart Pixels), Notifications
+  (pop-up duration, force stop in the notification menu), Sound (volume panel
+  on the left, panel timeout). Each block is appended under a PlaitOS
+  category; stock rows are unchanged
+- A PlaitOS page on the home screen for the rest, laid out like crDroid's
+  settings: swipeable tabs (Status bar, Quick Settings, Buttons, Misc), sub-
+  screens for network speed and the Quick Settings grid, and "Reset PlaitOS
+  settings" in the menu
+
+Rows are keyed by the setting they write; PlaitSettings knows each key's
+table (System/Secure/Global) and default, so one generic switch and one list
+controller serve almost every row. Special cases: power menu entries
+(multi-select, power and restart always kept), the AOD schedule times (time
+pickers, shown only for the modes that use them), Peek Display (also turns on
+the stock "Wake screen for notifications") and main-user-only rows.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ res/drawable/ic_settings_plait_filled.xml     |  12 +
+ res/layout/plait_settings_tabs.xml            |  23 ++
+ res/values/plait_arrays.xml                   | 175 +++++++++++++
+ res/values/plait_strings.xml                  | 115 +++++++++
+ res/xml/button_navigation_settings.xml        |  24 ++
+ res/xml/configure_notification_settings.xml   |  17 ++
+ res/xml/display_settings.xml                  |  18 ++
+ res/xml/gestures.xml                          |   7 +
+ res/xml/plait_buttons.xml                     |  23 ++
+ res/xml/plait_misc.xml                        |  20 ++
+ res/xml/plait_network_traffic.xml             |  40 +++
+ res/xml/plait_peek_display.xml                |  33 +++
+ res/xml/plait_qs_layout.xml                   |  48 ++++
+ res/xml/plait_quick_settings.xml              |  31 +++
+ res/xml/plait_status_bar.xml                  |  64 +++++
+ res/xml/power_menu_settings.xml               |  29 +++
+ res/xml/security_lockscreen_settings.xml      |  35 +++
+ res/xml/sound_settings.xml                    |  16 ++
+ res/xml/top_level_settings.xml                |   8 +
+ .../settings/plait/PlaitButtonsFragment.java  |  37 +++
+ .../settings/plait/PlaitControllers.kt        | 243 ++++++++++++++++++
+ .../settings/plait/PlaitMiscFragment.java     |  37 +++
+ .../plait/PlaitNetworkTrafficFragment.java    |  37 +++
+ .../plait/PlaitPeekDisplayFragment.java       |  37 +++
+ .../settings/plait/PlaitQsLayoutFragment.java |  37 +++
+ .../plait/PlaitQuickSettingsFragment.java     |  37 +++
+ .../android/settings/plait/PlaitSettings.kt   | 168 ++++++++++++
+ .../settings/plait/PlaitSettingsFragment.kt   |  93 +++++++
+ .../plait/PlaitStatusBarFragment.java         |  37 +++
+ 29 files changed, 1501 insertions(+)
+ create mode 100644 res/drawable/ic_settings_plait_filled.xml
+ create mode 100644 res/layout/plait_settings_tabs.xml
+ create mode 100644 res/values/plait_arrays.xml
+ create mode 100644 res/values/plait_strings.xml
+ create mode 100644 res/xml/plait_buttons.xml
+ create mode 100644 res/xml/plait_misc.xml
+ create mode 100644 res/xml/plait_network_traffic.xml
+ create mode 100644 res/xml/plait_peek_display.xml
+ create mode 100644 res/xml/plait_qs_layout.xml
+ create mode 100644 res/xml/plait_quick_settings.xml
+ create mode 100644 res/xml/plait_status_bar.xml
+ create mode 100644 src/com/android/settings/plait/PlaitButtonsFragment.java
+ create mode 100644 src/com/android/settings/plait/PlaitControllers.kt
+ create mode 100644 src/com/android/settings/plait/PlaitMiscFragment.java
+ create mode 100644 src/com/android/settings/plait/PlaitNetworkTrafficFragment.java
+ create mode 100644 src/com/android/settings/plait/PlaitPeekDisplayFragment.java
+ create mode 100644 src/com/android/settings/plait/PlaitQsLayoutFragment.java
+ create mode 100644 src/com/android/settings/plait/PlaitQuickSettingsFragment.java
+ create mode 100644 src/com/android/settings/plait/PlaitSettings.kt
+ create mode 100644 src/com/android/settings/plait/PlaitSettingsFragment.kt
+ create mode 100644 src/com/android/settings/plait/PlaitStatusBarFragment.java
+
+diff --git a/res/drawable/ic_settings_plait_filled.xml b/res/drawable/ic_settings_plait_filled.xml
+new file mode 100644
+index 0000000..68f217d
+--- /dev/null
++++ b/res/drawable/ic_settings_plait_filled.xml
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS settings entry: Material "tune" icon (Apache-2.0, Google Material Icons). -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?android:attr/colorControlNormal">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M3,17v2h6v-2H3zM3,5v2h10V5H3zM13,21v-2h8v-2h-8v-2h-2v6h2zM7,9v2H3v2h4v2h2V9H7zM21,13v-2H11v2h10zM15,9h2V7h4V5h-4V3h-2v6z"/>
++</vector>
+diff --git a/res/layout/plait_settings_tabs.xml b/res/layout/plait_settings_tabs.xml
+new file mode 100644
+index 0000000..5706386
+--- /dev/null
++++ b/res/layout/plait_settings_tabs.xml
+@@ -0,0 +1,23 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS settings: swipeable tabs, as crDroid's settings (SPDX-License-Identifier: Apache-2.0). -->
++<LinearLayout
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:orientation="vertical">
++
++    <com.google.android.material.tabs.TabLayout
++        android:id="@+id/plait_tabs"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:background="@android:color/transparent"
++        app:tabMode="fixed"
++        app:tabGravity="fill" />
++
++    <androidx.viewpager2.widget.ViewPager2
++        android:id="@+id/plait_pager"
++        android:layout_width="match_parent"
++        android:layout_height="0dp"
++        android:layout_weight="1" />
++</LinearLayout>
+diff --git a/res/values/plait_arrays.xml b/res/values/plait_arrays.xml
+new file mode 100644
+index 0000000..29a4e5e
+--- /dev/null
++++ b/res/values/plait_arrays.xml
+@@ -0,0 +1,175 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS settings lists (SPDX-License-Identifier: Apache-2.0). Values are what the framework reads. -->
++<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
++    <!-- Torch auto-off (seconds; 0 = never) -->
++    <string-array name="plait_torch_timeout_entries" translatable="false">
++        <item>@string/plait_off</item><item>1 min</item><item>5 min</item><item>10 min</item>
++    </string-array>
++    <string-array name="plait_torch_timeout_values" translatable="false">
++        <item>0</item><item>60</item><item>300</item><item>600</item>
++    </string-array>
++
++    <!-- Navigation key actions (PlaitKeyActions.Action order; 0 = stock behavior) -->
++    <string-array name="plait_key_action_entries">
++        <item>@string/plait_default_entry</item>
++        <item>Power menu</item>
++        <item>Force stop current app</item>
++        <item>Screenshot</item>
++        <item>Turn screen off</item>
++        <item>Last app</item>
++        <item>Recent apps</item>
++        <item>Split screen</item>
++        <item>Assistant</item>
++        <item>Voice assistant</item>
++        <item>Notifications</item>
++        <item>Play or pause</item>
++    </string-array>
++    <string-array name="plait_key_action_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item><item>5</item>
++        <item>6</item><item>7</item><item>8</item><item>9</item><item>10</item><item>11</item>
++    </string-array>
++
++    <!-- Power menu entries (SystemUI GlobalActionType config keys, menu order) -->
++    <string-array name="plait_power_menu_action_entries">
++        <item>Emergency</item>
++        <item>Lockdown</item>
++        <item>Power off</item>
++        <item>Restart</item>
++        <item>Log out</item>
++        <item>Airplane mode</item>
++        <item>Screenshot</item>
++        <item>Users</item>
++        <item>Sound mode</item>
++        <item>Bug report</item>
++    </string-array>
++    <string-array name="plait_power_menu_action_values" translatable="false">
++        <item>emergency</item><item>lockdown</item><item>power</item><item>restart</item>
++        <item>logout</item><item>airplane</item><item>screenshot</item><item>users</item>
++        <item>silent</item><item>bugreport</item>
++    </string-array>
++
++    <!-- Peek Display breathing (seconds / minutes) -->
++    <string-array name="plait_peek_interval_entries" translatable="false">
++        <item>15 s</item><item>30 s</item><item>1 min</item><item>2 min</item><item>5 min</item>
++    </string-array>
++    <string-array name="plait_peek_interval_values" translatable="false">
++        <item>15</item><item>30</item><item>60</item><item>120</item><item>300</item>
++    </string-array>
++    <string-array name="plait_peek_duration_entries" translatable="false">
++        <item>5 min</item><item>10 min</item><item>30 min</item><item>1 hour</item>
++    </string-array>
++    <string-array name="plait_peek_duration_values" translatable="false">
++        <item>5</item><item>10</item><item>30</item><item>60</item>
++    </string-array>
++
++    <!-- Always-on display schedule (AutoAODService modes) -->
++    <string-array name="plait_aod_schedule_entries">
++        <item>@string/plait_off</item>
++        <item>Sunset to sunrise</item>
++        <item>Custom times</item>
++        <item>Sunset to a time</item>
++        <item>A time to sunrise</item>
++    </string-array>
++    <string-array name="plait_aod_schedule_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item>
++    </string-array>
++
++    <!-- Smart Pixels share (percent; SmartPixelSettings allows 10-75) -->
++    <string-array name="plait_smart_pixels_percent_entries" translatable="false">
++        <item>12%</item><item>25%</item><item>38%</item><item>50%</item><item>62%</item><item>75%</item>
++    </string-array>
++    <string-array name="plait_smart_pixels_percent_values" translatable="false">
++        <item>12</item><item>25</item><item>38</item><item>50</item><item>62</item><item>75</item>
++    </string-array>
++
++    <!-- Heads-up duration (seconds; -1 = stock) -->
++    <string-array name="plait_heads_up_timeout_entries" translatable="false">
++        <item>@string/plait_default_entry</item>
++        <item>2 s</item><item>3 s</item><item>5 s</item><item>8 s</item><item>10 s</item><item>15 s</item>
++    </string-array>
++    <string-array name="plait_heads_up_timeout_values" translatable="false">
++        <item>-1</item><item>2</item><item>3</item><item>5</item><item>8</item><item>10</item><item>15</item>
++    </string-array>
++
++    <!-- Volume panel timeout (milliseconds; stock 3 s) -->
++    <string-array name="plait_volume_timeout_entries" translatable="false">
++        <item>1 s</item><item>2 s</item><item>3 s</item><item>5 s</item><item>8 s</item><item>10 s</item>
++    </string-array>
++    <string-array name="plait_volume_timeout_values" translatable="false">
++        <item>1000</item><item>2000</item><item>3000</item><item>5000</item><item>8000</item><item>10000</item>
++    </string-array>
++
++    <!-- Clock position (0 right, 1 center, 2 left = stock) -->
++    <string-array name="plait_clock_position_entries">
++        <item>Left</item><item>Center</item><item>Right</item>
++    </string-array>
++    <string-array name="plait_clock_position_values" translatable="false">
++        <item>2</item><item>1</item><item>0</item>
++    </string-array>
++
++    <!-- Battery -->
++    <string-array name="plait_battery_style_entries">
++        <item>@string/plait_default_entry</item><item>Circle</item><item>Dotted circle</item><item>Text only</item>
++    </string-array>
++    <string-array name="plait_battery_style_values" translatable="false">
++        <item>0</item><item>1</item><item>3</item><item>2</item>
++    </string-array>
++    <string-array name="plait_battery_percent_entries">
++        <item>Follow Battery settings</item><item>Hidden</item><item>Inside the icon</item><item>Next to the icon</item>
++    </string-array>
++    <string-array name="plait_battery_percent_values" translatable="false">
++        <item>-1</item><item>0</item><item>1</item><item>2</item>
++    </string-array>
++
++    <!-- Network traffic -->
++    <string-array name="plait_network_traffic_mode_entries">
++        <item>@string/plait_off</item><item>Upload</item><item>Download</item><item>Upload and download</item>
++    </string-array>
++    <string-array name="plait_network_traffic_mode_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item><item>3</item>
++    </string-array>
++    <string-array name="plait_network_traffic_position_entries">
++        <item>Left</item><item>Center</item><item>Right</item>
++    </string-array>
++    <string-array name="plait_network_traffic_position_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item>
++    </string-array>
++    <string-array name="plait_network_traffic_units_entries">
++        <item>Kilobits (kb/s)</item><item>Megabits (Mb/s)</item><item>Kilobytes (kB/s)</item><item>Megabytes (MB/s)</item><item>Automatic bytes</item>
++    </string-array>
++    <string-array name="plait_network_traffic_units_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item>
++    </string-array>
++    <string-array name="plait_network_traffic_show_units_entries">
++        <item>@string/plait_off</item><item>Full</item><item>Short</item>
++    </string-array>
++    <string-array name="plait_network_traffic_show_units_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item>
++    </string-array>
++
++    <!-- Quick Settings -->
++    <string-array name="plait_quick_pulldown_entries">
++        <item>@string/plait_off</item><item>Right edge</item><item>Left edge</item><item>Anywhere</item>
++    </string-array>
++    <string-array name="plait_quick_pulldown_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item><item>3</item>
++    </string-array>
++    <string-array name="plait_brightness_slider_entries">
++        <item>Hidden</item><item>In full Quick Settings</item><item>Also in the first pull-down</item>
++    </string-array>
++    <string-array name="plait_brightness_slider_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item>
++    </string-array>
++    <string-array name="plait_brightness_slider_position_entries">
++        <item>Top</item><item>Bottom</item>
++    </string-array>
++    <string-array name="plait_brightness_slider_position_values" translatable="false">
++        <item>0</item><item>1</item>
++    </string-array>
++    <string-array name="plait_qs_count_entries" translatable="false">
++        <item>@string/plait_default_entry</item><item>1</item><item>2</item><item>3</item><item>4</item><item>5</item><item>6</item><item>7</item>
++    </string-array>
++    <string-array name="plait_qs_count_values" translatable="false">
++        <item>-1</item><item>1</item><item>2</item><item>3</item><item>4</item><item>5</item><item>6</item><item>7</item>
++    </string-array>
++</resources>
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+new file mode 100644
+index 0000000..d4abc29
+--- /dev/null
++++ b/res/values/plait_strings.xml
+@@ -0,0 +1,115 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS settings strings (SPDX-License-Identifier: Apache-2.0). -->
++<resources>
++    <!-- Home page entry and tabs -->
++    <string name="plait_settings_title">PlaitOS</string>
++    <string name="plait_settings_summary">Status bar, Quick Settings, buttons and more</string>
++    <string name="plait_tab_status_bar">Status bar</string>
++    <string name="plait_tab_quick_settings">Quick Settings</string>
++    <string name="plait_tab_buttons">Buttons</string>
++    <string name="plait_tab_misc">Misc</string>
++    <string name="plait_category">PlaitOS</string>
++
++    <!-- Reset -->
++    <string name="plait_reset_title">Reset PlaitOS settings</string>
++    <string name="plait_reset_message">Every PlaitOS option goes back to its default, as on stock GrapheneOS. Stock Android settings are not changed.</string>
++    <string name="plait_reset_confirm">Reset</string>
++
++    <!-- Power button page -->
++    <string name="plait_torch_title">Torch with screen off</string>
++    <string name="plait_torch_summary">Press and hold the power button while the screen is off to turn the torch on or off</string>
++    <string name="plait_torch_timeout_title">Turn the torch off after</string>
++    <string name="plait_advanced_reboot_title">Advanced restart</string>
++    <string name="plait_advanced_reboot_summary">Restart into recovery, bootloader or fastbootd from the power menu (not on a locked secure lock screen)</string>
++    <string name="plait_power_menu_actions_title">Power menu entries</string>
++
++    <!-- Gestures -->
++    <string name="plait_double_tap_to_sleep_title">Double-tap to sleep</string>
++    <string name="plait_double_tap_to_sleep_summary">Double-tap the status bar or an empty area of the lock screen to turn the screen off</string>
++
++    <!-- 3-button navigation -->
++    <string name="plait_home_long_press_title">Long-press home</string>
++    <string name="plait_back_long_press_title">Long-press back</string>
++    <string name="plait_recents_long_press_title">Long-press recents</string>
++
++    <!-- Lock screen -->
++    <string name="plait_peek_title">Peek Display</string>
++    <string name="plait_peek_summary">New notifications show the clock and app icons while the screen is off. Touch and hold an icon to read, slide up to open, down to dismiss</string>
++    <string name="plait_peek_breathing_title">Breathing</string>
++    <string name="plait_peek_breathing_summary">Show Peek Display again every so often while notifications are unseen</string>
++    <string name="plait_peek_interval_title">Show again every</string>
++    <string name="plait_peek_duration_title">Keep breathing for</string>
++    <string name="plait_aod_schedule_title">Always-on display schedule</string>
++    <string name="plait_aod_from_title">Turn on at</string>
++    <string name="plait_aod_till_title">Turn off at</string>
++    <string name="plait_doze_on_charge_title">Always-on display while charging</string>
++    <string name="plait_doze_on_charge_summary">Show the always-on display while plugged in, even when it is off otherwise</string>
++    <string name="plait_pocket_title">Pocket mode</string>
++    <string name="plait_pocket_summary">Ignore touches and buttons while the phone is in a pocket. Press and hold the power button to leave pocket mode</string>
++
++    <!-- Display -->
++    <string name="plait_smart_pixels_title">Smart Pixels</string>
++    <string name="plait_smart_pixels_summary">Turn off a share of the pixels to save power and spread wear on the screen</string>
++    <string name="plait_smart_pixels_percent_title">Pixels turned off</string>
++
++    <!-- Notifications -->
++    <string name="plait_heads_up_timeout_title">Pop-up notification duration</string>
++    <string name="plait_kill_button_title">Force stop in notification menu</string>
++    <string name="plait_kill_button_summary">Touch and hold a notification to show a button that force stops its app</string>
++
++    <!-- Sound -->
++    <string name="plait_volume_left_title">Volume panel on the left</string>
++    <string name="plait_volume_timeout_title">Hide the volume panel after</string>
++
++    <!-- Status bar tab -->
++    <string name="plait_clock_category">Clock</string>
++    <string name="plait_clock_position_title">Clock position</string>
++    <string name="plait_clock_seconds_title">Show seconds</string>
++    <string name="plait_battery_category">Battery</string>
++    <string name="plait_battery_style_title">Battery style</string>
++    <string name="plait_battery_percent_title">Battery percentage</string>
++    <string name="plait_network_traffic_title">Network speed</string>
++    <string name="plait_network_traffic_summary">Show upload and download speed in the status bar</string>
++    <string name="plait_network_traffic_mode_title">Show</string>
++    <string name="plait_network_traffic_position_title">Position</string>
++    <string name="plait_network_traffic_autohide_title">Hide when idle</string>
++    <string name="plait_network_traffic_arrows_title">Hide arrows</string>
++    <string name="plait_network_traffic_units_title">Units</string>
++    <string name="plait_network_traffic_show_units_title">Unit labels</string>
++    <string name="plait_brightness_control_title">Slide for brightness</string>
++    <string name="plait_brightness_control_summary">Slide along the status bar to change brightness</string>
++    <string name="plait_brightness_control_lockscreen_title">Also on the lock screen</string>
++    <string name="plait_icons_category">Icons</string>
++    <string name="plait_status_bar_icons_title">Status bar icons</string>
++    <string name="plait_status_bar_icons_summary">Choose which icons show (System UI Tuner)</string>
++
++    <!-- Quick Settings tab -->
++    <string name="plait_quick_pulldown_title">Quick pulldown</string>
++    <string name="plait_quick_pulldown_summary_hint">Pull down from this part of the status bar to open Quick Settings directly</string>
++    <string name="plait_brightness_slider_title">Brightness slider</string>
++    <string name="plait_brightness_slider_position_title">Brightness slider position</string>
++    <string name="plait_qs_layout_title">Layout</string>
++    <string name="plait_qs_layout_summary">Columns and rows of tiles</string>
++    <string name="plait_qs_portrait_category">Portrait</string>
++    <string name="plait_qs_landscape_category">Landscape</string>
++    <string name="plait_qs_columns_title">Columns</string>
++    <string name="plait_qs_rows_title">Rows</string>
++    <string name="plait_qqs_rows_title">Rows in the first pull-down</string>
++
++    <!-- Buttons tab -->
++    <string name="plait_volume_music_title">Skip tracks with volume keys</string>
++    <string name="plait_volume_music_summary">With the screen off, press and hold volume up or down to skip forward or back</string>
++    <string name="plait_answer_call_category">Answer calls</string>
++    <string name="plait_volume_answer_title">With a volume key</string>
++    <string name="plait_home_answer_title">With the home button</string>
++
++    <!-- Misc tab -->
++    <string name="plait_downgrade_title">Allow app downgrades</string>
++    <string name="plait_downgrade_summary">Lets an older version of an app install over a newer one. Turns itself off after one downgrade, after an hour, or at restart</string>
++    <string name="plait_tuner_title">System UI Tuner</string>
++    <string name="plait_tuner_summary">More status bar and system UI options</string>
++
++    <!-- Shared values -->
++    <string name="plait_default_entry">Default</string>
++    <string name="plait_off">Off</string>
++</resources>
+diff --git a/res/xml/button_navigation_settings.xml b/res/xml/button_navigation_settings.xml
+index 1f89539..4254f92 100644
+--- a/res/xml/button_navigation_settings.xml
++++ b/res/xml/button_navigation_settings.xml
+@@ -38,5 +38,29 @@
+         settings:controller="com.android.settings.gestures.ButtonNavigationSettingsAssistController"
+     />
+ 
++    <!-- PlaitOS: navigation bar long-press actions ("Default" keeps the stock behavior above) -->
++    <PreferenceCategory
++        android:key="plait_nav_actions_category"
++        android:title="@string/plait_category">
++        <ListPreference
++            android:key="plait_home_long_press_action"
++            android:title="@string/plait_home_long_press_title"
++            android:entries="@array/plait_key_action_entries"
++            android:entryValues="@array/plait_key_action_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_back_long_press_action"
++            android:title="@string/plait_back_long_press_title"
++            android:entries="@array/plait_key_action_entries"
++            android:entryValues="@array/plait_key_action_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_recents_long_press_action"
++            android:title="@string/plait_recents_long_press_title"
++            android:entries="@array/plait_key_action_entries"
++            android:entryValues="@array/plait_key_action_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++    </PreferenceCategory>
++
+ </PreferenceScreen>
+ 
+diff --git a/res/xml/configure_notification_settings.xml b/res/xml/configure_notification_settings.xml
+index ed112ee..0f8ed9e 100644
+--- a/res/xml/configure_notification_settings.xml
++++ b/res/xml/configure_notification_settings.xml
+@@ -227,4 +227,21 @@
+             settings:controller="com.android.settings.notification.NotificationAssistantPreferenceController"/>
+ 
+     </PreferenceCategory>
++    <!-- PlaitOS -->
++    <PreferenceCategory
++        android:key="plait_notifications_category"
++        android:title="@string/plait_category">
++        <ListPreference
++            android:key="plait_heads_up_timeout"
++            android:title="@string/plait_heads_up_timeout_title"
++            android:entries="@array/plait_heads_up_timeout_entries"
++            android:entryValues="@array/plait_heads_up_timeout_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <SwitchPreferenceCompat
++            android:key="plait_notification_kill_app_button"
++            android:title="@string/plait_kill_button_title"
++            android:summary="@string/plait_kill_button_summary"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    </PreferenceCategory>
++
+ </PreferenceScreen>
+diff --git a/res/xml/display_settings.xml b/res/xml/display_settings.xml
+index 00f0e41..6c6792e 100644
+--- a/res/xml/display_settings.xml
++++ b/res/xml/display_settings.xml
+@@ -237,4 +237,22 @@
+             android:title="@string/display_vr_pref_title"
+             android:fragment="com.android.settings.display.VrDisplayPreferencePicker"/>
+     </PreferenceCategory>
++    <!-- PlaitOS -->
++    <PreferenceCategory
++        android:key="plait_display_category"
++        android:title="@string/plait_category">
++        <SwitchPreferenceCompat
++            android:key="plait_smart_pixel_filter_enabled"
++            android:title="@string/plait_smart_pixels_title"
++            android:summary="@string/plait_smart_pixels_summary"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++        <ListPreference
++            android:key="plait_smart_pixel_filter_percent"
++            android:title="@string/plait_smart_pixels_percent_title"
++            android:entries="@array/plait_smart_pixels_percent_entries"
++            android:entryValues="@array/plait_smart_pixels_percent_values"
++            android:dependency="plait_smart_pixel_filter_enabled"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++    </PreferenceCategory>
++
+ </PreferenceScreen>
+diff --git a/res/xml/gestures.xml b/res/xml/gestures.xml
+index 2b18c0c..265ebb2 100644
+--- a/res/xml/gestures.xml
++++ b/res/xml/gestures.xml
+@@ -87,4 +87,11 @@
+         android:title="@string/gesture_prevent_ringing_screen_title"
+         android:fragment="com.android.settings.gestures.PreventRingingGestureSettings"
+         settings:controller="com.android.settings.gestures.PreventRingingParentPreferenceController" />
++    <!-- PlaitOS -->
++    <SwitchPreferenceCompat
++        android:key="plait_double_tap_to_sleep"
++        android:title="@string/plait_double_tap_to_sleep_title"
++        android:summary="@string/plait_double_tap_to_sleep_summary"
++        settings:controller="com.android.settings.plait.PlaitSwitchController" />
++
+ </PreferenceScreen>
+diff --git a/res/xml/plait_buttons.xml b/res/xml/plait_buttons.xml
+new file mode 100644
+index 0000000..ab79fe2
+--- /dev/null
++++ b/res/xml/plait_buttons.xml
+@@ -0,0 +1,23 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Row keys are the settings they write. -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:settings="http://schemas.android.com/apk/res-auto"
++    android:key="plait_buttons"
++    android:title="@string/plait_tab_buttons">
++    <SwitchPreferenceCompat
++        android:key="plait_volbtn_music_controls"
++        android:title="@string/plait_volume_music_title"
++        android:summary="@string/plait_volume_music_summary"
++        settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    <PreferenceCategory android:key="plait_answer_call_category" android:title="@string/plait_answer_call_category">
++        <SwitchPreferenceCompat
++            android:key="plait_volume_answer_call"
++            android:title="@string/plait_volume_answer_title"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++        <SwitchPreferenceCompat
++            android:key="plait_home_answer_call"
++            android:title="@string/plait_home_answer_title"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    </PreferenceCategory>
++</PreferenceScreen>
+diff --git a/res/xml/plait_misc.xml b/res/xml/plait_misc.xml
+new file mode 100644
+index 0000000..405b1d0
+--- /dev/null
++++ b/res/xml/plait_misc.xml
+@@ -0,0 +1,20 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Row keys are the settings they write. -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:settings="http://schemas.android.com/apk/res-auto"
++    android:key="plait_misc"
++    android:title="@string/plait_tab_misc">
++    <SwitchPreferenceCompat
++        android:key="plait_pm_downgrade_allowed"
++        android:title="@string/plait_downgrade_title"
++        android:summary="@string/plait_downgrade_summary"
++        settings:controller="com.android.settings.plait.PlaitPrimaryUserSwitchController" />
++    <Preference
++        android:key="plait_system_ui_tuner"
++        android:title="@string/plait_tuner_title"
++        android:summary="@string/plait_tuner_summary">
++        <intent android:targetPackage="com.android.systemui"
++            android:targetClass="com.android.systemui.tuner.TunerActivity" />
++    </Preference>
++</PreferenceScreen>
+diff --git a/res/xml/plait_network_traffic.xml b/res/xml/plait_network_traffic.xml
+new file mode 100644
+index 0000000..627192a
+--- /dev/null
++++ b/res/xml/plait_network_traffic.xml
+@@ -0,0 +1,40 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Row keys are the settings they write. -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:settings="http://schemas.android.com/apk/res-auto"
++    android:key="plait_network_traffic_screen"
++    android:title="@string/plait_network_traffic_title">
++    <ListPreference
++        android:key="plait_network_traffic_mode"
++        android:title="@string/plait_network_traffic_mode_title"
++        android:entries="@array/plait_network_traffic_mode_entries"
++        android:entryValues="@array/plait_network_traffic_mode_values"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++    <ListPreference
++        android:key="plait_network_traffic_position"
++        android:title="@string/plait_network_traffic_position_title"
++        android:entries="@array/plait_network_traffic_position_entries"
++        android:entryValues="@array/plait_network_traffic_position_values"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++    <SwitchPreferenceCompat
++        android:key="plait_network_traffic_autohide"
++        android:title="@string/plait_network_traffic_autohide_title"
++        settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    <SwitchPreferenceCompat
++        android:key="plait_network_traffic_hide_arrows"
++        android:title="@string/plait_network_traffic_arrows_title"
++        settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    <ListPreference
++        android:key="plait_network_traffic_units"
++        android:title="@string/plait_network_traffic_units_title"
++        android:entries="@array/plait_network_traffic_units_entries"
++        android:entryValues="@array/plait_network_traffic_units_values"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++    <ListPreference
++        android:key="plait_network_traffic_show_units"
++        android:title="@string/plait_network_traffic_show_units_title"
++        android:entries="@array/plait_network_traffic_show_units_entries"
++        android:entryValues="@array/plait_network_traffic_show_units_values"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++</PreferenceScreen>
+diff --git a/res/xml/plait_peek_display.xml b/res/xml/plait_peek_display.xml
+new file mode 100644
+index 0000000..cd2de25
+--- /dev/null
++++ b/res/xml/plait_peek_display.xml
+@@ -0,0 +1,33 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Row keys are the settings they write. -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:settings="http://schemas.android.com/apk/res-auto"
++    android:key="plait_peek_display_screen"
++    android:title="@string/plait_peek_title">
++    <SwitchPreferenceCompat
++        android:key="plait_peek_display"
++        android:title="@string/plait_peek_title"
++        android:summary="@string/plait_peek_summary"
++        settings:controller="com.android.settings.plait.PeekDisplaySwitchController" />
++    <SwitchPreferenceCompat
++        android:key="plait_peek_breathing"
++        android:title="@string/plait_peek_breathing_title"
++        android:summary="@string/plait_peek_breathing_summary"
++        android:dependency="plait_peek_display"
++        settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    <ListPreference
++        android:key="plait_peek_breathing_interval"
++        android:title="@string/plait_peek_interval_title"
++        android:entries="@array/plait_peek_interval_entries"
++        android:entryValues="@array/plait_peek_interval_values"
++        android:dependency="plait_peek_breathing"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++    <ListPreference
++        android:key="plait_peek_breathing_duration"
++        android:title="@string/plait_peek_duration_title"
++        android:entries="@array/plait_peek_duration_entries"
++        android:entryValues="@array/plait_peek_duration_values"
++        android:dependency="plait_peek_breathing"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++</PreferenceScreen>
+diff --git a/res/xml/plait_qs_layout.xml b/res/xml/plait_qs_layout.xml
+new file mode 100644
+index 0000000..353bd28
+--- /dev/null
++++ b/res/xml/plait_qs_layout.xml
+@@ -0,0 +1,48 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Row keys are the settings they write. -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:settings="http://schemas.android.com/apk/res-auto"
++    android:key="plait_qs_layout_screen"
++    android:title="@string/plait_qs_layout_title">
++    <PreferenceCategory android:key="plait_qs_portrait" android:title="@string/plait_qs_portrait_category">
++        <ListPreference
++            android:key="plait_qs_tiles_columns"
++            android:title="@string/plait_qs_columns_title"
++            android:entries="@array/plait_qs_count_entries"
++            android:entryValues="@array/plait_qs_count_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_qs_tiles_rows"
++            android:title="@string/plait_qs_rows_title"
++            android:entries="@array/plait_qs_count_entries"
++            android:entryValues="@array/plait_qs_count_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_qqs_tiles_rows"
++            android:title="@string/plait_qqs_rows_title"
++            android:entries="@array/plait_qs_count_entries"
++            android:entryValues="@array/plait_qs_count_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++    </PreferenceCategory>
++    <PreferenceCategory android:key="plait_qs_landscape" android:title="@string/plait_qs_landscape_category">
++        <ListPreference
++            android:key="plait_qs_tiles_columns_landscape"
++            android:title="@string/plait_qs_columns_title"
++            android:entries="@array/plait_qs_count_entries"
++            android:entryValues="@array/plait_qs_count_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_qs_tiles_rows_landscape"
++            android:title="@string/plait_qs_rows_title"
++            android:entries="@array/plait_qs_count_entries"
++            android:entryValues="@array/plait_qs_count_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_qqs_tiles_rows_landscape"
++            android:title="@string/plait_qqs_rows_title"
++            android:entries="@array/plait_qs_count_entries"
++            android:entryValues="@array/plait_qs_count_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++    </PreferenceCategory>
++</PreferenceScreen>
+diff --git a/res/xml/plait_quick_settings.xml b/res/xml/plait_quick_settings.xml
+new file mode 100644
+index 0000000..97d8b64
+--- /dev/null
++++ b/res/xml/plait_quick_settings.xml
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Row keys are the settings they write. -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:settings="http://schemas.android.com/apk/res-auto"
++    android:key="plait_quick_settings"
++    android:title="@string/plait_tab_quick_settings">
++    <ListPreference
++        android:key="plait_status_bar_quick_qs_pulldown"
++        android:title="@string/plait_quick_pulldown_title"
++        android:entries="@array/plait_quick_pulldown_entries"
++        android:entryValues="@array/plait_quick_pulldown_values"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++    <ListPreference
++        android:key="plait_qs_show_brightness_slider"
++        android:title="@string/plait_brightness_slider_title"
++        android:entries="@array/plait_brightness_slider_entries"
++        android:entryValues="@array/plait_brightness_slider_values"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++    <ListPreference
++        android:key="plait_qs_brightness_slider_position"
++        android:title="@string/plait_brightness_slider_position_title"
++        android:entries="@array/plait_brightness_slider_position_entries"
++        android:entryValues="@array/plait_brightness_slider_position_values"
++        settings:controller="com.android.settings.plait.PlaitListController" />
++    <Preference
++        android:key="plait_qs_layout"
++        android:title="@string/plait_qs_layout_title"
++        android:summary="@string/plait_qs_layout_summary"
++        android:fragment="com.android.settings.plait.PlaitQsLayoutFragment" />
++</PreferenceScreen>
+diff --git a/res/xml/plait_status_bar.xml b/res/xml/plait_status_bar.xml
+new file mode 100644
+index 0000000..6be53d3
+--- /dev/null
++++ b/res/xml/plait_status_bar.xml
+@@ -0,0 +1,64 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Row keys are the settings they write. -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:settings="http://schemas.android.com/apk/res-auto"
++    android:key="plait_status_bar"
++    android:title="@string/plait_tab_status_bar">
++
++    <PreferenceCategory android:key="plait_clock_category" android:title="@string/plait_clock_category">
++        <ListPreference
++            android:key="plait_status_bar_clock"
++            android:title="@string/plait_clock_position_title"
++            android:entries="@array/plait_clock_position_entries"
++            android:entryValues="@array/plait_clock_position_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <SwitchPreferenceCompat
++            android:key="clock_seconds"
++            android:title="@string/plait_clock_seconds_title"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    </PreferenceCategory>
++
++    <PreferenceCategory android:key="plait_battery_category" android:title="@string/plait_battery_category">
++        <ListPreference
++            android:key="plait_status_bar_battery_style"
++            android:title="@string/plait_battery_style_title"
++            android:entries="@array/plait_battery_style_entries"
++            android:entryValues="@array/plait_battery_style_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_status_bar_battery_percent"
++            android:title="@string/plait_battery_percent_title"
++            android:entries="@array/plait_battery_percent_entries"
++            android:entryValues="@array/plait_battery_percent_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++    </PreferenceCategory>
++
++    <PreferenceCategory android:key="plait_status_bar_more_category" android:title="@string/plait_category">
++        <Preference
++            android:key="plait_network_traffic"
++            android:title="@string/plait_network_traffic_title"
++            android:summary="@string/plait_network_traffic_summary"
++            android:fragment="com.android.settings.plait.PlaitNetworkTrafficFragment" />
++        <SwitchPreferenceCompat
++            android:key="plait_status_bar_brightness_control"
++            android:title="@string/plait_brightness_control_title"
++            android:summary="@string/plait_brightness_control_summary"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++        <SwitchPreferenceCompat
++            android:key="plait_status_bar_brightness_control_lockscreen"
++            android:title="@string/plait_brightness_control_lockscreen_title"
++            android:dependency="plait_status_bar_brightness_control"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    </PreferenceCategory>
++
++    <PreferenceCategory android:key="plait_icons_category" android:title="@string/plait_icons_category">
++        <Preference
++            android:key="plait_status_bar_icons"
++            android:title="@string/plait_status_bar_icons_title"
++            android:summary="@string/plait_status_bar_icons_summary">
++            <intent android:targetPackage="com.android.systemui"
++                android:targetClass="com.android.systemui.tuner.TunerActivity" />
++        </Preference>
++    </PreferenceCategory>
++</PreferenceScreen>
+diff --git a/res/xml/power_menu_settings.xml b/res/xml/power_menu_settings.xml
+index bf26f87..d6b7309 100644
+--- a/res/xml/power_menu_settings.xml
++++ b/res/xml/power_menu_settings.xml
+@@ -50,6 +50,35 @@
+         settings:controller="com.android.settings.gestures.LongPressPowerSensitivityPreferenceController"
+     />
+ 
++    <!-- PlaitOS -->
++    <PreferenceCategory
++        android:key="plait_power_button_category"
++        android:title="@string/plait_category">
++        <SwitchPreferenceCompat
++            android:key="plait_torch_long_press_power"
++            android:title="@string/plait_torch_title"
++            android:summary="@string/plait_torch_summary"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++        <ListPreference
++            android:key="plait_torch_long_press_power_timeout"
++            android:title="@string/plait_torch_timeout_title"
++            android:entries="@array/plait_torch_timeout_entries"
++            android:entryValues="@array/plait_torch_timeout_values"
++            android:dependency="plait_torch_long_press_power"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <SwitchPreferenceCompat
++            android:key="plait_advanced_reboot"
++            android:title="@string/plait_advanced_reboot_title"
++            android:summary="@string/plait_advanced_reboot_summary"
++            settings:controller="com.android.settings.plait.PlaitPrimaryUserSwitchController" />
++        <MultiSelectListPreference
++            android:key="plait_power_menu_actions"
++            android:title="@string/plait_power_menu_actions_title"
++            android:entries="@array/plait_power_menu_action_entries"
++            android:entryValues="@array/plait_power_menu_action_values"
++            settings:controller="com.android.settings.plait.PowerMenuActionsController" />
++    </PreferenceCategory>
++
+     <com.android.settingslib.widget.FooterPreference
+         android:key="power_menu_power_volume_up_hint"
+         android:title="@string/power_menu_power_volume_up_hint"
+diff --git a/res/xml/security_lockscreen_settings.xml b/res/xml/security_lockscreen_settings.xml
+index 7bb9489..5ef1423 100644
+--- a/res/xml/security_lockscreen_settings.xml
++++ b/res/xml/security_lockscreen_settings.xml
+@@ -148,4 +148,39 @@
+ 
+     </PreferenceCategory>
+ 
++    <!-- PlaitOS -->
++    <PreferenceCategory
++        android:key="plait_lockscreen_category"
++        android:title="@string/plait_category">
++        <Preference
++            android:key="plait_peek_display_entry"
++            android:title="@string/plait_peek_title"
++            android:summary="@string/plait_peek_summary"
++            android:fragment="com.android.settings.plait.PlaitPeekDisplayFragment" />
++        <ListPreference
++            android:key="plait_doze_always_on_auto_mode"
++            android:title="@string/plait_aod_schedule_title"
++            android:entries="@array/plait_aod_schedule_entries"
++            android:entryValues="@array/plait_aod_schedule_values"
++            settings:controller="com.android.settings.plait.AodScheduleModeController" />
++        <Preference
++            android:key="plait_doze_always_on_auto_time_from"
++            android:title="@string/plait_aod_from_title"
++            settings:controller="com.android.settings.plait.AodScheduleTimeController" />
++        <Preference
++            android:key="plait_doze_always_on_auto_time_till"
++            android:title="@string/plait_aod_till_title"
++            settings:controller="com.android.settings.plait.AodScheduleTimeController" />
++        <SwitchPreferenceCompat
++            android:key="plait_doze_on_charge"
++            android:title="@string/plait_doze_on_charge_title"
++            android:summary="@string/plait_doze_on_charge_summary"
++            settings:controller="com.android.settings.plait.AodAvailableSwitchController" />
++        <SwitchPreferenceCompat
++            android:key="plait_pocket_judge"
++            android:title="@string/plait_pocket_title"
++            android:summary="@string/plait_pocket_summary"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    </PreferenceCategory>
++
+ </PreferenceScreen>
+diff --git a/res/xml/sound_settings.xml b/res/xml/sound_settings.xml
+index 73f3167..6c66917 100644
+--- a/res/xml/sound_settings.xml
++++ b/res/xml/sound_settings.xml
+@@ -263,4 +263,20 @@
+             android:order="100"
+             settings:controller="com.android.settings.notification.WorkSoundsPreferenceController"/>
+     </PreferenceCategory>
++    <!-- PlaitOS -->
++    <PreferenceCategory
++        android:key="plait_sound_category"
++        android:title="@string/plait_category">
++        <SwitchPreferenceCompat
++            android:key="plait_volume_panel_left"
++            android:title="@string/plait_volume_left_title"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++        <ListPreference
++            android:key="volume_dialog_dismiss_timeout"
++            android:title="@string/plait_volume_timeout_title"
++            android:entries="@array/plait_volume_timeout_entries"
++            android:entryValues="@array/plait_volume_timeout_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++    </PreferenceCategory>
++
+ </PreferenceScreen>
+diff --git a/res/xml/top_level_settings.xml b/res/xml/top_level_settings.xml
+index 5235673..c9031c1 100644
+--- a/res/xml/top_level_settings.xml
++++ b/res/xml/top_level_settings.xml
+@@ -147,6 +147,14 @@
+             settings:highlightableMenuKey="@string/menu_key_battery"
+             settings:controller="com.android.settings.fuelgauge.TopLevelBatteryPreferenceController"/>
+ 
++        <com.android.settings.widget.HomepagePreference
++            android:fragment="com.android.settings.plait.PlaitSettingsFragment"
++            android:icon="@drawable/ic_settings_plait_filled"
++            android:key="top_level_plait"
++            android:order="-21"
++            android:title="@string/plait_settings_title"
++            android:summary="@string/plait_settings_summary"/>
++
+         <com.android.settings.widget.HomepagePreference
+             android:fragment="com.android.settings.system.SystemDashboardFragment"
+             android:icon="@drawable/ic_settings_system_dashboard_filled"
+diff --git a/src/com/android/settings/plait/PlaitButtonsFragment.java b/src/com/android/settings/plait/PlaitButtonsFragment.java
+new file mode 100644
+index 0000000..87785c7
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitButtonsFragment.java
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait;
++
++import android.app.settings.SettingsEnums;
++
++import com.android.settings.R;
++import com.android.settings.dashboard.DashboardFragment;
++import com.android.settings.search.BaseSearchIndexProvider;
++import com.android.settingslib.search.SearchIndexable;
++
++/** Buttons tab of the PlaitOS page. Rows and their controllers come from R.xml.plait_buttons. */
++@SearchIndexable
++public class PlaitButtonsFragment extends DashboardFragment {
++    private static final String TAG = "PlaitButtonsFragment";
++
++    @Override
++    protected int getPreferenceScreenResId() {
++        return R.xml.plait_buttons;
++    }
++
++    @Override
++    protected String getLogTag() {
++        return TAG;
++    }
++
++    @Override
++    public int getMetricsCategory() {
++        return SettingsEnums.PAGE_UNKNOWN;
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(R.xml.plait_buttons);
++}
+diff --git a/src/com/android/settings/plait/PlaitControllers.kt b/src/com/android/settings/plait/PlaitControllers.kt
+new file mode 100644
+index 0000000..f95191e
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitControllers.kt
+@@ -0,0 +1,243 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait
++
++import android.app.TimePickerDialog
++import android.content.Context
++import android.os.UserHandle
++import android.provider.Settings
++import android.text.TextUtils
++import android.text.format.DateFormat
++import androidx.preference.ListPreference
++import androidx.preference.MultiSelectListPreference
++import androidx.preference.Preference
++import androidx.preference.PreferenceScreen
++import com.android.settings.R
++import com.android.settings.core.BasePreferenceController
++import com.android.settings.core.TogglePreferenceController
++import java.util.Calendar
++
++/**
++ * A switch for any PlaitOS key: the preference key is the setting's name, [PlaitSettings] knows its
++ * table and default. Used from XML as settings:controller.
++ */
++open class PlaitSwitchController(context: Context, key: String) :
++    TogglePreferenceController(context, key) {
++
++    override fun getAvailabilityStatus() = AVAILABLE
++
++    override fun isChecked() = PlaitSettings.get(mContext, preferenceKey) != 0
++
++    override fun setChecked(isChecked: Boolean) =
++        PlaitSettings.put(mContext, preferenceKey, if (isChecked) 1 else 0)
++
++    override fun getSliceHighlightMenuRes() = NO_RES
++}
++
++/**
++ * A list for any PlaitOS key: entry values in XML are the stored integers, the summary shows the
++ * chosen entry (or the default's entry while unset).
++ */
++open class PlaitListController(context: Context, key: String) :
++    BasePreferenceController(context, key), Preference.OnPreferenceChangeListener {
++
++    override fun getAvailabilityStatus() = AVAILABLE
++
++    override fun updateState(preference: Preference) {
++        super.updateState(preference)
++        val list = preference as? ListPreference ?: return
++        list.value = PlaitSettings.get(mContext, preferenceKey).toString()
++        list.summary = list.entry
++    }
++
++    override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
++        val value = (newValue as? String)?.toIntOrNull() ?: return false
++        PlaitSettings.put(mContext, preferenceKey, value)
++        val list = preference as ListPreference
++        list.value = newValue
++        list.summary = list.entry
++        onValueChanged(value)
++        return true
++    }
++
++    /** For subclasses that show or hide other rows. */
++    protected open fun onValueChanged(value: Int) {}
++}
++
++/** Switches only the main user may change (they act on the whole device). */
++class PlaitPrimaryUserSwitchController(context: Context, key: String) :
++    PlaitSwitchController(context, key) {
++    override fun getAvailabilityStatus() =
++        if (UserHandle.myUserId() == UserHandle.USER_SYSTEM) AVAILABLE else DISABLED_FOR_USER
++}
++
++/**
++ * Peek Display needs the stock "Wake screen for notifications" pulse, so turning it on turns
++ * that on too (turning Peek Display off leaves the stock switch as it is).
++ */
++class PeekDisplaySwitchController(context: Context, key: String) :
++    PlaitSwitchController(context, key) {
++    override fun setChecked(isChecked: Boolean): Boolean {
++        if (isChecked) {
++            Settings.Secure.putIntForUser(mContext.contentResolver, Settings.Secure.DOZE_ENABLED,
++                1, UserHandle.USER_CURRENT)
++        }
++        return super.setChecked(isChecked)
++    }
++}
++
++/**
++ * Power menu entries (Settings.Secure plait_power_menu_actions, "|"-separated). The entries keep
++ * the order of R.array.plait_power_menu_action_values; power and restart are always kept, so the
++ * menu can't be emptied. Unset = GrapheneOS's default menu, shown as its entries.
++ */
++class PowerMenuActionsController(context: Context, key: String) :
++    BasePreferenceController(context, key), Preference.OnPreferenceChangeListener {
++
++    override fun getAvailabilityStatus() =
++        if (UserHandle.myUserId() == UserHandle.USER_SYSTEM) AVAILABLE else DISABLED_FOR_USER
++
++    private fun allValues(): List<String> =
++        mContext.resources.getStringArray(R.array.plait_power_menu_action_values).toList()
++
++    private fun current(): Set<String> {
++        val stored = Settings.Secure.getStringForUser(mContext.contentResolver, KEY,
++            UserHandle.USER_CURRENT)
++        if (!TextUtils.isEmpty(stored)) return stored!!.split("|").toSet()
++        val id = mContext.resources.getIdentifier("config_globalActionsList", "array", "android")
++        return if (id != 0) mContext.resources.getStringArray(id).toSet() else ALWAYS
++    }
++
++    override fun updateState(preference: Preference) {
++        super.updateState(preference)
++        val multi = preference as? MultiSelectListPreference ?: return
++        multi.values = current()
++        multi.summary = summaryFor(multi, multi.values)
++    }
++
++    override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
++        @Suppress("UNCHECKED_CAST")
++        val chosen = (newValue as? Set<String> ?: return false) + ALWAYS
++        val ordered = allValues().filter { it in chosen }
++        Settings.Secure.putStringForUser(mContext.contentResolver, KEY,
++            ordered.joinToString("|"), UserHandle.USER_CURRENT)
++        val multi = preference as MultiSelectListPreference
++        multi.values = ordered.toSet()
++        multi.summary = summaryFor(multi, multi.values)
++        return false // values already applied, with power and restart forced in
++    }
++
++    private fun summaryFor(multi: MultiSelectListPreference, values: Set<String>): CharSequence {
++        val labels = multi.entryValues.indices
++            .filter { multi.entryValues[it].toString() in values }
++            .map { multi.entries[it] }
++        return TextUtils.join(", ", labels)
++    }
++
++    companion object {
++        const val KEY = "plait_power_menu_actions"
++        private val ALWAYS = setOf("power", "restart")
++    }
++}
++
++/**
++ * Always-on display schedule mode. The "from" and "till" rows only show for the modes that use
++ * them: 2 custom (both), 3 sunset to a time (till), 4 a time to sunrise (from).
++ */
++class AodScheduleModeController(context: Context, key: String) : PlaitListController(context, key) {
++    private var screen: PreferenceScreen? = null
++
++    override fun getAvailabilityStatus() = aodAvailability(mContext)
++
++    override fun displayPreference(screen: PreferenceScreen) {
++        super.displayPreference(screen)
++        this.screen = screen
++        updateTimeRows(PlaitSettings.get(mContext, preferenceKey))
++    }
++
++    override fun onValueChanged(value: Int) = updateTimeRows(value)
++
++    private fun updateTimeRows(mode: Int) {
++        screen?.findPreference<Preference>(AodScheduleTimeController.KEY_FROM)?.isVisible =
++            mode == 2 || mode == 4
++        screen?.findPreference<Preference>(AodScheduleTimeController.KEY_TILL)?.isVisible =
++            mode == 2 || mode == 3
++    }
++}
++
++/**
++ * One end of the custom always-on schedule, stored with the other end in Settings.Secure
++ * plait_doze_always_on_auto_time as "HH:mm,HH:mm" (from, till; default 20:00-07:00, as
++ * AutoAODService). Tapping opens a time picker.
++ */
++class AodScheduleTimeController(context: Context, key: String) : BasePreferenceController(context, key) {
++
++    override fun getAvailabilityStatus() = AVAILABLE
++
++    private val isFrom get() = preferenceKey == KEY_FROM
++
++    private fun read(): IntArray {
++        val stored = Settings.Secure.getStringForUser(mContext.contentResolver, SETTING,
++            UserHandle.USER_CURRENT)
++        val parts = (stored ?: DEFAULT).split(",").map { it.trim().split(":") }
++        return try {
++            intArrayOf(parts[0][0].toInt(), parts[0][1].toInt(), parts[1][0].toInt(),
++                parts[1][1].toInt())
++        } catch (e: RuntimeException) {
++            intArrayOf(20, 0, 7, 0)
++        }
++    }
++
++    override fun updateState(preference: Preference) {
++        super.updateState(preference)
++        val t = read()
++        val (h, m) = if (isFrom) t[0] to t[1] else t[2] to t[3]
++        val cal = Calendar.getInstance().apply {
++            set(Calendar.HOUR_OF_DAY, h)
++            set(Calendar.MINUTE, m)
++        }
++        preference.summary = DateFormat.getTimeFormat(mContext).format(cal.time)
++    }
++
++    override fun handlePreferenceTreeClick(preference: Preference): Boolean {
++        if (preference.key != preferenceKey) return false
++        val t = read()
++        val (h, m) = if (isFrom) t[0] to t[1] else t[2] to t[3]
++        TimePickerDialog(preference.context, { _, hour, minute ->
++            val now = read()
++            val value = if (isFrom) {
++                "%02d:%02d,%02d:%02d".format(hour, minute, now[2], now[3])
++            } else {
++                "%02d:%02d,%02d:%02d".format(now[0], now[1], hour, minute)
++            }
++            Settings.Secure.putStringForUser(mContext.contentResolver, SETTING, value,
++                UserHandle.USER_CURRENT)
++            updateState(preference)
++        }, h, m, DateFormat.is24HourFormat(mContext)).show()
++        return true
++    }
++
++    companion object {
++        const val KEY_FROM = "plait_doze_always_on_auto_time_from"
++        const val KEY_TILL = "plait_doze_always_on_auto_time_till"
++        private const val SETTING = "plait_doze_always_on_auto_time"
++        private const val DEFAULT = "20:00,07:00"
++    }
++}
++
++/** Always-on display rows: only on devices with an always-on display. */
++class AodAvailableSwitchController(context: Context, key: String) :
++    PlaitSwitchController(context, key) {
++    override fun getAvailabilityStatus() = aodAvailability(mContext)
++}
++
++private fun aodAvailability(context: Context): Int =
++    if (context.resources.getBoolean(
++            com.android.internal.R.bool.config_dozeAlwaysOnDisplayAvailable)) {
++        BasePreferenceController.AVAILABLE
++    } else {
++        BasePreferenceController.UNSUPPORTED_ON_DEVICE
++    }
+diff --git a/src/com/android/settings/plait/PlaitMiscFragment.java b/src/com/android/settings/plait/PlaitMiscFragment.java
+new file mode 100644
+index 0000000..b13bdd9
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitMiscFragment.java
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait;
++
++import android.app.settings.SettingsEnums;
++
++import com.android.settings.R;
++import com.android.settings.dashboard.DashboardFragment;
++import com.android.settings.search.BaseSearchIndexProvider;
++import com.android.settingslib.search.SearchIndexable;
++
++/** Misc tab of the PlaitOS page. Rows and their controllers come from R.xml.plait_misc. */
++@SearchIndexable
++public class PlaitMiscFragment extends DashboardFragment {
++    private static final String TAG = "PlaitMiscFragment";
++
++    @Override
++    protected int getPreferenceScreenResId() {
++        return R.xml.plait_misc;
++    }
++
++    @Override
++    protected String getLogTag() {
++        return TAG;
++    }
++
++    @Override
++    public int getMetricsCategory() {
++        return SettingsEnums.PAGE_UNKNOWN;
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(R.xml.plait_misc);
++}
+diff --git a/src/com/android/settings/plait/PlaitNetworkTrafficFragment.java b/src/com/android/settings/plait/PlaitNetworkTrafficFragment.java
+new file mode 100644
+index 0000000..7079838
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitNetworkTrafficFragment.java
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait;
++
++import android.app.settings.SettingsEnums;
++
++import com.android.settings.R;
++import com.android.settings.dashboard.DashboardFragment;
++import com.android.settings.search.BaseSearchIndexProvider;
++import com.android.settingslib.search.SearchIndexable;
++
++/** Network speed indicator options (Status bar tab). Rows and their controllers come from R.xml.plait_network_traffic. */
++@SearchIndexable
++public class PlaitNetworkTrafficFragment extends DashboardFragment {
++    private static final String TAG = "PlaitNetworkTrafficFragment";
++
++    @Override
++    protected int getPreferenceScreenResId() {
++        return R.xml.plait_network_traffic;
++    }
++
++    @Override
++    protected String getLogTag() {
++        return TAG;
++    }
++
++    @Override
++    public int getMetricsCategory() {
++        return SettingsEnums.PAGE_UNKNOWN;
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(R.xml.plait_network_traffic);
++}
+diff --git a/src/com/android/settings/plait/PlaitPeekDisplayFragment.java b/src/com/android/settings/plait/PlaitPeekDisplayFragment.java
+new file mode 100644
+index 0000000..1e94d66
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitPeekDisplayFragment.java
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait;
++
++import android.app.settings.SettingsEnums;
++
++import com.android.settings.R;
++import com.android.settings.dashboard.DashboardFragment;
++import com.android.settings.search.BaseSearchIndexProvider;
++import com.android.settingslib.search.SearchIndexable;
++
++/** Peek Display options (Display > Lock screen). Rows and their controllers come from R.xml.plait_peek_display. */
++@SearchIndexable
++public class PlaitPeekDisplayFragment extends DashboardFragment {
++    private static final String TAG = "PlaitPeekDisplayFragment";
++
++    @Override
++    protected int getPreferenceScreenResId() {
++        return R.xml.plait_peek_display;
++    }
++
++    @Override
++    protected String getLogTag() {
++        return TAG;
++    }
++
++    @Override
++    public int getMetricsCategory() {
++        return SettingsEnums.PAGE_UNKNOWN;
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(R.xml.plait_peek_display);
++}
+diff --git a/src/com/android/settings/plait/PlaitQsLayoutFragment.java b/src/com/android/settings/plait/PlaitQsLayoutFragment.java
+new file mode 100644
+index 0000000..1758e8c
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitQsLayoutFragment.java
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait;
++
++import android.app.settings.SettingsEnums;
++
++import com.android.settings.R;
++import com.android.settings.dashboard.DashboardFragment;
++import com.android.settings.search.BaseSearchIndexProvider;
++import com.android.settingslib.search.SearchIndexable;
++
++/** Quick Settings grid size (Quick Settings tab). Rows and their controllers come from R.xml.plait_qs_layout. */
++@SearchIndexable
++public class PlaitQsLayoutFragment extends DashboardFragment {
++    private static final String TAG = "PlaitQsLayoutFragment";
++
++    @Override
++    protected int getPreferenceScreenResId() {
++        return R.xml.plait_qs_layout;
++    }
++
++    @Override
++    protected String getLogTag() {
++        return TAG;
++    }
++
++    @Override
++    public int getMetricsCategory() {
++        return SettingsEnums.PAGE_UNKNOWN;
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(R.xml.plait_qs_layout);
++}
+diff --git a/src/com/android/settings/plait/PlaitQuickSettingsFragment.java b/src/com/android/settings/plait/PlaitQuickSettingsFragment.java
+new file mode 100644
+index 0000000..a8b01a9
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitQuickSettingsFragment.java
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait;
++
++import android.app.settings.SettingsEnums;
++
++import com.android.settings.R;
++import com.android.settings.dashboard.DashboardFragment;
++import com.android.settings.search.BaseSearchIndexProvider;
++import com.android.settingslib.search.SearchIndexable;
++
++/** Quick Settings tab of the PlaitOS page. Rows and their controllers come from R.xml.plait_quick_settings. */
++@SearchIndexable
++public class PlaitQuickSettingsFragment extends DashboardFragment {
++    private static final String TAG = "PlaitQuickSettingsFragment";
++
++    @Override
++    protected int getPreferenceScreenResId() {
++        return R.xml.plait_quick_settings;
++    }
++
++    @Override
++    protected String getLogTag() {
++        return TAG;
++    }
++
++    @Override
++    public int getMetricsCategory() {
++        return SettingsEnums.PAGE_UNKNOWN;
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(R.xml.plait_quick_settings);
++}
+diff --git a/src/com/android/settings/plait/PlaitSettings.kt b/src/com/android/settings/plait/PlaitSettings.kt
+new file mode 100644
+index 0000000..da8a812
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitSettings.kt
+@@ -0,0 +1,168 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait
++
++import android.content.Context
++import android.os.UserHandle
++import android.provider.Settings
++
++/** The three settings tables a PlaitOS key can live in. */
++enum class PlaitTable {
++    SYSTEM,
++    SECURE,
++    GLOBAL,
++}
++
++/**
++ * The plain Settings keys the PlaitOS framework patches read, their table and their default (the
++ * value the framework uses while the key is unset, which matches stock GrapheneOS unless noted).
++ * Rows in Settings are keyed by the setting's name, so generic controllers can serve all of them.
++ */
++object PlaitSettings {
++
++    class Key(val table: PlaitTable, val default: Int)
++
++    private val SYSTEM = PlaitTable.SYSTEM
++    private val SECURE = PlaitTable.SECURE
++    private val GLOBAL = PlaitTable.GLOBAL
++
++    /** Every PlaitOS key; "Reset PlaitOS settings" clears exactly these. */
++    val KEYS: Map<String, Key> =
++        mapOf(
++            // Buttons and power menu
++            "plait_torch_long_press_power" to Key(SYSTEM, 0),
++            "plait_torch_long_press_power_timeout" to Key(SYSTEM, 0),
++            "plait_volbtn_music_controls" to Key(SYSTEM, 0),
++            "plait_volume_answer_call" to Key(SYSTEM, 0),
++            "plait_home_answer_call" to Key(SECURE, 0),
++            "plait_home_long_press_action" to Key(SYSTEM, 0),
++            "plait_back_long_press_action" to Key(SYSTEM, 0),
++            "plait_recents_long_press_action" to Key(SYSTEM, 0),
++            "plait_advanced_reboot" to Key(SECURE, 0),
++            // plait_power_menu_actions is a string, see PowerMenuActionsController
++            // Status bar
++            "plait_double_tap_to_sleep" to Key(SYSTEM, 0),
++            "plait_status_bar_clock" to Key(SYSTEM, 2),
++            "plait_status_bar_battery_style" to Key(SYSTEM, 0),
++            "plait_status_bar_battery_percent" to Key(SYSTEM, -1),
++            "plait_status_bar_brightness_control" to Key(SYSTEM, 0),
++            "plait_status_bar_brightness_control_lockscreen" to Key(SYSTEM, 0),
++            "plait_network_traffic_mode" to Key(SECURE, 0),
++            "plait_network_traffic_position" to Key(SECURE, 1),
++            "plait_network_traffic_autohide" to Key(SECURE, 0),
++            "plait_network_traffic_hide_arrows" to Key(SECURE, 0),
++            "plait_network_traffic_units" to Key(SECURE, 2),
++            "plait_network_traffic_show_units" to Key(SECURE, 1),
++            // Quick Settings
++            "plait_status_bar_quick_qs_pulldown" to Key(SYSTEM, 0),
++            "plait_qs_show_brightness_slider" to Key(SECURE, 1),
++            "plait_qs_brightness_slider_position" to Key(SECURE, 0),
++            // QS grid keys default to the device's resource values (-1 = unset)
++            "plait_qs_tiles_columns" to Key(SYSTEM, -1),
++            "plait_qs_tiles_columns_landscape" to Key(SYSTEM, -1),
++            "plait_qs_tiles_rows" to Key(SYSTEM, -1),
++            "plait_qs_tiles_rows_landscape" to Key(SYSTEM, -1),
++            "plait_qqs_tiles_rows" to Key(SYSTEM, -1),
++            "plait_qqs_tiles_rows_landscape" to Key(SYSTEM, -1),
++            // Notifications
++            "plait_heads_up_timeout" to Key(SYSTEM, -1),
++            "plait_notification_kill_app_button" to Key(SYSTEM, 0),
++            // Sound
++            "plait_volume_panel_left" to Key(SYSTEM, 0),
++            // Lock screen and display
++            "plait_peek_display" to Key(SECURE, 0),
++            "plait_peek_breathing" to Key(SECURE, 1),
++            "plait_peek_breathing_interval" to Key(SECURE, 30),
++            "plait_peek_breathing_duration" to Key(SECURE, 10),
++            "plait_doze_always_on_auto_mode" to Key(SECURE, 0),
++            // plait_doze_always_on_auto_time is a string, see AodScheduleTimeController
++            "plait_doze_on_charge" to Key(SECURE, 0),
++            "plait_pocket_judge" to Key(SYSTEM, 1), // on by default (PocketService)
++            "plait_smart_pixel_filter_enabled" to Key(SECURE, 0),
++            "plait_smart_pixel_filter_percent" to Key(SECURE, 25),
++            // Misc
++            "plait_pm_downgrade_allowed" to Key(GLOBAL, 0),
++        )
++
++    /** Stock keys that PlaitOS rows also show; reset leaves them alone. */
++    val STOCK_KEYS: Map<String, Key> =
++        mapOf(
++            "clock_seconds" to Key(SECURE, 0), // SystemUI tuner key, shared with the System UI Tuner
++            "volume_dialog_dismiss_timeout" to Key(SECURE, 3000), // ms, stock default 3 s
++        )
++
++    /** A key PlaitOS rows can show: one of [KEYS] or [STOCK_KEYS]. */
++    fun lookup(key: String): Key =
++        KEYS[key] ?: STOCK_KEYS[key] ?: throw IllegalArgumentException("Unknown PlaitOS key $key")
++
++    /** String-valued PlaitOS keys (cleared by reset too). */
++    val STRING_KEYS: Map<String, PlaitTable> =
++        mapOf(
++            "plait_power_menu_actions" to SECURE,
++            "plait_doze_always_on_auto_time" to SECURE,
++        )
++
++    fun getInt(context: Context, table: PlaitTable, key: String, default: Int): Int {
++        val cr = context.contentResolver
++        return when (table) {
++            PlaitTable.SYSTEM ->
++                Settings.System.getIntForUser(cr, key, default, UserHandle.USER_CURRENT)
++            PlaitTable.SECURE ->
++                Settings.Secure.getIntForUser(cr, key, default, UserHandle.USER_CURRENT)
++            PlaitTable.GLOBAL -> Settings.Global.getInt(cr, key, default)
++        }
++    }
++
++    fun putInt(context: Context, table: PlaitTable, key: String, value: Int): Boolean {
++        val cr = context.contentResolver
++        return when (table) {
++            PlaitTable.SYSTEM ->
++                Settings.System.putIntForUser(cr, key, value, UserHandle.USER_CURRENT)
++            PlaitTable.SECURE ->
++                Settings.Secure.putIntForUser(cr, key, value, UserHandle.USER_CURRENT)
++            PlaitTable.GLOBAL -> Settings.Global.putInt(cr, key, value)
++        }
++    }
++
++    fun getString(context: Context, table: PlaitTable, key: String): String? {
++        val cr = context.contentResolver
++        return when (table) {
++            PlaitTable.SYSTEM -> Settings.System.getStringForUser(cr, key, UserHandle.USER_CURRENT)
++            PlaitTable.SECURE -> Settings.Secure.getStringForUser(cr, key, UserHandle.USER_CURRENT)
++            PlaitTable.GLOBAL -> Settings.Global.getString(cr, key)
++        }
++    }
++
++    fun putString(context: Context, table: PlaitTable, key: String, value: String?): Boolean {
++        val cr = context.contentResolver
++        return when (table) {
++            PlaitTable.SYSTEM ->
++                Settings.System.putStringForUser(cr, key, value, UserHandle.USER_CURRENT)
++            PlaitTable.SECURE ->
++                Settings.Secure.putStringForUser(cr, key, value, UserHandle.USER_CURRENT)
++            PlaitTable.GLOBAL -> Settings.Global.putString(cr, key, value)
++        }
++    }
++
++    /** The key's current value, or its default while unset. */
++    fun get(context: Context, key: String): Int {
++        val k = lookup(key)
++        return getInt(context, k.table, key, k.default)
++    }
++
++    fun put(context: Context, key: String, value: Int): Boolean =
++        putInt(context, lookup(key).table, key, value)
++
++    /**
++     * Clears every PlaitOS key for the current user (a null value reads as unset, so the framework
++     * falls back to its default). Stock keys PlaitOS rows also show (clock_seconds,
++     * icon_blacklist, volume_dialog_dismiss_timeout) are left alone.
++     */
++    fun resetAll(context: Context) {
++        for ((key, k) in KEYS) putString(context, k.table, key, null)
++        for ((key, table) in STRING_KEYS) putString(context, table, key, null)
++    }
++}
+diff --git a/src/com/android/settings/plait/PlaitSettingsFragment.kt b/src/com/android/settings/plait/PlaitSettingsFragment.kt
+new file mode 100644
+index 0000000..16ed326
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitSettingsFragment.kt
+@@ -0,0 +1,93 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait
++
++import android.app.AlertDialog
++import android.app.settings.SettingsEnums
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.Menu
++import android.view.MenuInflater
++import android.view.MenuItem
++import android.view.View
++import android.view.ViewGroup
++import androidx.fragment.app.Fragment
++import androidx.viewpager2.adapter.FragmentStateAdapter
++import androidx.viewpager2.widget.ViewPager2
++import com.android.settings.R
++import com.android.settings.core.InstrumentedFragment
++import com.google.android.material.tabs.TabLayout
++import com.google.android.material.tabs.TabLayoutMediator
++
++/**
++ * The PlaitOS page: options with no stock Settings home, in swipeable tabs as crDroid's settings
++ * are (Status bar, Quick Settings, Buttons, Misc), with "Reset PlaitOS settings" in the menu.
++ * Options that extend a stock setting are on that stock page instead.
++ */
++class PlaitSettingsFragment : InstrumentedFragment() {
++
++    private data class Tab(val title: Int, val create: () -> Fragment)
++
++    private val tabs =
++        listOf(
++            Tab(R.string.plait_tab_status_bar) { PlaitStatusBarFragment() },
++            Tab(R.string.plait_tab_quick_settings) { PlaitQuickSettingsFragment() },
++            Tab(R.string.plait_tab_buttons) { PlaitButtonsFragment() },
++            Tab(R.string.plait_tab_misc) { PlaitMiscFragment() },
++        )
++
++    override fun getMetricsCategory() = SettingsEnums.PAGE_UNKNOWN
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        setHasOptionsMenu(true)
++    }
++
++    override fun onCreateView(
++        inflater: LayoutInflater,
++        container: ViewGroup?,
++        savedInstanceState: Bundle?,
++    ): View {
++        requireActivity().setTitle(R.string.plait_settings_title)
++        val root = inflater.inflate(R.layout.plait_settings_tabs, container, false)
++        val pager = root.findViewById<ViewPager2>(R.id.plait_pager)
++        pager.adapter =
++            object : FragmentStateAdapter(this) {
++                override fun getItemCount() = tabs.size
++
++                override fun createFragment(position: Int) = tabs[position].create()
++            }
++        TabLayoutMediator(root.findViewById<TabLayout>(R.id.plait_tabs), pager) { tab, position ->
++                tab.setText(tabs[position].title)
++            }
++            .attach()
++        return root
++    }
++
++    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
++        menu.add(Menu.NONE, MENU_RESET, Menu.NONE, R.string.plait_reset_title)
++        super.onCreateOptionsMenu(menu, inflater)
++    }
++
++    override fun onOptionsItemSelected(item: MenuItem): Boolean {
++        if (item.itemId != MENU_RESET) return super.onOptionsItemSelected(item)
++        AlertDialog.Builder(requireContext())
++            .setTitle(R.string.plait_reset_title)
++            .setMessage(R.string.plait_reset_message)
++            .setPositiveButton(R.string.plait_reset_confirm) { _, _ ->
++                PlaitSettings.resetAll(requireContext())
++                // Rebuild the tabs so every row shows its default again
++                requireActivity().recreate()
++            }
++            .setNegativeButton(android.R.string.cancel, null)
++            .show()
++        return true
++    }
++
++    private companion object {
++        const val MENU_RESET = Menu.FIRST
++    }
++}
+diff --git a/src/com/android/settings/plait/PlaitStatusBarFragment.java b/src/com/android/settings/plait/PlaitStatusBarFragment.java
+new file mode 100644
+index 0000000..5aa48c1
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitStatusBarFragment.java
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait;
++
++import android.app.settings.SettingsEnums;
++
++import com.android.settings.R;
++import com.android.settings.dashboard.DashboardFragment;
++import com.android.settings.search.BaseSearchIndexProvider;
++import com.android.settingslib.search.SearchIndexable;
++
++/** Status bar tab of the PlaitOS page. Rows and their controllers come from R.xml.plait_status_bar. */
++@SearchIndexable
++public class PlaitStatusBarFragment extends DashboardFragment {
++    private static final String TAG = "PlaitStatusBarFragment";
++
++    @Override
++    protected int getPreferenceScreenResId() {
++        return R.xml.plait_status_bar;
++    }
++
++    @Override
++    protected String getLogTag() {
++        return TAG;
++    }
++
++    @Override
++    public int getMetricsCategory() {
++        return SettingsEnums.PAGE_UNKNOWN;
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(R.xml.plait_status_bar);
++}
+-- 
+2.56.0
+

@@ -1,0 +1,71 @@
+From 78097f49a9398dce4b3b2fa06dcab639c9427ee9 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 20:58:33 -0600
+Subject: [PATCH 31/75] PlaitOS: adapt clock position to GrapheneOS
+
+- Position is Settings.System plait_status_bar_clock (0 right, 1 center,
+  2 left; unset = left, the stock place) instead of LineageSettings
+- The hidden-clock check reads icon_blacklist for the current user
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../shared/ui/binder/HomeStatusBarViewBinder.kt      | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
+index d7884bc9e..d153fd009 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/shared/ui/binder/HomeStatusBarViewBinder.kt
+@@ -50,7 +50,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.combine
+ import kotlinx.coroutines.flow.update
+ import kotlinx.coroutines.launch
+-import lineageos.providers.LineageSettings
+ 
+ /**
+  * Interface to assist with binding the [CollapsedStatusBarFragment] to [HomeStatusBarViewModel].
+@@ -124,7 +123,7 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+                 val iconHideListUri: Uri =
+                     Settings.Secure.getUriFor(StatusBarIconController.ICON_HIDE_LIST)
+                 val statusBarClockUri: Uri =
+-                    LineageSettings.System.getUriFor(LineageSettings.System.STATUS_BAR_CLOCK)
++                    Settings.System.getUriFor(STATUS_BAR_CLOCK_POSITION)
+ 
+                 val contentObserver =
+                     object : ContentObserver(Handler(Looper.getMainLooper())) {
+@@ -136,9 +135,10 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+                                             denyListed =
+                                                 StatusBarIconController.getIconHideList(
+                                                         context,
+-                                                        Settings.Secure.getString(
++                                                        Settings.Secure.getStringForUser(
+                                                             context.contentResolver,
+                                                             StatusBarIconController.ICON_HIDE_LIST,
++                                                            UserHandle.USER_CURRENT,
+                                                         ),
+                                                     )
+                                                     .contains("clock")
+@@ -329,9 +329,9 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+     }
+ 
+     private fun ContentResolver.readClockPosition(): Int {
+-        return LineageSettings.System.getIntForUser(
++        return Settings.System.getIntForUser(
+             this,
+-            LineageSettings.System.STATUS_BAR_CLOCK,
++            STATUS_BAR_CLOCK_POSITION,
+             CLOCK_POSITION_LEFT,
+             UserHandle.USER_CURRENT,
+         )
+@@ -445,6 +445,8 @@ class HomeStatusBarViewBinderImpl @Inject constructor() : HomeStatusBarViewBinde
+     }
+ 
+     companion object {
++        /** Settings.System key (written by Plait Settings); unset = left, the stock place. */
++        private const val STATUS_BAR_CLOCK_POSITION = "plait_status_bar_clock"
+         private const val CLOCK_POSITION_RIGHT = 0
+         private const val CLOCK_POSITION_CENTER = 1
+         private const val CLOCK_POSITION_LEFT = 2
+-- 
+2.56.0
+

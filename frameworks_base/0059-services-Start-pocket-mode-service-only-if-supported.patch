@@ -1,0 +1,70 @@
+From af50506a84169f1224063e3637f6153ec81f63c5 Mon Sep 17 00:00:00 2001
+From: Pranav Vashi <neobuddy89@gmail.com>
+Date: Sat, 12 Oct 2024 14:43:50 +0530
+Subject: [PATCH 59/75] services: Start pocket mode service only if supported
+
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+
+[PlaitOS: ported from crDroid frameworks_base 16.0]
+---
+ core/java/android/app/SystemServiceRegistry.java         | 3 +++
+ .../com/android/server/policy/PhoneWindowManager.java    | 8 +++++---
+ services/java/com/android/server/SystemServer.java       | 9 ++++++---
+ 3 files changed, 14 insertions(+), 6 deletions(-)
+
+diff --git a/core/java/android/app/SystemServiceRegistry.java b/core/java/android/app/SystemServiceRegistry.java
+index ca699001a..d3ed68650 100644
+--- a/core/java/android/app/SystemServiceRegistry.java
++++ b/core/java/android/app/SystemServiceRegistry.java
+@@ -1260,6 +1260,9 @@ public final class SystemServiceRegistry {
+                 new CachedServiceFetcher<PocketManager>() {
+                     @Override
+                     public PocketManager createService(ContextImpl ctx) {
++                        if (!ctx.getResources().getBoolean(R.bool.config_pocketModeSupported)) {
++                            return null;
++                        }
+                         IBinder binder = ServiceManager.getService(Context.POCKET_SERVICE);
+                         IPocketService service = IPocketService.Stub.asInterface(binder);
+                         return new PocketManager(ctx.getOuterContext(), service);
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 78872283a..44d0a914d 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -6276,9 +6276,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         // So it is better not to bind keyguard here.
+         mKeyguardDelegate.onSystemReady();
+ 
+-        mPocketManager = (PocketManager) mContext.getSystemService(Context.POCKET_SERVICE);
+-        mPocketManager.addCallback(mPocketCallback);
+-        mPocketLock = new PocketLock(mContext);
++        if (mContext.getResources().getBoolean(com.android.internal.R.bool.config_pocketModeSupported)) {
++            mPocketManager = (PocketManager) mContext.getSystemService(Context.POCKET_SERVICE);
++            mPocketManager.addCallback(mPocketCallback);
++            mPocketLock = new PocketLock(mContext);
++        }
+ 
+         mVrManagerInternal = LocalServices.getService(VrManagerInternal.class);
+         if (mVrManagerInternal != null) {
+diff --git a/services/java/com/android/server/SystemServer.java b/services/java/com/android/server/SystemServer.java
+index 685b5745d..1cc168131 100644
+--- a/services/java/com/android/server/SystemServer.java
++++ b/services/java/com/android/server/SystemServer.java
+@@ -2889,9 +2889,12 @@ public final class SystemServer implements Dumpable {
+             mSystemServiceManager.startService(CrossProfileAppsService.class);
+             t.traceEnd();
+ 
+-            t.traceBegin("StartPocketService");
+-            mSystemServiceManager.startService(PocketService.class);
+-            t.traceEnd();
++            if (context.getResources().getBoolean(
++                    com.android.internal.R.bool.config_pocketModeSupported)) {
++                t.traceBegin("StartPocketService");
++                mSystemServiceManager.startService(PocketService.class);
++                t.traceEnd();
++            }
+ 
+             if (!context.getResources().getString(
+                     com.android.internal.R.string.config_pocketBridgeSysfsInpocket).isEmpty()) {
+-- 
+2.56.0
+

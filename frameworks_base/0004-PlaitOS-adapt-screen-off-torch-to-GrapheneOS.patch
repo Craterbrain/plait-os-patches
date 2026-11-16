@@ -1,0 +1,119 @@
+From 17e6667f6ac3146c25993bdf522cace30a761bd4 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 17:20:15 -0600
+Subject: [PATCH 04/75] PlaitOS: adapt screen-off torch to GrapheneOS
+
+- Settings come from plain Settings.System keys plait_torch_long_press_power and
+  plait_torch_long_press_power_timeout (written by Plait Settings) instead of lineage-sdk
+- Register the torch-off receiver in init(): the ported hunk landed in the power key rule
+  because GrapheneOS lacks LineageOS's device key handler block it was anchored to
+---
+ .../server/policy/PhoneWindowManager.java     | 55 ++++++++++---------
+ 1 file changed, 29 insertions(+), 26 deletions(-)
+
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 2ef9ebe01..d8b328d68 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -267,8 +267,6 @@ import com.android.server.wm.WindowManagerInternal.AppTransitionListener;
+ import java.io.File;
+ import java.io.FileNotFoundException;
+ import java.io.FileReader;
+-import lineageos.providers.LineageSettings;
+-
+ import java.io.IOException;
+ import java.io.PrintWriter;
+ import java.util.ArrayList;
+@@ -406,6 +404,10 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+ 
+     private static final int POWER_BUTTON_SUPPRESSION_DELAY_DEFAULT_MILLIS = 800;
+ 
++    // PlaitOS settings (written by the Plait Settings app); plain Settings.System keys instead of lineage-sdk
++    private static final String PLAIT_TORCH_LONG_PRESS_POWER = "plait_torch_long_press_power";
++    private static final String PLAIT_TORCH_LONG_PRESS_POWER_TIMEOUT = "plait_torch_long_press_power_timeout";
++
+     private static final String ACTION_TORCH_OFF =
+             "com.android.server.policy.PhoneWindowManager.ACTION_TORCH_OFF";
+ 
+@@ -931,11 +933,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             resolver.registerContentObserver(Settings.Secure.getUriFor(
+                     Settings.Secure.NAV_BAR_KIDS_MODE), false, this,
+                     UserHandle.USER_ALL);
+-            resolver.registerContentObserver(LineageSettings.System.getUriFor(
+-                    LineageSettings.System.TORCH_LONG_PRESS_POWER_GESTURE), false, this,
++            resolver.registerContentObserver(Settings.System.getUriFor(
++                    PLAIT_TORCH_LONG_PRESS_POWER), false, this,
+                     UserHandle.USER_ALL);
+-            resolver.registerContentObserver(LineageSettings.System.getUriFor(
+-                    LineageSettings.System.TORCH_LONG_PRESS_POWER_TIMEOUT), false, this,
++            resolver.registerContentObserver(Settings.System.getUriFor(
++                    PLAIT_TORCH_LONG_PRESS_POWER_TIMEOUT), false, this,
+                     UserHandle.USER_ALL);
+             updateSettings();
+         }
+@@ -2522,6 +2524,23 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         filter = new IntentFilter(ACTION_CONNECTION_STATE_CHANGED);
+         mContext.registerReceiverForAllUsers(mBluetoothHidReceiver, filter, null, null);
+ 
++        // Register for torch off events
++        BroadcastReceiver torchReceiver = new BroadcastReceiver() {
++            @Override
++            public void onReceive(Context context, Intent intent) {
++                mTorchOffPendingIntent = null;
++                if (mTorchEnabled) {
++                    mHandler.removeMessages(MSG_TOGGLE_TORCH);
++                    Message msg = mHandler.obtainMessage(MSG_TOGGLE_TORCH);
++                    msg.setAsynchronous(true);
++                    msg.sendToTarget();
++                }
++            }
++        };
++        filter = new IntentFilter();
++        filter.addAction(ACTION_TORCH_OFF);
++        mContext.registerReceiver(torchReceiver, filter);
++
+         mVibrator = (Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE);
+ 
+         mGlobalKeyManager = new GlobalKeyManager(mContext);
+@@ -2693,22 +2712,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             }
+         }
+ 
+-        // Register for torch off events
+-        BroadcastReceiver torchReceiver = new BroadcastReceiver() {
+-            @Override
+-            public void onReceive(Context context, Intent intent) {
+-                mTorchOffPendingIntent = null;
+-                if (mTorchEnabled) {
+-                    mHandler.removeMessages(MSG_TOGGLE_TORCH);
+-                    Message msg = mHandler.obtainMessage(MSG_TOGGLE_TORCH);
+-                    msg.setAsynchronous(true);
+-                    msg.sendToTarget();
+-                }
+-            }
+-        };
+-        filter = new IntentFilter();
+-        filter.addAction(ACTION_TORCH_OFF);
+-        mContext.registerReceiver(torchReceiver, filter);
+     }
+ 
+     /**
+@@ -3043,11 +3046,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                 mRingerToggleChord = VOLUME_HUSH_OFF;
+             }
+ 
+-            mTorchLongPressPowerEnabled = LineageSettings.System.getIntForUser(
+-                    resolver, LineageSettings.System.TORCH_LONG_PRESS_POWER_GESTURE, 0,
++            mTorchLongPressPowerEnabled = Settings.System.getIntForUser(
++                    resolver, PLAIT_TORCH_LONG_PRESS_POWER, 0,
+                     UserHandle.USER_CURRENT) == 1;
+-            mTorchTimeout = LineageSettings.System.getIntForUser(
+-                    resolver, LineageSettings.System.TORCH_LONG_PRESS_POWER_TIMEOUT, 0,
++            mTorchTimeout = Settings.System.getIntForUser(
++                    resolver, PLAIT_TORCH_LONG_PRESS_POWER_TIMEOUT, 0,
+                     UserHandle.USER_CURRENT);
+ 
+             // Configure wake gesture.
+-- 
+2.56.0
+

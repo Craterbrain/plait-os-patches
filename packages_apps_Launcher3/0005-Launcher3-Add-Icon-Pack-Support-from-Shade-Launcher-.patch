@@ -1,0 +1,2058 @@
+From eecbb0aaceb7297a676e0a1cb037fc68cc80a150 Mon Sep 17 00:00:00 2001
+From: Amir Zaidi <azaidi@live.nl>
+Date: Sat, 11 Jan 2020 13:55:58 +0100
+Subject: [PATCH 05/15] Launcher3: Add Icon Pack Support from Shade Launcher
+ [SQUASHED]
+
+DennySPb: port to A11, A12-L, A13
+
+@neobuddy89:
+Updated for A13 QPR2, A14 QPR2, A14 QPR3, A15, A15 QPR2, A16, A16 QPR1, A17
+
+Change-Id: Id81da397d5ef33577d6f53f349080c49a61591ab
+Co-authored-by: DennySPb <dennyspb@gmail.com>
+Co-authored-by: Nauval Rizky <enuma.alrizky@gmail.com>
+Co-authored-by: Pranav Vashi <neobuddy89@gmail.com>
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+[PlaitOS: ported from crDroid packages_apps_Launcher3 17.0. Without crDroid's
+ launcher settings (SettingsIcons, IconPackPrefSetter, ReloadingListPreference,
+ launcher_icons_preferences): PlaitOS picks the pack in Wallpaper & style. The
+ drawable_factory_class string is in plait_config.xml instead of cr_config.xml.]
+Original: https://github.com/crdroidandroid/android_packages_apps_Launcher3/commit/cd1d20c15835711e95947fd3b96ca321d61a709f
+---
+ .../launcher3/QuickstepTransitionManager.java |   4 +-
+ .../split/SplitFromRunningTaskController.java |   2 +-
+ .../split/SplitSelectStateController.java     |   2 +-
+ .../util/SwipePipToHomeAnimator.java          |   2 +-
+ res/values/plait_config.xml                   |   6 +
+ src/com/android/launcher3/LauncherAppState.kt |   4 +-
+ .../launcher3/customization/IconDatabase.java |  45 ++++
+ .../launcher3/graphics/DrawableFactory.java   | 114 ++++++++++
+ src/com/android/launcher3/icons/IconCache.kt  |   2 +-
+ .../icons/ThirdPartyDrawableFactory.java      |  60 ++++++
+ .../icons/ThirdPartyIconProvider.java         |  54 +++++
+ .../launcher3/icons/ThirdPartyIconUtils.java  |  39 ++++
+ .../icons/calendar/DateChangeReceiver.java    |  47 +++++
+ .../icons/calendar/DynamicCalendar.java       |  51 +++++
+ .../icons/clock/AutoUpdateClock.java          | 168 +++++++++++++++
+ .../launcher3/icons/clock/ClockLayers.java    |  82 ++++++++
+ .../launcher3/icons/clock/CustomClock.java    | 132 ++++++++++++
+ .../launcher3/icons/clock/DynamicClock.java   | 162 ++++++++++++++
+ .../launcher3/icons/pack/IconPack.java        |  98 +++++++++
+ .../launcher3/icons/pack/IconPackManager.java | 197 ++++++++++++++++++
+ .../launcher3/icons/pack/IconPackParser.java  | 128 ++++++++++++
+ .../launcher3/icons/pack/IconResolver.java    |  25 +++
+ .../icons/pack/IconResolverExternal.java      |  85 ++++++++
+ .../icons/pack/IconResolverMasked.java        | 174 ++++++++++++++++
+ .../android/launcher3/util/AppReloader.java   |  81 +++++++
+ .../widget/PendingAppWidgetHostView.java      |   6 +-
+ 26 files changed, 1761 insertions(+), 9 deletions(-)
+ create mode 100644 res/values/plait_config.xml
+ create mode 100644 src/com/android/launcher3/customization/IconDatabase.java
+ create mode 100644 src/com/android/launcher3/graphics/DrawableFactory.java
+ create mode 100644 src/com/android/launcher3/icons/ThirdPartyDrawableFactory.java
+ create mode 100644 src/com/android/launcher3/icons/ThirdPartyIconProvider.java
+ create mode 100644 src/com/android/launcher3/icons/ThirdPartyIconUtils.java
+ create mode 100644 src/com/android/launcher3/icons/calendar/DateChangeReceiver.java
+ create mode 100644 src/com/android/launcher3/icons/calendar/DynamicCalendar.java
+ create mode 100644 src/com/android/launcher3/icons/clock/AutoUpdateClock.java
+ create mode 100644 src/com/android/launcher3/icons/clock/ClockLayers.java
+ create mode 100644 src/com/android/launcher3/icons/clock/CustomClock.java
+ create mode 100644 src/com/android/launcher3/icons/clock/DynamicClock.java
+ create mode 100644 src/com/android/launcher3/icons/pack/IconPack.java
+ create mode 100644 src/com/android/launcher3/icons/pack/IconPackManager.java
+ create mode 100644 src/com/android/launcher3/icons/pack/IconPackParser.java
+ create mode 100644 src/com/android/launcher3/icons/pack/IconResolver.java
+ create mode 100644 src/com/android/launcher3/icons/pack/IconResolverExternal.java
+ create mode 100644 src/com/android/launcher3/icons/pack/IconResolverMasked.java
+ create mode 100644 src/com/android/launcher3/util/AppReloader.java
+
+diff --git a/quickstep/src/com/android/launcher3/QuickstepTransitionManager.java b/quickstep/src/com/android/launcher3/QuickstepTransitionManager.java
+index 10fa95b..165f5ff 100644
+--- a/quickstep/src/com/android/launcher3/QuickstepTransitionManager.java
++++ b/quickstep/src/com/android/launcher3/QuickstepTransitionManager.java
+@@ -475,7 +475,9 @@ public class QuickstepTransitionManager implements OnDeviceProfileChangeListener
+                 onEndCallback, mLauncher, MAIN_EXECUTOR);
+         options.setOnAnimationAbortListener(endCallback);
+         options.setOnAnimationFinishedListener(endCallback);
+-        options.setLaunchCookie(StableViewInfo.toLaunchCookie(itemInfo));
++        if (itemInfo != null) {
++            options.setLaunchCookie(StableViewInfo.toLaunchCookie(itemInfo));
++        }
+ 
+         // Prepare taskbar for animation synchronization. This needs to happen here before any
+         // app transition is created.
+diff --git a/quickstep/src/com/android/quickstep/split/SplitFromRunningTaskController.java b/quickstep/src/com/android/quickstep/split/SplitFromRunningTaskController.java
+index 4cafaa7..ddbe2d4 100644
+--- a/quickstep/src/com/android/quickstep/split/SplitFromRunningTaskController.java
++++ b/quickstep/src/com/android/quickstep/split/SplitFromRunningTaskController.java
+@@ -178,7 +178,7 @@ public class SplitFromRunningTaskController {
+ 
+         mTaskInfo = taskInfo;
+         PackageManager pm = mContext.getPackageManager();
+-        IconProvider provider = new IconProvider(mContext);
++        IconProvider provider = IconProvider.INSTANCE.get(mContext);
+         int displayId = ExternalDisplaysKt.getSafeDisplayId(taskInfo);
+ 
+         try {
+diff --git a/quickstep/src/com/android/quickstep/split/SplitSelectStateController.java b/quickstep/src/com/android/quickstep/split/SplitSelectStateController.java
+index 9f5f9b1..dc7c649 100644
+--- a/quickstep/src/com/android/quickstep/split/SplitSelectStateController.java
++++ b/quickstep/src/com/android/quickstep/split/SplitSelectStateController.java
+@@ -1080,7 +1080,7 @@ public class SplitSelectStateController {
+ 
+             mTaskInfo = taskInfo;
+             PackageManager pm = mContext.getPackageManager();
+-            IconProvider provider = new IconProvider(mContext);
++            IconProvider provider = IconProvider.INSTANCE.get(mContext);
+             int displayId = ExternalDisplaysKt.getSafeDisplayId(taskInfo);
+ 
+             try {
+diff --git a/quickstep/src/com/android/quickstep/util/SwipePipToHomeAnimator.java b/quickstep/src/com/android/quickstep/util/SwipePipToHomeAnimator.java
+index 202a5dc..213adcc 100644
+--- a/quickstep/src/com/android/quickstep/util/SwipePipToHomeAnimator.java
++++ b/quickstep/src/com/android/quickstep/util/SwipePipToHomeAnimator.java
+@@ -185,7 +185,7 @@ public class SwipePipToHomeAnimator extends RectFSpringAnim {
+                     getEnterPipWithOverlaySrcRectHint(appBounds, aspectRatio.floatValue()));
+             mPipContentOverlay = new PipContentOverlay.PipAppIconOverlay(view.getContext(),
+                     mAppBounds, mDestinationBounds,
+-                    new IconProvider(context).getIcon(mActivityInfo), appIconSizePx);
++                    IconProvider.INSTANCE.get(context).getIcon(mActivityInfo), appIconSizePx);
+             final SurfaceControl.Transaction tx = new SurfaceControl.Transaction();
+             mPipContentOverlay.attach(tx, mLeash);
+             Log.d(TAG, getContentOverlay() + " is created: " + reasonForCreateOverlay);
+diff --git a/res/values/plait_config.xml b/res/values/plait_config.xml
+new file mode 100644
+index 0000000..3c39ee8
+--- /dev/null
++++ b/res/values/plait_config.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0. PlaitOS Launcher3 config (crDroid keeps these in cr_config.xml) -->
++<resources>
++    <!-- Icon packs (Shade Launcher icon pack support, via crDroid) -->
++    <string name="drawable_factory_class" translatable="false">com.android.launcher3.icons.ThirdPartyDrawableFactory</string>
++</resources>
+diff --git a/src/com/android/launcher3/LauncherAppState.kt b/src/com/android/launcher3/LauncherAppState.kt
+index ff84c3c..7235343 100644
+--- a/src/com/android/launcher3/LauncherAppState.kt
++++ b/src/com/android/launcher3/LauncherAppState.kt
+@@ -18,7 +18,7 @@ package com.android.launcher3
+ import android.content.Context
+ import com.android.launcher3.dagger.ApplicationContext
+ import com.android.launcher3.icons.IconCache
+-import com.android.launcher3.icons.LauncherIconProvider
++import com.android.launcher3.icons.ThirdPartyIconProvider
+ import com.android.launcher3.util.DaggerSingletonObject
+ import javax.inject.Inject
+ import javax.inject.Named
+@@ -29,7 +29,7 @@ data class LauncherAppState
+ @Inject
+ constructor(
+     @ApplicationContext val context: Context,
+-    val iconProvider: LauncherIconProvider,
++    val iconProvider: ThirdPartyIconProvider,
+     val iconCache: IconCache,
+     val model: LauncherModel,
+     val invariantDeviceProfile: InvariantDeviceProfile,
+diff --git a/src/com/android/launcher3/customization/IconDatabase.java b/src/com/android/launcher3/customization/IconDatabase.java
+new file mode 100644
+index 0000000..c143a52
+--- /dev/null
++++ b/src/com/android/launcher3/customization/IconDatabase.java
+@@ -0,0 +1,45 @@
++package com.android.launcher3.customization;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import com.android.launcher3.BuildConfig;
++import com.android.launcher3.util.ComponentKey;
++
++public class IconDatabase {
++    private static final String PREF_FILE_NAME = BuildConfig.APPLICATION_ID + ".ICON_DATABASE";
++    private static final String KEY_GLOBAL = "global";
++    private static final String VALUE_DEFAULT = "";
++
++    public static String getGlobal(Context context) {
++        return getIconPackPrefs(context).getString(KEY_GLOBAL, VALUE_DEFAULT);
++    }
++
++    public static void setGlobal(Context context, String value) {
++        getIconPackPrefs(context).edit().putString(KEY_GLOBAL, value).apply();
++    }
++
++    public static void resetGlobal(Context context) {
++        getIconPackPrefs(context).edit().remove(KEY_GLOBAL).apply();
++    }
++
++    public static String getByComponent(Context context, ComponentKey key) {
++        return getIconPackPrefs(context).getString(key.toString(), getGlobal(context));
++    }
++
++    public static void setForComponent(Context context, ComponentKey key, String value) {
++        getIconPackPrefs(context).edit().putString(key.toString(), value).apply();
++    }
++
++    public static void resetForComponent(Context context, ComponentKey key) {
++        getIconPackPrefs(context).edit().remove(key.toString()).apply();
++    }
++
++    public static void clearAll(Context context) {
++        getIconPackPrefs(context).edit().clear().apply();
++    }
++
++    private static SharedPreferences getIconPackPrefs(Context context) {
++        return context.getSharedPreferences(PREF_FILE_NAME, Context.MODE_PRIVATE);
++    }
++}
+diff --git a/src/com/android/launcher3/graphics/DrawableFactory.java b/src/com/android/launcher3/graphics/DrawableFactory.java
+new file mode 100644
+index 0000000..5e51541
+--- /dev/null
++++ b/src/com/android/launcher3/graphics/DrawableFactory.java
+@@ -0,0 +1,114 @@
++/*
++ * Copyright (C) 2016 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.launcher3.graphics;
++
++//import static com.android.launcher3.graphics.IconShape.getShapePath;
++import static com.android.launcher3.util.override.MainThreadInitializedObject.forOverride;
++
++import android.content.Context;
++import android.content.pm.ActivityInfo;
++import android.content.res.Resources;
++import android.graphics.Bitmap;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Rect;
++import android.graphics.drawable.BitmapDrawable;
++import android.graphics.drawable.Drawable;
++import android.os.Process;
++import android.os.UserHandle;
++import android.util.ArrayMap;
++
++import androidx.annotation.UiThread;
++
++import com.android.launcher3.icons.FastBitmapDrawable;
++import com.android.launcher3.model.data.ItemInfoWithIcon;
++import com.android.launcher3.R;
++import com.android.launcher3.icons.BitmapInfo;
++import com.android.launcher3.util.SafeCloseable;
++import com.android.launcher3.util.override.ResourceBasedOverride;
++import com.android.launcher3.util.override.MainThreadInitializedObject;
++
++/**
++ * Factory for creating new drawables.
++ */
++public class DrawableFactory implements ResourceBasedOverride, SafeCloseable {
++
++    public static final MainThreadInitializedObject<DrawableFactory> INSTANCE =
++            forOverride(DrawableFactory.class, R.string.drawable_factory_class);
++
++    protected final UserHandle mMyUser = Process.myUserHandle();
++    protected final ArrayMap<UserHandle, Bitmap> mUserBadges = new ArrayMap<>();
++
++    /**
++     * Returns a FastBitmapDrawable with the icon.
++     */
++    public FastBitmapDrawable newIcon(Context context, ItemInfoWithIcon info) {
++        FastBitmapDrawable drawable = new FastBitmapDrawable(info.bitmap);
++        drawable.setDisabled(info.isDisabled());
++        return drawable;
++    }
++
++    public FastBitmapDrawable newIcon(Context context, BitmapInfo info, ActivityInfo target) {
++        return new FastBitmapDrawable(info);
++    }
++
++    /**
++     * Returns a drawable that can be used as a badge for the user or null.
++     */
++    @UiThread
++    public Drawable getBadgeForUser(UserHandle user, Context context, int badgeSize) {
++        if (mMyUser.equals(user)) {
++            return null;
++        }
++
++        Bitmap badgeBitmap = getUserBadge(user, context, badgeSize);
++        FastBitmapDrawable d = new FastBitmapDrawable(badgeBitmap);
++        d.setFilterBitmap(true);
++        d.setBounds(0, 0, badgeBitmap.getWidth(), badgeBitmap.getHeight());
++        return d;
++    }
++
++    @Override
++    public void close() {
++    }
++
++    protected synchronized Bitmap getUserBadge(UserHandle user, Context context, int badgeSize) {
++        Bitmap badgeBitmap = mUserBadges.get(user);
++        if (badgeBitmap != null) {
++            return badgeBitmap;
++        }
++
++        final Resources res = context.getApplicationContext().getResources();
++        badgeBitmap = Bitmap.createBitmap(badgeSize, badgeSize, Bitmap.Config.ARGB_8888);
++
++        Drawable drawable = context.getPackageManager().getUserBadgedDrawableForDensity(
++                new BitmapDrawable(res, badgeBitmap), user, new Rect(0, 0, badgeSize, badgeSize),
++                0);
++        if (drawable instanceof BitmapDrawable) {
++            badgeBitmap = ((BitmapDrawable) drawable).getBitmap();
++        } else {
++            badgeBitmap.eraseColor(Color.TRANSPARENT);
++            Canvas c = new Canvas(badgeBitmap);
++            drawable.setBounds(0, 0, badgeSize, badgeSize);
++            drawable.draw(c);
++            c.setBitmap(null);
++        }
++
++        mUserBadges.put(user, badgeBitmap);
++        return badgeBitmap;
++    }
++}
+diff --git a/src/com/android/launcher3/icons/IconCache.kt b/src/com/android/launcher3/icons/IconCache.kt
+index d867171..89f1edc 100644
+--- a/src/com/android/launcher3/icons/IconCache.kt
++++ b/src/com/android/launcher3/icons/IconCache.kt
+@@ -89,7 +89,7 @@ constructor(
+     idp: InvariantDeviceProfile,
+     @Named("ICONS_DB") dbFileName: String?,
+     private val userManager: UserCache,
+-    iconProvider: LauncherIconProvider,
++    iconProvider: ThirdPartyIconProvider,
+     private val installSessionHelper: InstallSessionHelper,
+     private val iconPool: IconPool,
+     private val instantAppResolver: InstantAppResolver,
+diff --git a/src/com/android/launcher3/icons/ThirdPartyDrawableFactory.java b/src/com/android/launcher3/icons/ThirdPartyDrawableFactory.java
+new file mode 100644
+index 0000000..718df2e
+--- /dev/null
++++ b/src/com/android/launcher3/icons/ThirdPartyDrawableFactory.java
+@@ -0,0 +1,60 @@
++package com.android.launcher3.icons;
++
++import android.content.Context;
++import android.graphics.drawable.Drawable;
++
++import com.android.launcher3.graphics.DrawableFactory;
++import com.android.launcher3.icons.FastBitmapDrawable;
++import com.android.launcher3.model.data.ItemInfoWithIcon;
++import com.android.launcher3.util.ComponentKey;
++
++import com.android.launcher3.icons.calendar.DateChangeReceiver;
++import com.android.launcher3.icons.calendar.DynamicCalendar;
++import com.android.launcher3.icons.clock.CustomClock;
++import com.android.launcher3.icons.clock.DynamicClock;
++import com.android.launcher3.icons.pack.IconPackManager;
++import com.android.launcher3.icons.pack.IconResolver;
++
++import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPLICATION;
++
++public class ThirdPartyDrawableFactory extends DrawableFactory {
++    private final IconPackManager mManager;
++    private final DynamicClock mDynamicClockDrawer;
++    private final CustomClock mCustomClockDrawer;
++    private final DateChangeReceiver mCalendars;
++
++    public ThirdPartyDrawableFactory(Context context) {
++        mManager = IconPackManager.get(context);
++        mDynamicClockDrawer = new DynamicClock(context);
++        mCustomClockDrawer = new CustomClock(context);
++        mCalendars = new DateChangeReceiver(context);
++    }
++
++    @Override
++    public FastBitmapDrawable newIcon(Context context, ItemInfoWithIcon info) {
++        if (info != null && info.getTargetComponent() != null
++                && info.itemType == ITEM_TYPE_APPLICATION) {
++            ComponentKey key = new ComponentKey(info.getTargetComponent(), info.user);
++
++            IconResolver resolver = mManager.resolve(key);
++            mCalendars.setIsDynamic(key, (resolver != null && resolver.isCalendar())
++                || info.getTargetComponent().getPackageName().equals(DynamicCalendar.CALENDAR));
++
++            if (resolver != null) {
++                if (resolver.isClock()) {
++                    Drawable drawable = resolver.getIcon(0, () -> null);
++                    if (drawable != null) {
++                        FastBitmapDrawable fb = mCustomClockDrawer.drawIcon(
++                                info, drawable, resolver.clockData());
++                        fb.setDisabled(info.isDisabled());
++                        return fb;
++                    }
++                }
++            } else if (info.getTargetComponent().equals(DynamicClock.DESK_CLOCK)) {
++                return mDynamicClockDrawer.drawIcon(info);
++            }
++        }
++
++        return super.newIcon(context, info);
++    }
++}
+diff --git a/src/com/android/launcher3/icons/ThirdPartyIconProvider.java b/src/com/android/launcher3/icons/ThirdPartyIconProvider.java
+new file mode 100644
+index 0000000..c618ffb
+--- /dev/null
++++ b/src/com/android/launcher3/icons/ThirdPartyIconProvider.java
+@@ -0,0 +1,54 @@
++package com.android.launcher3.icons;
++
++import android.annotation.SuppressLint;
++import android.content.Context;
++import android.content.pm.ComponentInfo;
++import android.graphics.drawable.Drawable;
++import android.os.UserHandle;
++
++import com.android.launcher3.dagger.ApplicationContext;
++import com.android.launcher3.dagger.LauncherAppSingleton;
++import com.android.launcher3.graphics.ThemeManager;
++import com.android.launcher3.icons.pack.IconResolver;
++import com.android.launcher3.util.ComponentKey;
++
++import javax.inject.Inject;
++
++import static com.android.launcher3.icons.BaseIconFactory.CONFIG_HINT_NO_WRAP;
++
++@LauncherAppSingleton
++public class ThirdPartyIconProvider extends LauncherIconProvider {
++
++    private final Context mContext;
++    private final ThemeManager mThemeManager;
++
++    @Inject
++    public ThirdPartyIconProvider(
++            @ApplicationContext Context context,
++            ThemeManager themeManager) {
++        super(context, themeManager);
++        mContext = context;
++        mThemeManager = themeManager;
++    }
++
++    public ThirdPartyIconProvider(Context context) {
++        this(context, ThemeManager.INSTANCE.get(context));
++    }
++
++    @SuppressLint("WrongConstant")
++    @Override
++    public Drawable getIcon(ComponentInfo info, int iconDpi) {
++        ComponentKey key = new ComponentKey(
++                info.getComponentName(), UserHandle.getUserHandleForUid(info.applicationInfo.uid));
++
++        IconResolver.DefaultDrawableProvider fallback =
++                () -> super.getIcon(info, iconDpi);
++        Drawable icon = ThirdPartyIconUtils.getByKey(mContext, key, iconDpi, fallback);
++
++        if (icon == null) {
++            return fallback.get();
++        }
++        icon.setChangingConfigurations(icon.getChangingConfigurations() | CONFIG_HINT_NO_WRAP);
++        return icon;
++    }
++}
+diff --git a/src/com/android/launcher3/icons/ThirdPartyIconUtils.java b/src/com/android/launcher3/icons/ThirdPartyIconUtils.java
+new file mode 100644
+index 0000000..e591caf
+--- /dev/null
++++ b/src/com/android/launcher3/icons/ThirdPartyIconUtils.java
+@@ -0,0 +1,39 @@
++package com.android.launcher3.icons;
++
++import android.content.Context;
++import android.graphics.drawable.Drawable;
++
++import com.android.launcher3.icons.calendar.DynamicCalendar;
++import com.android.launcher3.icons.clock.CustomClock;
++import com.android.launcher3.icons.clock.DynamicClock;
++import com.android.launcher3.icons.pack.IconPackManager;
++import com.android.launcher3.icons.pack.IconResolver;
++import com.android.launcher3.util.ComponentKey;
++
++class ThirdPartyIconUtils {
++    static Drawable getByKey(Context context, ComponentKey key, int iconDpi,
++                             IconResolver.DefaultDrawableProvider fallback) {
++        IconResolver resolver = IconPackManager.get(context).resolve(key);
++        Drawable icon = resolver == null
++                ? null
++                : resolver.getIcon(iconDpi, fallback);
++
++        // Icon pack clocks go first.
++        if (icon != null && resolver.isClock()) {
++            return CustomClock.getClock(context, icon, resolver.clockData());
++        }
++
++        // Google Clock goes second, but only if the icon pack does not override it.
++        if (icon == null && key.componentName.equals(DynamicClock.DESK_CLOCK)) {
++            String packageName = key.componentName.getPackageName();
++            return ClockDrawableWrapper.forPackage(context, packageName, iconDpi);
++        }
++
++        // Google Calendar is checked last. Only applied if the icon pack does not override it.
++        if (icon == null && key.componentName.getPackageName().equals(DynamicCalendar.CALENDAR)) {
++            return DynamicCalendar.load(context, key.componentName, iconDpi);
++        }
++
++        return icon;
++    }
++}
+diff --git a/src/com/android/launcher3/icons/calendar/DateChangeReceiver.java b/src/com/android/launcher3/icons/calendar/DateChangeReceiver.java
+new file mode 100644
+index 0000000..b3ed6ae
+--- /dev/null
++++ b/src/com/android/launcher3/icons/calendar/DateChangeReceiver.java
+@@ -0,0 +1,47 @@
++package com.android.launcher3.icons.calendar;
++
++import android.content.BroadcastReceiver;
++import android.content.Context;
++import android.content.Intent;
++import android.content.IntentFilter;
++import android.os.Handler;
++
++import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
++
++import com.android.launcher3.util.ComponentKey;
++import com.android.launcher3.util.AppReloader;
++
++import java.util.HashSet;
++import java.util.Set;
++
++/**
++ * Listens for date change events and uses the IconReloader to reload all loaded calendar icons
++ * when the date has changed.
++ */
++public class DateChangeReceiver extends BroadcastReceiver {
++    private final Set<ComponentKey> mDynamicCalendars = new HashSet<>();
++
++    public DateChangeReceiver(Context context) {
++        super();
++
++        IntentFilter filter = new IntentFilter(Intent.ACTION_DATE_CHANGED);
++        filter.addAction(Intent.ACTION_TIME_CHANGED);
++        filter.addAction(Intent.ACTION_TIMEZONE_CHANGED);
++
++        Handler handler = MODEL_EXECUTOR.getHandler();
++        context.registerReceiver(this, filter, null, handler);
++    }
++
++    public void setIsDynamic(ComponentKey key, boolean calendar) {
++        if (calendar) {
++            mDynamicCalendars.add(key);
++        } else {
++            mDynamicCalendars.remove(key);
++        }
++    }
++
++    @Override
++    public void onReceive(Context context, Intent intent) {
++        AppReloader.get(context).reload(mDynamicCalendars);
++    }
++}
+diff --git a/src/com/android/launcher3/icons/calendar/DynamicCalendar.java b/src/com/android/launcher3/icons/calendar/DynamicCalendar.java
+new file mode 100644
+index 0000000..a8cc84e
+--- /dev/null
++++ b/src/com/android/launcher3/icons/calendar/DynamicCalendar.java
+@@ -0,0 +1,51 @@
++package com.android.launcher3.icons.calendar;
++
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.pm.PackageManager;
++import android.content.res.Resources;
++import android.content.res.TypedArray;
++import android.graphics.drawable.Drawable;
++import android.os.Bundle;
++
++import java.util.Calendar;
++
++public class DynamicCalendar {
++    public static final String CALENDAR = "com.google.android.calendar";
++
++    public static Drawable load(Context context, ComponentName component, int iconDpi) {
++        try {
++            PackageManager pm = context.getPackageManager();
++            Bundle metaData = pm.getActivityInfo(component,
++                    PackageManager.GET_META_DATA | PackageManager.GET_UNINSTALLED_PACKAGES).metaData;
++
++            Resources resourcesForApplication = pm.getResourcesForApplication(DynamicCalendar.CALENDAR);
++            int dayResId = DynamicCalendar.getDayResId(metaData, resourcesForApplication);
++            if (dayResId != 0) {
++                return resourcesForApplication.getDrawableForDensity(dayResId, iconDpi);
++            }
++        } catch (PackageManager.NameNotFoundException ignored) {
++        }
++        return null;
++    }
++
++    public static int getDayResId(Bundle bundle, Resources resources) {
++        if (bundle != null) {
++            int dateArrayId = bundle.getInt(CALENDAR + ".dynamic_icons_nexus_round", 0);
++            if (dateArrayId != 0) {
++                try {
++                    TypedArray dateIds = resources.obtainTypedArray(dateArrayId);
++                    int dateId = dateIds.getResourceId(getDayOfMonth(), 0);
++                    dateIds.recycle();
++                    return dateId;
++                } catch (Resources.NotFoundException ex) {
++                }
++            }
++        }
++        return 0;
++    }
++
++    public static int getDayOfMonth() {
++        return Calendar.getInstance().get(Calendar.DAY_OF_MONTH) - 1;
++    }
++}
+diff --git a/src/com/android/launcher3/icons/clock/AutoUpdateClock.java b/src/com/android/launcher3/icons/clock/AutoUpdateClock.java
+new file mode 100644
+index 0000000..25c5f5d
+--- /dev/null
++++ b/src/com/android/launcher3/icons/clock/AutoUpdateClock.java
+@@ -0,0 +1,168 @@
++package com.android.launcher3.icons.clock;
++
++import android.content.Context;
++import android.graphics.Canvas;
++import android.graphics.Paint;
++import android.graphics.Rect;
++import android.os.SystemClock;
++
++import androidx.annotation.NonNull;
++
++import com.android.launcher3.icons.BitmapInfo;
++import com.android.launcher3.icons.FastBitmapDrawable;
++import com.android.launcher3.icons.FastBitmapDrawableDelegate;
++import com.android.launcher3.icons.FastBitmapDrawableDelegate.DelegateFactory;
++import com.android.launcher3.icons.IconShape;
++import com.android.launcher3.model.data.ItemInfoWithIcon;
++
++import java.util.TimeZone;
++
++// AutoUpdateClock wraps FastBitmapDrawable (since FastBitmapDrawable is final)
++// and implements Runnable for scheduling clock updates
++class AutoUpdateClock implements Runnable {
++    private final FastBitmapDrawable mDrawable;
++    private ClockLayers mLayers;
++    private ClockDelegate mDelegate;
++
++    AutoUpdateClock(ItemInfoWithIcon info, ClockLayers layers, Context context) {
++        mLayers = layers;
++        // Create FastBitmapDrawable with clock delegate factory
++        // Use IconShape.EMPTY as the base, delegate will handle custom drawing
++        ClockDelegateFactory factory = new ClockDelegateFactory(layers.clone(), this);
++        mDrawable = new FastBitmapDrawable(
++                info.bitmap,
++                IconShape.EMPTY,
++                factory
++        );
++        mDrawable.setDisabled(info.isDisabled());
++    }
++    
++    // Return the wrapped FastBitmapDrawable (used when FastBitmapDrawable is expected)
++    public FastBitmapDrawable getDrawable() {
++        return mDrawable;
++    }
++    
++    // Delegate common Drawable methods
++    public void setBounds(Rect bounds) {
++        mDrawable.setBounds(bounds);
++    }
++    
++    public Rect getBounds() {
++        return mDrawable.getBounds();
++    }
++    
++    public void invalidateSelf() {
++        mDrawable.invalidateSelf();
++    }
++    
++    public void scheduleSelf(Runnable what, long when) {
++        mDrawable.scheduleSelf(what, when);
++    }
++    
++    public void unscheduleSelf(Runnable what) {
++        mDrawable.unscheduleSelf(what);
++    }
++    
++    public void setDisabled(boolean disabled) {
++        mDrawable.setDisabled(disabled);
++    }
++
++    private void rescheduleUpdate() {
++        long millisInSecond = 1000L;
++        unscheduleSelf(this);
++        long uptimeMillis = SystemClock.uptimeMillis();
++        scheduleSelf(this, uptimeMillis - uptimeMillis % millisInSecond + millisInSecond);
++    }
++
++    // Used only by Google Clock
++    void updateLayers(ClockLayers layers) {
++        if (layers != null) {
++            ClockLayers newLayers = layers.clone();
++            if (newLayers != null) {
++                mLayers = newLayers;
++                if (mDelegate != null) {
++                    mDelegate.updateLayers(newLayers);
++                }
++                if (newLayers.mDrawable != null) {
++                    newLayers.mDrawable.setBounds(getBounds());
++                }
++            }
++        }
++        invalidateSelf();
++    }
++
++    void setTimeZone(TimeZone timeZone) {
++        if (mLayers != null) {
++            mLayers.setTimeZone(timeZone);
++            invalidateSelf();
++        }
++    }
++
++    @Override
++    public void run() {
++        if (mLayers != null && mLayers.updateAngles()) {
++            invalidateSelf();
++        } else {
++            rescheduleUpdate();
++        }
++    }
++
++    private static class ClockDelegate implements FastBitmapDrawableDelegate {
++        private ClockLayers mLayers;
++        private final AutoUpdateClock mHost;
++
++        ClockDelegate(ClockLayers layers, AutoUpdateClock host) {
++            mLayers = layers;
++            mHost = host;
++        }
++
++        void updateLayers(ClockLayers layers) {
++            mLayers = layers;
++        }
++
++        @Override
++        public void drawContent(@NonNull BitmapInfo info, @NonNull IconShape shape,
++                @NonNull Canvas canvas, @NonNull Rect bounds, @NonNull Paint paint) {
++            if (mLayers != null) {
++                canvas.drawBitmap(mLayers.bitmap, null, bounds, paint);
++                mLayers.updateAngles();
++                canvas.scale(mLayers.scale, mLayers.scale,
++                        bounds.exactCenterX() + mLayers.offset,
++                        bounds.exactCenterY() + mLayers.offset);
++                canvas.clipPath(mLayers.mDrawable.getIconMask());
++                mLayers.mDrawable.getForeground().draw(canvas);
++                mHost.rescheduleUpdate();
++            } else {
++                // Draw default icon - delegate to parent or draw bitmap directly
++                canvas.drawBitmap(info.icon, null, bounds, paint);
++            }
++        }
++
++        @Override
++        public void onBoundsChange(@NonNull Rect bounds) {
++            if (mLayers != null && mLayers.mDrawable != null) {
++                mLayers.mDrawable.setBounds(bounds);
++            }
++        }
++    }
++
++    private static class ClockDelegateFactory implements DelegateFactory {
++        private final ClockLayers mLayers;
++        private final AutoUpdateClock mClock;
++
++        ClockDelegateFactory(ClockLayers layers, AutoUpdateClock clock) {
++            mLayers = layers;
++            mClock = clock;
++        }
++
++        @NonNull
++        @Override
++        public FastBitmapDrawableDelegate newDelegate(@NonNull BitmapInfo bitmapInfo,
++                @NonNull IconShape iconShape, @NonNull Paint paint,
++                @NonNull FastBitmapDrawable host) {
++            ClockDelegate delegate = new ClockDelegate(mLayers, mClock);
++            mClock.mDelegate = delegate;
++            return delegate;
++        }
++    }
++}
+diff --git a/src/com/android/launcher3/icons/clock/ClockLayers.java b/src/com/android/launcher3/icons/clock/ClockLayers.java
+new file mode 100644
+index 0000000..c6014b0
+--- /dev/null
++++ b/src/com/android/launcher3/icons/clock/ClockLayers.java
+@@ -0,0 +1,82 @@
++package com.android.launcher3.icons.clock;
++
++import android.annotation.TargetApi;
++import android.graphics.Bitmap;
++import android.graphics.drawable.AdaptiveIconDrawable;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.LayerDrawable;
++
++import java.util.Calendar;
++import java.util.TimeZone;
++
++@TargetApi(26)
++class ClockLayers {
++    AdaptiveIconDrawable mDrawable;
++    LayerDrawable mLayerDrawable;
++    private final Calendar mCurrentTime;
++    int mHourIndex;
++    int mMinuteIndex;
++    int mSecondIndex;
++    int mDefaultHour;
++    int mDefaultMinute;
++    int mDefaultSecond;
++    float scale;
++    float offset;
++    Bitmap bitmap;
++
++    ClockLayers() {
++        mCurrentTime = Calendar.getInstance();
++    }
++
++    public final void setDrawable(Drawable drawable) {
++        mDrawable = (AdaptiveIconDrawable) drawable;
++        mLayerDrawable = (LayerDrawable) mDrawable.getForeground();
++    }
++
++    @Override
++    public ClockLayers clone() {
++        ClockLayers ret = null;
++        if (mDrawable == null) {
++            return null;
++        }
++        ClockLayers clone = new ClockLayers();
++        clone.scale = scale;
++        clone.offset = offset;
++        clone.mHourIndex = mHourIndex;
++        clone.mMinuteIndex = mMinuteIndex;
++        clone.mSecondIndex = mSecondIndex;
++        clone.mDefaultHour = mDefaultHour;
++        clone.mDefaultMinute = mDefaultMinute;
++        clone.mDefaultSecond = mDefaultSecond;
++        clone.setDrawable(mDrawable.getConstantState().newDrawable());
++        clone.bitmap = bitmap;
++        if (clone.mLayerDrawable != null) {
++            ret = clone;
++        }
++        return ret;
++    }
++
++    boolean updateAngles() {
++        mCurrentTime.setTimeInMillis(System.currentTimeMillis());
++
++        int hour = (mCurrentTime.get(Calendar.HOUR) + (12 - mDefaultHour)) % 12;
++        int minute = (mCurrentTime.get(Calendar.MINUTE) + (60 - mDefaultMinute)) % 60;
++        int second = (mCurrentTime.get(Calendar.SECOND) + (60 - mDefaultSecond)) % 60;
++
++        boolean hasChanged = false;
++        if (mHourIndex != -1 && mLayerDrawable.getDrawable(mHourIndex).setLevel(hour * 60 + mCurrentTime.get(Calendar.MINUTE))) {
++            hasChanged = true;
++        }
++        if (mMinuteIndex != -1 && mLayerDrawable.getDrawable(mMinuteIndex).setLevel(minute + mCurrentTime.get(Calendar.HOUR) * 60)) {
++            hasChanged = true;
++        }
++        if (mSecondIndex != -1 && mLayerDrawable.getDrawable(mSecondIndex).setLevel(second * 10)) {
++            hasChanged = true;
++        }
++        return hasChanged;
++    }
++
++    void setTimeZone(TimeZone timeZone) {
++        mCurrentTime.setTimeZone(timeZone);
++    }
++}
+diff --git a/src/com/android/launcher3/icons/clock/CustomClock.java b/src/com/android/launcher3/icons/clock/CustomClock.java
+new file mode 100644
+index 0000000..94173e9
+--- /dev/null
++++ b/src/com/android/launcher3/icons/clock/CustomClock.java
+@@ -0,0 +1,132 @@
++package com.android.launcher3.icons.clock;
++
++import android.annotation.TargetApi;
++import android.content.BroadcastReceiver;
++import android.content.Context;
++import android.content.Intent;
++import android.content.IntentFilter;
++import android.graphics.drawable.AdaptiveIconDrawable;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.LayerDrawable;
++import android.os.Build;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.Process;
++
++import com.android.launcher3.icons.FastBitmapDrawable;
++import com.android.launcher3.model.data.ItemInfoWithIcon;
++import com.android.launcher3.LauncherAppState;
++import com.android.launcher3.icons.LauncherIcons;
++import com.android.launcher3.util.Preconditions;
++
++import java.util.Collections;
++import java.util.Set;
++import java.util.TimeZone;
++import java.util.WeakHashMap;
++
++@TargetApi(Build.VERSION_CODES.TIRAMISU)
++public class CustomClock {
++    private final Context mContext;
++    private final Set<AutoUpdateClock> mUpdaters = Collections.newSetFromMap(new WeakHashMap<>());
++
++    public CustomClock(Context context) {
++        mContext = context;
++
++        mContext.registerReceiver(new BroadcastReceiver() {
++            @Override
++            public void onReceive(Context context, Intent intent) {
++                loadTimeZone(intent.getStringExtra("time-zone"));
++            }
++        }, new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED), null,
++                new Handler(Looper.getMainLooper()));
++    }
++
++    public static Drawable getClock(Context context, Drawable drawable, Metadata metadata) {
++        ClockLayers clone = getClockLayers(context, drawable, metadata, false).clone();
++        if (clone != null) {
++            clone.updateAngles();
++            return clone.mDrawable;
++        }
++        return null;
++    }
++
++    private static ClockLayers getClockLayers(Context context, Drawable drawableForDensity,
++                                              Metadata metadata, boolean normalizeIcon) {
++        Preconditions.assertWorkerThread();
++        ClockLayers layers = new ClockLayers();
++        layers.setDrawable(drawableForDensity.mutate());
++        layers.mHourIndex = metadata.HOUR_LAYER_INDEX;
++        layers.mMinuteIndex = metadata.MINUTE_LAYER_INDEX;
++        layers.mSecondIndex = metadata.SECOND_LAYER_INDEX;
++        layers.mDefaultHour = metadata.DEFAULT_HOUR;
++        layers.mDefaultMinute = metadata.DEFAULT_MINUTE;
++        layers.mDefaultSecond = metadata.DEFAULT_SECOND;
++        if (normalizeIcon) {
++            LauncherIcons obtain = LauncherIcons.obtain(context);
++            layers.bitmap = obtain.createBadgedIconBitmap(
++                    new AdaptiveIconDrawable(
++                            layers.mDrawable.getBackground().getConstantState().newDrawable(),
++                            null)).icon;
++
++            int iconBitmapSize = LauncherAppState.getInstance(context)
++                    .getInvariantDeviceProfile().iconBitmapSize;
++            layers.offset = (int) Math.ceil((double) (0.010416667f * ((float) iconBitmapSize)));
++            obtain.recycle();
++        }
++
++        LayerDrawable layerDrawable = layers.mLayerDrawable;
++        int numberOfLayers = layerDrawable.getNumberOfLayers();
++
++        if (layers.mHourIndex < 0 || layers.mHourIndex >= numberOfLayers) {
++            layers.mHourIndex = -1;
++        }
++        if (layers.mMinuteIndex < 0 || layers.mMinuteIndex >= numberOfLayers) {
++            layers.mMinuteIndex = -1;
++        }
++        if (layers.mSecondIndex < 0 || layers.mSecondIndex >= numberOfLayers) {
++            layers.mSecondIndex = -1;
++        }
++
++        return layers;
++    }
++
++    public FastBitmapDrawable drawIcon(ItemInfoWithIcon info, Drawable drawableForDensity,
++                                       Metadata metadata) {
++        final AutoUpdateClock updater = new AutoUpdateClock(info,
++                getClockLayers(mContext, drawableForDensity, metadata,true).clone(),
++                mContext
++        );
++        mUpdaters.add(updater);
++        return updater.getDrawable();
++    }
++
++    private void loadTimeZone(String timeZoneId) {
++        TimeZone timeZone = timeZoneId == null ?
++                TimeZone.getDefault() :
++                TimeZone.getTimeZone(timeZoneId);
++
++        for (AutoUpdateClock a : mUpdaters) {
++            a.setTimeZone(timeZone);
++        }
++    }
++
++    public static class Metadata {
++        final int HOUR_LAYER_INDEX;
++        final int MINUTE_LAYER_INDEX;
++        final int SECOND_LAYER_INDEX;
++
++        final int DEFAULT_HOUR;
++        final int DEFAULT_MINUTE;
++        final int DEFAULT_SECOND;
++
++        public Metadata(int hourIndex, int minuteIndex, int secondIndex,
++                        int defaultHour, int defaultMinute, int defaultSecond) {
++            HOUR_LAYER_INDEX = hourIndex;
++            MINUTE_LAYER_INDEX = minuteIndex;
++            SECOND_LAYER_INDEX = secondIndex;
++            DEFAULT_HOUR = defaultHour;
++            DEFAULT_MINUTE = defaultMinute;
++            DEFAULT_SECOND = defaultSecond;
++        }
++    }
++}
+diff --git a/src/com/android/launcher3/icons/clock/DynamicClock.java b/src/com/android/launcher3/icons/clock/DynamicClock.java
+new file mode 100644
+index 0000000..e05551f
+--- /dev/null
++++ b/src/com/android/launcher3/icons/clock/DynamicClock.java
+@@ -0,0 +1,162 @@
++package com.android.launcher3.icons.clock;
++
++import android.annotation.TargetApi;
++import android.content.BroadcastReceiver;
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.Intent;
++import android.content.IntentFilter;
++import android.content.pm.ApplicationInfo;
++import android.content.pm.PackageManager;
++import android.graphics.drawable.AdaptiveIconDrawable;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.LayerDrawable;
++import android.os.Build;
++import android.os.Bundle;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.Process;
++import android.os.UserHandle;
++
++import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
++import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
++
++import com.android.launcher3.model.data.ItemInfoWithIcon;
++import com.android.launcher3.LauncherAppState;
++import com.android.launcher3.Utilities;
++import com.android.launcher3.icons.BaseIconFactory.IconOptions;
++import com.android.launcher3.icons.FastBitmapDrawable;
++import com.android.launcher3.icons.LauncherIcons;
++import com.android.launcher3.util.Preconditions;
++
++import java.util.Collections;
++import java.util.Set;
++import java.util.TimeZone;
++import java.util.WeakHashMap;
++
++@TargetApi(26)
++public class DynamicClock extends BroadcastReceiver {
++    public static final ComponentName DESK_CLOCK = new ComponentName(
++            "com.google.android.deskclock",
++            "com.android.deskclock.DeskClock");
++
++    private final Set<AutoUpdateClock> mUpdaters;
++    private ClockLayers mLayers;
++    private final Context mContext;
++
++    public DynamicClock(Context context) {
++        mUpdaters = Collections.newSetFromMap(new WeakHashMap<>());
++        mLayers = new ClockLayers();
++        mContext = context;
++        final Handler handler = new Handler(MODEL_EXECUTOR.getLooper());
++
++        IntentFilter filter = new IntentFilter();
++        filter.addDataScheme("package");
++        filter.addDataSchemeSpecificPart(DESK_CLOCK.getPackageName(), 0);
++        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
++        filter.addAction(Intent.ACTION_PACKAGE_CHANGED);
++
++        mContext.registerReceiver(this, filter, null, handler);
++        handler.post(this::updateMainThread);
++
++        mContext.registerReceiver(new BroadcastReceiver() {
++            @Override
++            public void onReceive(Context context, Intent intent) {
++                loadTimeZone(intent.getStringExtra("time-zone"));
++            }
++        }, new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED), null, new Handler(Looper.getMainLooper()));
++    }
++
++    public static Drawable getClock(Context context, int iconDpi) {
++        ClockLayers clone = getClockLayers(context, iconDpi, false).clone();
++        if (clone != null) {
++            clone.updateAngles();
++            return clone.mDrawable;
++        }
++        return null;
++    }
++
++    private static ClockLayers getClockLayers(Context context, int iconDpi, boolean normalizeIcon) {
++        Preconditions.assertWorkerThread();
++        ClockLayers layers = new ClockLayers();
++        try {
++            PackageManager packageManager = context.getPackageManager();
++            ApplicationInfo applicationInfo = packageManager.getApplicationInfo("com.google.android.deskclock", PackageManager.GET_META_DATA | PackageManager.GET_UNINSTALLED_PACKAGES);
++            Bundle metaData = applicationInfo.metaData;
++            if (metaData != null) {
++                int levelPerTickIcon = metaData.getInt("com.google.android.apps.nexuslauncher.LEVEL_PER_TICK_ICON_ROUND", 0);
++                if (levelPerTickIcon != 0) {
++                    Drawable drawableForDensity = packageManager.getResourcesForApplication(applicationInfo).getDrawableForDensity(levelPerTickIcon, iconDpi);
++                    layers.setDrawable(drawableForDensity.mutate());
++                    layers.mHourIndex = metaData.getInt("com.google.android.apps.nexuslauncher.HOUR_LAYER_INDEX", -1);
++                    layers.mMinuteIndex = metaData.getInt("com.google.android.apps.nexuslauncher.MINUTE_LAYER_INDEX", -1);
++                    layers.mSecondIndex = metaData.getInt("com.google.android.apps.nexuslauncher.SECOND_LAYER_INDEX", -1);
++                    layers.mDefaultHour = metaData.getInt("com.google.android.apps.nexuslauncher.DEFAULT_HOUR", 0);
++                    layers.mDefaultMinute = metaData.getInt("com.google.android.apps.nexuslauncher.DEFAULT_MINUTE", 0);
++                    layers.mDefaultSecond = metaData.getInt("com.google.android.apps.nexuslauncher.DEFAULT_SECOND", 0);
++                    if (normalizeIcon) {
++                        LauncherIcons obtain = LauncherIcons.obtain(context);
++                        layers.bitmap = obtain.createBadgedIconBitmap(
++                                new AdaptiveIconDrawable(layers.mDrawable.getBackground().getConstantState().newDrawable(), null)).icon;
++                        int iconBitmapSize = LauncherAppState.getInstance(context).getInvariantDeviceProfile().iconBitmapSize;
++                        layers.offset = (int) Math.ceil((double) (0.010416667f * ((float) iconBitmapSize)));
++                        obtain.recycle();
++                    }
++
++                    LayerDrawable layerDrawable = layers.mLayerDrawable;
++                    int numberOfLayers = layerDrawable.getNumberOfLayers();
++
++                    if (layers.mHourIndex < 0 || layers.mHourIndex >= numberOfLayers) {
++                        layers.mHourIndex = -1;
++                    }
++                    if (layers.mMinuteIndex < 0 || layers.mMinuteIndex >= numberOfLayers) {
++                        layers.mMinuteIndex = -1;
++                    }
++                    if (layers.mSecondIndex < 0 || layers.mSecondIndex >= numberOfLayers) {
++                        layers.mSecondIndex = -1;
++                    } else {
++                        layerDrawable.setDrawable(layers.mSecondIndex, null);
++                        layers.mSecondIndex = -1;
++                    }
++                }
++            }
++        } catch (Exception e) {
++            layers.mDrawable = null;
++        }
++        return layers;
++    }
++
++    private void loadTimeZone(String timeZoneId) {
++        TimeZone timeZone = timeZoneId == null ?
++                TimeZone.getDefault() :
++                TimeZone.getTimeZone(timeZoneId);
++
++        for (AutoUpdateClock a : mUpdaters) {
++            a.setTimeZone(timeZone);
++        }
++    }
++
++    private void updateMainThread() {
++        MAIN_EXECUTOR.execute(() -> updateWrapper(getClockLayers(mContext,
++                LauncherAppState.getIDP(mContext).fillResIconDpi,
++                true)));
++    }
++
++    private void updateWrapper(ClockLayers wrapper) {
++        this.mLayers = wrapper;
++        for (AutoUpdateClock updater : mUpdaters) {
++            updater.updateLayers(wrapper.clone());
++        }
++    }
++
++    public FastBitmapDrawable drawIcon(ItemInfoWithIcon info) {
++        final AutoUpdateClock updater = new AutoUpdateClock(info, mLayers.clone(), mContext);
++        mUpdaters.add(updater);
++        return updater.getDrawable();
++    }
++
++    @Override
++    public void onReceive(Context context, Intent intent) {
++        updateMainThread();
++    }
++}
+diff --git a/src/com/android/launcher3/icons/pack/IconPack.java b/src/com/android/launcher3/icons/pack/IconPack.java
+new file mode 100644
+index 0000000..3e7236b
+--- /dev/null
++++ b/src/com/android/launcher3/icons/pack/IconPack.java
+@@ -0,0 +1,98 @@
++package com.android.launcher3.icons.pack;
++
++import android.content.ComponentName;
++import android.content.pm.ApplicationInfo;
++import android.content.pm.PackageManager;
++import android.content.res.Resources;
++import android.util.SparseArray;
++
++import org.xmlpull.v1.XmlPullParserException;
++
++import java.io.IOException;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++
++/**
++ * Class that handles the metadata and data of any icon pack.
++ */
++class IconPack {
++    private final ApplicationInfo mAi;
++    private final CharSequence mPackageLabel;
++    private Data mData;
++    private Resources mRes;
++
++    IconPack(ApplicationInfo ai, CharSequence label) {
++        mAi = ai;
++        mPackageLabel = label;
++    }
++
++    ApplicationInfo getAi() {
++        return mAi;
++    }
++
++    String getPackage() {
++        return mAi.packageName;
++    }
++
++    CharSequence getTitle() {
++        return mPackageLabel;
++    }
++
++    Data getData(PackageManager pm)
++            throws PackageManager.NameNotFoundException, XmlPullParserException, IOException {
++        if (mData == null) {
++            mData = IconPackParser.parsePackage(pm, getResources(pm), getPackage());
++        }
++        return mData;
++    }
++
++    int getDrawableId(PackageManager pm, ComponentName name)
++            throws PackageManager.NameNotFoundException, IOException, XmlPullParserException {
++        Data data = getData(pm);
++        Resources res = getResources(pm);
++        String pkg = getPackage();
++        return res.getIdentifier(data.drawables.get(name), "drawable", pkg);
++    }
++
++    private Resources getResources(PackageManager pm) throws PackageManager.NameNotFoundException {
++        if (mRes == null) {
++            mRes = pm.getResourcesForApplication(getPackage());
++        }
++        return mRes;
++    }
++
++    static class Data {
++        final Map<ComponentName, String> drawables = new HashMap<>();
++        final Map<ComponentName, String> calendarPrefix = new HashMap<>();
++        final SparseArray<Clock> clockMetadata = new SparseArray<>();
++        final List<Integer> iconBacks = new ArrayList<>();
++        final List<Integer> iconMasks = new ArrayList<>();
++        final List<Integer> iconUpons = new ArrayList<>();
++        float scale = 1f;
++
++        boolean hasMasking() {
++            return !iconBacks.isEmpty() || !iconMasks.isEmpty() || !iconUpons.isEmpty();
++        }
++    }
++
++    static class Clock {
++        final int hourLayerIndex;
++        final int minuteLayerIndex;
++        final int secondLayerIndex;
++        final int defaultHour;
++        final int defaultMinute;
++        final int defaultSecond;
++
++        Clock(int hourLayerIndex, int minuteLayerIndex, int secondLayerIndex,
++              int defaultHour, int defaultMinute, int defaultSecond) {
++            this.hourLayerIndex = hourLayerIndex;
++            this.minuteLayerIndex = minuteLayerIndex;
++            this.secondLayerIndex = secondLayerIndex;
++            this.defaultHour = defaultHour;
++            this.defaultMinute = defaultMinute;
++            this.defaultSecond = defaultSecond;
++        }
++    }
++}
+diff --git a/src/com/android/launcher3/icons/pack/IconPackManager.java b/src/com/android/launcher3/icons/pack/IconPackManager.java
+new file mode 100644
+index 0000000..8c54880
+--- /dev/null
++++ b/src/com/android/launcher3/icons/pack/IconPackManager.java
+@@ -0,0 +1,197 @@
++package com.android.launcher3.icons.pack;
++
++import android.content.BroadcastReceiver;
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.Intent;
++import android.content.IntentFilter;
++import android.content.pm.ApplicationInfo;
++import android.content.pm.PackageManager;
++import android.content.pm.ResolveInfo;
++import android.os.Handler;
++import android.util.Log;
++
++import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
++
++import com.android.launcher3.LauncherModel;
++import com.android.launcher3.util.ComponentKey;
++
++import org.xmlpull.v1.XmlPullParserException;
++
++import java.io.IOException;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++
++import com.android.launcher3.customization.IconDatabase;
++import com.android.launcher3.util.AppReloader;
++
++public class IconPackManager extends BroadcastReceiver {
++    private static final String TAG = "IconPackManager";
++
++    private static final String[] ICON_INTENT_ACTIONS = new String[] {
++            "com.fede.launcher.THEME_ICONPACK",
++            "com.anddoes.launcher.THEME",
++            "com.novalauncher.THEME",
++            "com.teslacoilsw.launcher.THEME",
++            "com.gau.go.launcherex.theme",
++            "org.adw.launcher.THEMES",
++            "net.oneplus.launcher.icons.ACTION_PICK_ICON",
++            "org.adw.launcher.icons.ACTION_PICK_ICON"
++    };
++
++    private static final Intent[] ICON_INTENTS = new Intent[ICON_INTENT_ACTIONS.length];
++    private static IconPackManager sInstance;
++
++    static {
++        for (int i = 0; i < ICON_INTENT_ACTIONS.length; i++) {
++            ICON_INTENTS[i] = new Intent(ICON_INTENT_ACTIONS[i]);
++        }
++    }
++
++    public static synchronized IconPackManager get(Context context) {
++        if (sInstance == null) {
++            sInstance = new IconPackManager(context);
++        }
++        return sInstance;
++    }
++
++    private final Context mContext;
++    private final Map<String, IconPack> mProviders = new HashMap<>();
++    private final Handler mHandler = new Handler(MODEL_EXECUTOR.getLooper());
++
++    private IconPackManager(Context context) {
++        mContext = context;
++        reloadProviders();
++
++        IntentFilter filter = new IntentFilter();
++        filter.addDataScheme("package");
++        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
++        filter.addAction(Intent.ACTION_PACKAGE_CHANGED);
++        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
++        filter.addAction(Intent.ACTION_PACKAGE_FULLY_REMOVED);
++
++        // Called when any app has been installed, enabled, disabled, updated or deleted.
++        context.getApplicationContext().registerReceiver(this, filter, null, mHandler);
++    }
++
++    @Override
++    public void onReceive(Context context, Intent intent) {
++        if (intent.getData() != null) {
++            String pkg = intent.getData().getEncodedSchemeSpecificPart();
++            if (pkg != null) {
++                Log.d(TAG, "Received intent action " + intent.getAction() + " for " + pkg);
++                AppReloader appReloader = AppReloader.get(mContext);
++
++                // Create a list of apps that are using the changed package icon pack,
++                // either through the global setting or with an override.
++                Set<ComponentKey> updateKeys = appReloader.withIconPack(pkg);
++
++                // Remove the changed package from the providers to reload the application info.
++                mProviders.remove(pkg);
++
++                // This can reset the global preference, so do this after creating the list.
++                reloadProviders();
++
++                // Ensure all icons are up-to-date after this icon pack change.
++                // Calendar and clock information will automatically be reloaded by this call.
++                appReloader.reload(updateKeys);
++            }
++        }
++    }
++
++    private void reloadProviders() {
++        PackageManager pm = mContext.getPackageManager();
++        Set<ResolveInfo> info = new HashSet<>();
++        for (Intent intent : ICON_INTENTS) {
++            info.addAll(pm.queryIntentActivities(intent, PackageManager.GET_META_DATA));
++        }
++
++        // Remove unavailable packs
++        for (String packageName : mProviders.keySet().toArray(new String[0])) {
++            boolean foundPackageName = false;
++            for (ResolveInfo ri : info) {
++                if (ri.activityInfo.packageName.equals(packageName)) {
++                    foundPackageName = true;
++                    break;
++                }
++            }
++            if (!foundPackageName) {
++                mProviders.remove(packageName);
++            }
++        }
++
++        // Add new packs
++        for (ResolveInfo ri : info) {
++            String packageName = ri.activityInfo.packageName;
++            if (!mProviders.containsKey(packageName)) {
++                ApplicationInfo ai = ri.activityInfo.applicationInfo;
++                CharSequence label = ai.loadLabel(pm);
++                mProviders.put(packageName, new IconPack(ai, label));
++            }
++        }
++
++        String global = IconDatabase.getGlobal(mContext);
++        if (!global.isEmpty() && !mProviders.containsKey(global)) {
++            // The global icon pack has been removed, so reset it.
++            // This constraint ensures that the global icon pack is always available,
++            // even if the launcher did not receive the uninstall intent.
++            Log.e(TAG, "Resetting global icon pack because provider " + global + " was removed");
++            IconDatabase.resetGlobal(mContext);
++        }
++    }
++
++    public Map<String, CharSequence> getProviderNames() {
++        Map<String, CharSequence> providerTitles = new HashMap<>();
++        for (Map.Entry<String, IconPack> pack : mProviders.entrySet()) {
++            providerTitles.put(pack.getKey(), pack.getValue().getTitle());
++        }
++        return providerTitles;
++    }
++
++    public boolean packContainsActivity(String packPackage, ComponentName componentName) {
++        try {
++            IconPack pack = mProviders.get(packPackage);
++            IconPack.Data data = pack.getData(mContext.getPackageManager());
++            return data.drawables.containsKey(componentName);
++        } catch (PackageManager.NameNotFoundException | XmlPullParserException | IOException ignored) {
++            return false;
++        }
++    }
++
++    /**
++     * Creates a resolver that can load the icon once.
++     * This resolver should not be stored, as the resolution strategy could change when
++     * the selected icon pack in use is uninstalled or updated.
++     * @param key Component for which an icon should be extracted.
++     * @return Resolver that loads the icon, or null if there is no resolution strategy.
++     */
++    public IconResolver resolve(ComponentKey key) {
++        String packPackage = IconDatabase.getByComponent(mContext, key);
++        if (mProviders.containsKey(packPackage)) {
++            // The icon provider package is available.
++            try {
++                IconPack pack = mProviders.get(packPackage);
++                IconPack.Data data = pack.getData(mContext.getPackageManager());
++                if (data.drawables.containsKey(key.componentName)) {
++                    int drawableId = pack.getDrawableId(mContext.getPackageManager(), key.componentName);
++                    if (drawableId != 0) {
++                        return new IconResolverExternal(mContext.getPackageManager(), pack.getAi(),
++                                drawableId,
++                                data.calendarPrefix.get(key.componentName),
++                                data.clockMetadata.get(drawableId));
++                    }
++                }
++                if (data.hasMasking()) {
++                    return new IconResolverMasked(mContext, data, pack.getAi(), key.hashCode());
++                }
++            } catch (PackageManager.NameNotFoundException | XmlPullParserException | IOException ignored) {
++            }
++        } else if (!packPackage.isEmpty()) {
++            // The provider is not available, save for next time.
++            IconDatabase.resetForComponent(mContext, key);
++        }
++        return null;
++    }
++}
+diff --git a/src/com/android/launcher3/icons/pack/IconPackParser.java b/src/com/android/launcher3/icons/pack/IconPackParser.java
+new file mode 100644
+index 0000000..ef08f70
+--- /dev/null
++++ b/src/com/android/launcher3/icons/pack/IconPackParser.java
+@@ -0,0 +1,128 @@
++package com.android.launcher3.icons.pack;
++
++import android.content.ComponentName;
++import android.content.pm.PackageManager;
++import android.content.res.Resources;
++import android.content.res.XmlResourceParser;
++import android.util.Log;
++
++import org.xmlpull.v1.XmlPullParser;
++import org.xmlpull.v1.XmlPullParserException;
++
++import java.io.IOException;
++import java.util.List;
++
++class IconPackParser {
++    private static final String TAG = "IconPackParser";
++
++    static IconPack.Data parsePackage(PackageManager pm, Resources res, String pkg)
++            throws IOException, XmlPullParserException {
++        IconPack.Data iconPack = new IconPack.Data();
++
++        int resId = res.getIdentifier("appfilter", "xml", pkg);
++        if (resId != 0) {
++            XmlResourceParser parseXml = pm.getXml(pkg, resId, null);
++            while (parseXml.next() != XmlPullParser.END_DOCUMENT) {
++                if (parseXml.getEventType() == XmlPullParser.START_TAG) {
++                    switch (parseXml.getName()) {
++                        case "item":
++                            addItem(parseXml, iconPack);
++                            break;
++                        case "calendar":
++                            addCalendar(parseXml, iconPack);
++                            break;
++                        case "iconback":
++                            addImgsTo(res, pkg, parseXml, iconPack.iconBacks);
++                            break;
++                        case "iconmask":
++                            addImgsTo(res, pkg, parseXml, iconPack.iconMasks);
++                            break;
++                        case "iconupon":
++                            addImgsTo(res, pkg, parseXml, iconPack.iconUpons);
++                            break;
++                        case "scale":
++                            setScale(parseXml, iconPack);
++                            break;
++                        case "dynamic-clock":
++                            addClock(res, pkg, parseXml, iconPack);
++                            break;
++                    }
++                }
++            }
++        }
++
++        return iconPack;
++    }
++
++    private static void addItem(XmlResourceParser parseXml,
++                                IconPack.Data iconPack) {
++        String component = parseXml.getAttributeValue(null, "component");
++        String drawable = parseXml.getAttributeValue(null, "drawable");
++        if (component != null && drawable != null) {
++            ComponentName componentName = parseComponent(component);
++            if (componentName != null) {
++                iconPack.drawables.put(componentName, drawable);
++            }
++        }
++    }
++
++    private static void addCalendar(XmlResourceParser parseXml, IconPack.Data iconPack) {
++        String component = parseXml.getAttributeValue(null, "component");
++        String prefix = parseXml.getAttributeValue(null, "prefix");
++        if (component != null && prefix != null) {
++            ComponentName componentName = parseComponent(component);
++            if (componentName != null) {
++                iconPack.calendarPrefix.put(componentName, prefix);
++            }
++        }
++    }
++
++    private static ComponentName parseComponent(String component) {
++        if (component.startsWith("ComponentInfo{") && component.endsWith("}")) {
++            component = component.substring(14, component.length() - 1);
++            return ComponentName.unflattenFromString(component);
++        }
++        return null;
++    }
++
++    private static void addImgsTo(Resources res, String pkg, XmlResourceParser parseXml,
++                                  List<Integer> list) {
++        for (int i = 0; i < parseXml.getAttributeCount(); i++) {
++            if (parseXml.getAttributeName(i).startsWith("img")) {
++                int id = res.getIdentifier(parseXml.getAttributeValue(i), "drawable", pkg);
++                if (id != 0) {
++                    list.add(id);
++                }
++            }
++        }
++    }
++
++    private static void setScale(XmlResourceParser parseXml, IconPack.Data iconPack) {
++        String factor = parseXml.getAttributeValue(null, "factor");
++        if (factor != null) {
++            try {
++                // ToDo: Parse reference to dimens
++                iconPack.scale = Float.parseFloat(factor);
++            } catch (NumberFormatException e) {
++                Log.d(TAG, "Invalid scale: " + factor, e);
++            }
++        }
++    }
++
++    private static void addClock(Resources res, String pkg, XmlResourceParser parseXml,
++                                 IconPack.Data iconPack) {
++        String drawable = parseXml.getAttributeValue(null, "drawable");
++        if (drawable != null) {
++            int drawableId = res.getIdentifier(drawable, "drawable", pkg);
++            if (drawableId != 0) {
++                iconPack.clockMetadata.put(drawableId, new IconPack.Clock(
++                        parseXml.getAttributeIntValue(null, "hourLayerIndex", -1),
++                        parseXml.getAttributeIntValue(null, "minuteLayerIndex", -1),
++                        parseXml.getAttributeIntValue(null, "secondLayerIndex", -1),
++                        parseXml.getAttributeIntValue(null, "defaultHour", 0),
++                        parseXml.getAttributeIntValue(null, "defaultMinute", 0),
++                        parseXml.getAttributeIntValue(null, "defaultSecond", 0)));
++            }
++        }
++    }
++}
+diff --git a/src/com/android/launcher3/icons/pack/IconResolver.java b/src/com/android/launcher3/icons/pack/IconResolver.java
+new file mode 100644
+index 0000000..c6efdc1
+--- /dev/null
++++ b/src/com/android/launcher3/icons/pack/IconResolver.java
+@@ -0,0 +1,25 @@
++package com.android.launcher3.icons.pack;
++
++import android.graphics.drawable.Drawable;
++
++import com.android.launcher3.icons.clock.CustomClock;
++
++public interface IconResolver {
++    boolean isCalendar();
++
++    boolean isClock();
++
++    CustomClock.Metadata clockData();
++
++    /**
++     * Resolves an external icon for a given density.
++     * @param iconDpi Positive integer. If it is non-positive the full scale drawable is returned.
++     * @param fallback Method to load the drawable when resolving using the override fails.
++     * @return Loaded drawable, or fallback drawable when resolving fails.
++     */
++    Drawable getIcon(int iconDpi, DefaultDrawableProvider fallback);
++
++    interface DefaultDrawableProvider {
++        Drawable get();
++    }
++}
+diff --git a/src/com/android/launcher3/icons/pack/IconResolverExternal.java b/src/com/android/launcher3/icons/pack/IconResolverExternal.java
+new file mode 100644
+index 0000000..df6a5c1
+--- /dev/null
++++ b/src/com/android/launcher3/icons/pack/IconResolverExternal.java
+@@ -0,0 +1,85 @@
++package com.android.launcher3.icons.pack;
++
++import android.content.pm.ApplicationInfo;
++import android.content.pm.PackageManager;
++import android.content.res.Resources;
++import android.graphics.drawable.Drawable;
++
++import java.util.Calendar;
++
++import com.android.launcher3.icons.clock.CustomClock;
++
++public class IconResolverExternal implements IconResolver {
++    private final PackageManager mPm;
++    private final ApplicationInfo mPackInfo;
++    private final int mDrawableId;
++    private final String mCalendarPrefix;
++    private final IconPack.Clock mClockData;
++
++    IconResolverExternal(PackageManager pm, ApplicationInfo packInfo, int drawableId,
++                         String calendarPrefix, IconPack.Clock clockData) {
++        mPm = pm;
++        mPackInfo = packInfo;
++        mDrawableId = drawableId;
++        mCalendarPrefix = calendarPrefix;
++        mClockData = clockData;
++    }
++
++    public boolean isCalendar() {
++        return mCalendarPrefix != null;
++    }
++
++    public boolean isClock() {
++        return mClockData != null;
++    }
++
++    public CustomClock.Metadata clockData() {
++        return new CustomClock.Metadata(
++                mClockData.hourLayerIndex,
++                mClockData.minuteLayerIndex,
++                mClockData.secondLayerIndex,
++                mClockData.defaultHour,
++                mClockData.defaultMinute,
++                mClockData.defaultSecond
++        );
++    }
++
++    public Drawable getIcon(int iconDpi, DefaultDrawableProvider fallback) {
++        try {
++            Resources res = mPm.getResourcesForApplication(mPackInfo);
++
++            // First try loading the calendar.
++            if (isCalendar()) {
++                String calendarId = mCalendarPrefix + Calendar.getInstance().get(Calendar.DAY_OF_MONTH);
++                int drawableId = res.getIdentifier(calendarId, "drawable", mPackInfo.packageName);
++                if (drawableId != 0) {
++                    Drawable drawable;
++                    if (iconDpi > 0) {
++                        // Try loading with the right density
++                        drawable = res.getDrawableForDensity(drawableId, iconDpi, null);
++                        if (drawable != null) {
++                            return drawable;
++                        }
++                    }
++
++                    drawable = mPm.getDrawable(mPackInfo.packageName, drawableId, null);
++                    if (drawable != null) {
++                        return drawable;
++                    }
++                }
++            }
++
++            if (iconDpi > 0) {
++                // Fall back to mipmap loading with correct density.
++                Drawable drawable = res.getDrawableForDensity(mDrawableId, iconDpi, null);
++                if (drawable != null) {
++                    return drawable;
++                }
++            }
++        } catch (PackageManager.NameNotFoundException | Resources.NotFoundException ignored) {
++        }
++
++        // Finally, try directly returning the drawable.
++        return mPm.getDrawable(mPackInfo.packageName, mDrawableId, mPackInfo);
++    }
++}
+diff --git a/src/com/android/launcher3/icons/pack/IconResolverMasked.java b/src/com/android/launcher3/icons/pack/IconResolverMasked.java
+new file mode 100644
+index 0000000..bb672a5
+--- /dev/null
++++ b/src/com/android/launcher3/icons/pack/IconResolverMasked.java
+@@ -0,0 +1,174 @@
++package com.android.launcher3.icons.pack;
++
++import android.annotation.SuppressLint;
++import android.content.Context;
++import android.content.pm.ApplicationInfo;
++import android.content.pm.PackageManager;
++import android.content.res.Resources;
++import android.graphics.Bitmap;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Matrix;
++import android.graphics.Paint;
++import android.graphics.PorterDuff;
++import android.graphics.PorterDuffXfermode;
++import android.graphics.drawable.BitmapDrawable;
++import android.graphics.drawable.Drawable;
++
++import com.android.launcher3.icons.BaseIconFactory;
++import com.android.launcher3.icons.LauncherIcons;
++import static com.android.launcher3.icons.LauncherIcons.CONFIG_HINT_NO_WRAP;
++
++import com.android.launcher3.icons.clock.CustomClock;
++
++public class IconResolverMasked implements IconResolver {
++    private final Context mContext;
++    private final IconPack.Data mData;
++    private final ApplicationInfo mPackInfo;
++    private final int mHashCode;
++
++    private final Canvas mCanvas = new Canvas();
++    private final Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
++
++    IconResolverMasked(Context context, IconPack.Data data, ApplicationInfo packInfo,
++                       int hashCode) {
++        mContext = context;
++        mData = data;
++        mPackInfo = packInfo;
++        mHashCode = hashCode & 0xFFFF;
++    }
++
++    @Override
++    public boolean isCalendar() {
++        return false;
++    }
++
++    @Override
++    public boolean isClock() {
++        return false;
++    }
++
++    @Override
++    public CustomClock.Metadata clockData() {
++        return null;
++    }
++
++    @Override
++    public Drawable getIcon(int iconDpi, DefaultDrawableProvider fallback) {
++        Drawable icon = fallback.get();
++
++        LauncherIcons li = LauncherIcons.obtain(mContext);
++        PackageManager pm = mContext.getPackageManager();
++        try {
++            Resources res = pm.getResourcesForApplication(mPackInfo);
++
++            // Re-render without scaling after creating the bitmap in the right dimensions.
++            Bitmap iconBm = li.createScaledBitmap(icon, BaseIconFactory.MODE_WITH_SHADOW);
++            mCanvas.setBitmap(iconBm);
++            icon.setBounds(0, 0, iconBm.getWidth(), iconBm.getHeight());
++            icon.draw(mCanvas);
++
++            // Scale the bitmap using the icon pack scale.
++            scaleBitmap(iconBm, mData.scale);
++
++            // Cut parts off using the mask image.
++            if (!mData.iconMasks.isEmpty()) {
++                int iconMask = mData.iconMasks.get(mHashCode % mData.iconMasks.size());
++                maskBitmap(iconBm, res.getDrawableForDensity(iconMask, iconDpi, null));
++            }
++
++            // Add icon back after scaling.
++            if (!mData.iconBacks.isEmpty()) {
++                int iconBack = mData.iconBacks.get(mHashCode % mData.iconBacks.size());
++                backBitmap(iconBm, res.getDrawableForDensity(iconBack, iconDpi, null), li);
++            }
++
++            // Render upon image onto icon. We use SRC_ATOP to make sure it stays within bounds.
++            if (!mData.iconUpons.isEmpty()) {
++                int iconUpon = mData.iconUpons.get(mHashCode % mData.iconUpons.size());
++                uponBitmap(iconBm, res.getDrawableForDensity(iconUpon, iconDpi, null));
++            }
++
++            return new BitmapDrawable(mContext.getResources(), iconBm);
++        } catch (PackageManager.NameNotFoundException | Resources.NotFoundException e) {
++            e.printStackTrace();
++        }
++
++        li.recycle();
++        return icon;
++    }
++
++    private void scaleBitmap(Bitmap bitmap, float scale) {
++        if (scale != 1f) {
++            Bitmap iconBmScaled = Bitmap.createScaledBitmap(bitmap,
++                    (int)(bitmap.getWidth() * mData.scale),
++                    (int)(bitmap.getHeight() * mData.scale),
++                    true);
++
++            float move = 0.5f * (1f - mData.scale);
++
++            Matrix matrix = new Matrix();
++            matrix.postTranslate(move * bitmap.getWidth(), move * bitmap.getHeight());
++
++            bitmap.eraseColor(Color.TRANSPARENT);
++            mCanvas.setBitmap(bitmap);
++            mCanvas.drawBitmap(iconBmScaled, matrix, null);
++
++            iconBmScaled.recycle();
++        }
++    }
++
++    private void maskBitmap(Bitmap bitmap, Drawable mask) {
++        if (mask != null) {
++            Bitmap maskBm = Bitmap.createBitmap(
++                    bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
++
++            // Render the mask image to a bitmap.
++            mCanvas.setBitmap(maskBm);
++            mask.setBounds(0, 0, bitmap.getWidth(), bitmap.getHeight());
++            mask.draw(mCanvas);
++
++            // Then use PorterDuff to remove black mask parts.
++            mPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
++            mCanvas.setBitmap(bitmap);
++            mCanvas.drawBitmap(maskBm, 0f, 0f, mPaint);
++
++            maskBm.recycle();
++        }
++    }
++
++    @SuppressLint("WrongConstant")
++    private void backBitmap(Bitmap bitmap, Drawable back, LauncherIcons li) {
++        if (back != null) {
++            Bitmap backBm = Bitmap.createBitmap(
++                    bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
++
++            mCanvas.setBitmap(backBm);
++            back.setBounds(0, 0, bitmap.getWidth(), bitmap.getHeight());
++            back.draw(mCanvas);
++
++            mPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OVER));
++            mCanvas.setBitmap(bitmap);
++            mCanvas.drawBitmap(backBm, 0f, 0f, mPaint);
++
++            backBm.recycle();
++        }
++    }
++
++    private void uponBitmap(Bitmap bitmap, Drawable upon) {
++        if (upon != null) {
++            Bitmap uponBm = Bitmap.createBitmap(
++                    bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
++
++            mCanvas.setBitmap(uponBm);
++            upon.setBounds(0, 0, bitmap.getWidth(), bitmap.getHeight());
++            upon.draw(mCanvas);
++
++            mPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
++            mCanvas.setBitmap(bitmap);
++            mCanvas.drawBitmap(uponBm, 0f, 0f, mPaint);
++
++            uponBm.recycle();
++        }
++    }
++}
+diff --git a/src/com/android/launcher3/util/AppReloader.java b/src/com/android/launcher3/util/AppReloader.java
+new file mode 100644
+index 0000000..037adbb
+--- /dev/null
++++ b/src/com/android/launcher3/util/AppReloader.java
+@@ -0,0 +1,81 @@
++package com.android.launcher3.util;
++
++import android.content.Context;
++import android.content.pm.LauncherActivityInfo;
++import android.content.pm.ShortcutInfo;
++import android.os.UserHandle;
++
++import com.android.launcher3.LauncherAppState;
++import com.android.launcher3.LauncherModel;
++import android.content.pm.LauncherApps;
++import android.os.UserManager;
++import com.android.launcher3.util.ComponentKey;
++
++import java.util.Collection;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++
++import com.android.launcher3.customization.IconDatabase;
++
++public class AppReloader {
++    private static AppReloader sInstance;
++
++    public static synchronized AppReloader get(Context context) {
++        if (sInstance == null) {
++            sInstance = new AppReloader(context);
++        }
++        return sInstance;
++    }
++
++    private final Context mContext;
++    private final LauncherModel mModel;
++    private final UserManager mUsers;
++    private final LauncherApps mApps;
++
++    private AppReloader(Context context) {
++        mContext = context;
++        mModel = LauncherAppState.getInstance(context).getModel();
++        mUsers = context.getSystemService(UserManager.class);
++        mApps = context.getSystemService(LauncherApps.class);
++    }
++
++    public Set<ComponentKey> withIconPack(String iconPack) {
++        Set<ComponentKey> reloadKeys = new HashSet<>();
++        for (UserHandle user : mUsers.getUserProfiles()) {
++            for (LauncherActivityInfo info : mApps.getActivityList(null, user)) {
++                ComponentKey key = new ComponentKey(info.getComponentName(), info.getUser());
++                if (IconDatabase.getByComponent(mContext, key).equals(iconPack)) {
++                    reloadKeys.add(key);
++                }
++            }
++        }
++        return reloadKeys;
++    }
++
++    public void reload() {
++        for (UserHandle user : mUsers.getUserProfiles()) {
++            Set<String> pkgsSet = new HashSet<>();
++            for (LauncherActivityInfo info : mApps.getActivityList(null, user)) {
++                pkgsSet.add(info.getComponentName().getPackageName());
++            }
++            for (String pkg : pkgsSet) {
++                reload(user, pkg);
++            }
++        }
++    }
++
++    public void reload(ComponentKey key) {
++        reload(key.user, key.componentName.getPackageName());
++    }
++
++    public void reload(Collection<ComponentKey> keys) {
++        for (ComponentKey key : keys) {
++            reload(key);
++        }
++    }
++
++    private void reload(UserHandle user, String pkg) {
++        mModel.newModelCallbacks().onPackageChanged(pkg, user);
++    }
++}
+diff --git a/src/com/android/launcher3/widget/PendingAppWidgetHostView.java b/src/com/android/launcher3/widget/PendingAppWidgetHostView.java
+index 56eb074..d1718cc 100644
+--- a/src/com/android/launcher3/widget/PendingAppWidgetHostView.java
++++ b/src/com/android/launcher3/widget/PendingAppWidgetHostView.java
+@@ -54,6 +54,7 @@ import com.android.launcher3.Launcher;
+ import com.android.launcher3.LauncherAppState;
+ import com.android.launcher3.R;
+ import com.android.launcher3.icons.FastBitmapDrawable;
++import com.android.launcher3.graphics.DrawableFactory;
+ import com.android.launcher3.icons.IconCache.ItemInfoUpdateReceiver;
+ import com.android.launcher3.model.data.ItemInfoWithIcon;
+ import com.android.launcher3.model.data.LauncherAppWidgetInfo;
+@@ -304,6 +305,7 @@ public class PendingAppWidgetHostView extends LauncherAppWidgetHostView
+ 
+     @Override
+     public void reapplyItemInfo(ItemInfoWithIcon info) {
++        DrawableFactory drawableFactory = DrawableFactory.INSTANCE.get(getContext());
+         if (mCenterDrawable != null) {
+             mCenterDrawable.setCallback(null);
+             mCenterDrawable = null;
+@@ -315,12 +317,12 @@ public class PendingAppWidgetHostView extends LauncherAppWidgetHostView
+         //   2) Preload icon in the center
+         //   3) App icon in the center with a setup icon on the top left corner.
+         if (mDisabledForSafeMode) {
+-            FastBitmapDrawable disabledIcon = info.newIcon(getContext());
++            FastBitmapDrawable disabledIcon = drawableFactory.newIcon(getContext(), info);
+             disabledIcon.setDisabled(true);
+             mCenterDrawable = disabledIcon;
+             mSettingIconDrawable = null;
+         } else if (isReadyForClickSetup()) {
+-            mCenterDrawable = info.newIcon(getContext());
++            mCenterDrawable = drawableFactory.newIcon(getContext(), info);
+             mSettingIconDrawable = getResources().getDrawable(R.drawable.ic_setting).mutate();
+             updateSettingColor(info.bitmap.color);
+ 
+-- 
+2.56.0
+

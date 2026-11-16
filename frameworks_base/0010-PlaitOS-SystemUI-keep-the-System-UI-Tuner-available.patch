@@ -1,0 +1,46 @@
+From ff71e7a008666a6333886108c0cb2f8a45e37ca5 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 17:22:27 -0600
+Subject: [PATCH 10/75] PlaitOS: SystemUI: keep the System UI Tuner available
+
+Enable TunerActivity in the manifest and drop the first-boot upgrade step that disabled it,
+so Settings > System lists the System UI Tuner: hide individual status bar icons
+(icon_blacklist) and demo mode.
+---
+ packages/SystemUI/AndroidManifest.xml                         | 3 ++-
+ .../src/com/android/systemui/tuner/TunerServiceImpl.java      | 4 +---
+ 2 files changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/packages/SystemUI/AndroidManifest.xml b/packages/SystemUI/AndroidManifest.xml
+index d2a7ba046..08cad26d2 100644
+--- a/packages/SystemUI/AndroidManifest.xml
++++ b/packages/SystemUI/AndroidManifest.xml
+@@ -627,8 +627,9 @@
+             </meta-data>
+         </service>
+ 
++        <!-- PlaitOS: enabled, so Settings > System lists the System UI Tuner (status bar icons, demo mode) -->
+         <activity android:name=".tuner.TunerActivity"
+-                  android:enabled="false"
++                  android:enabled="true"
+                   android:icon="@drawable/tuner"
+                   android:theme="@style/TunerSettings"
+                   android:label="@string/system_ui_tuner"
+diff --git a/packages/SystemUI/src/com/android/systemui/tuner/TunerServiceImpl.java b/packages/SystemUI/src/com/android/systemui/tuner/TunerServiceImpl.java
+index 61235b36f..88bfcae77 100644
+--- a/packages/SystemUI/src/com/android/systemui/tuner/TunerServiceImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/tuner/TunerServiceImpl.java
+@@ -156,9 +156,7 @@ public class TunerServiceImpl extends TunerService {
+                         TextUtils.join(",", iconHideList), mCurrentUser);
+             }
+         }
+-        if (oldVersion < 2) {
+-            setTunerEnabled(false);
+-        }
++        // PlaitOS: the tuner stays available (version 2 used to disable it on first boot)
+         // 3 Removed because of a revert.
+         if (oldVersion < 4) {
+             // Delay this so that we can wait for everything to be registered first.
+-- 
+2.56.0
+

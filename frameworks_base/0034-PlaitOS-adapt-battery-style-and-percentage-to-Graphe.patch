@@ -1,0 +1,153 @@
+From ed587657abe17592d8a7167a8ca3cfd33ba28b42 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 20:59:22 -0600
+Subject: [PATCH 34/75] PlaitOS: adapt battery style and percentage to
+ GrapheneOS
+
+- Settings.System plait_status_bar_battery_style (0 = stock icon) and
+  plait_status_bar_battery_percent (0 hidden, 1 inside, 2 next to)
+  replace the LineageSettings keys
+- While plait_status_bar_battery_percent is unset, follow the stock
+  Settings > Battery > Battery percentage switch (on = inside the icon, as
+  in GrapheneOS), so that switch keeps working
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../data/repository/BatteryRepository.kt      | 68 +++++++++++++------
+ 1 file changed, 46 insertions(+), 22 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
+index 578221cc1..a274005b3 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
+@@ -21,6 +21,7 @@ import android.database.ContentObserver
+ import android.os.Handler
+ import android.os.Looper
+ import android.os.UserHandle
++import android.provider.Settings
+ import com.android.systemui.dagger.SysUISingleton
+ import com.android.systemui.dagger.qualifiers.Application
+ import com.android.systemui.dagger.qualifiers.Background
+@@ -47,7 +48,6 @@ import kotlinx.coroutines.flow.map
+ import kotlinx.coroutines.flow.scan
+ import kotlinx.coroutines.flow.stateIn
+ import kotlinx.coroutines.suspendCancellableCoroutine
+-import lineageos.providers.LineageSettings
+ 
+ /** Repository-style state for battery information. */
+ interface BatteryRepository {
+@@ -75,18 +75,23 @@ interface BatteryRepository {
+     val isStateUnknown: Flow<Boolean>
+ 
+     /**
+-     * [LineageSettings.System.STATUS_BAR_BATTERY_STYLE]. A user setting to indicate the battery
++     * [STATUS_BAR_BATTERY_STYLE] (Settings.System). A user setting to indicate the battery
+      * style in the home screen status bar
+      */
+     val batteryIconStyle: StateFlow<Int>
+ 
+     /**
+-     * [LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT]. A user setting to indicate whether
++     * [STATUS_BAR_SHOW_BATTERY_PERCENT] (Settings.System), falling back to the stock
++     * [Settings.System.SHOW_BATTERY_PERCENT] switch while unset. A user setting to indicate whether
+      * we should show the battery percentage in the home screen status bar
+      */
+     val showBatteryPercentMode: StateFlow<Int>
+ 
+     companion object {
++        /** Settings.System keys (written by Plait Settings); unset = stock GrapheneOS look. */
++        const val STATUS_BAR_BATTERY_STYLE = "plait_status_bar_battery_style"
++        const val STATUS_BAR_SHOW_BATTERY_PERCENT = "plait_status_bar_battery_percent"
++
+         const val ICON_STYLE_DEFAULT = 0
+         const val ICON_STYLE_CIRCLE = 1
+         const val ICON_STYLE_TEXT = 2
+@@ -267,15 +272,12 @@ constructor(
+     override val batteryIconStyle =
+         callbackFlow {
+                 val resolver = context.contentResolver
+-                val uri =
+-                    LineageSettings.System.getUriFor(
+-                        LineageSettings.System.STATUS_BAR_BATTERY_STYLE
+-                    )
++                val uri = Settings.System.getUriFor(BatteryRepository.STATUS_BAR_BATTERY_STYLE)
+ 
+                 fun readMode(): Int {
+-                    return LineageSettings.System.getIntForUser(
++                    return Settings.System.getIntForUser(
+                         resolver,
+-                        LineageSettings.System.STATUS_BAR_BATTERY_STYLE,
++                        BatteryRepository.STATUS_BAR_BATTERY_STYLE,
+                         BatteryRepository.ICON_STYLE_DEFAULT,
+                         UserHandle.USER_CURRENT,
+                     )
+@@ -313,31 +315,53 @@ constructor(
+                 val resolver = context.contentResolver
+                 val uris =
+                     listOf(
+-                        LineageSettings.System.getUriFor(
+-                            LineageSettings.System.STATUS_BAR_BATTERY_STYLE
+-                        ),
+-                        LineageSettings.System.getUriFor(
+-                            LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT
++                        Settings.System.getUriFor(BatteryRepository.STATUS_BAR_BATTERY_STYLE),
++                        Settings.System.getUriFor(
++                            BatteryRepository.STATUS_BAR_SHOW_BATTERY_PERCENT
+                         ),
++                        Settings.System.getUriFor(Settings.System.SHOW_BATTERY_PERCENT),
+                     )
+ 
+                 fun readMode(): Int {
+                     val iconStyle =
+-                        LineageSettings.System.getIntForUser(
++                        Settings.System.getIntForUser(
+                             resolver,
+-                            LineageSettings.System.STATUS_BAR_BATTERY_STYLE,
++                            BatteryRepository.STATUS_BAR_BATTERY_STYLE,
+                             BatteryRepository.ICON_STYLE_DEFAULT,
+                             UserHandle.USER_CURRENT,
+                         )
+                     return if (iconStyle == BatteryRepository.ICON_STYLE_TEXT) {
+                         BatteryRepository.SHOW_PERCENT_NEXT_TO
+                     } else {
+-                        LineageSettings.System.getIntForUser(
+-                            resolver,
+-                            LineageSettings.System.STATUS_BAR_SHOW_BATTERY_PERCENT,
+-                            BatteryRepository.SHOW_PERCENT_HIDDEN,
+-                            UserHandle.USER_CURRENT,
+-                        )
++                        val mode =
++                            Settings.System.getIntForUser(
++                                resolver,
++                                BatteryRepository.STATUS_BAR_SHOW_BATTERY_PERCENT,
++                                -1,
++                                UserHandle.USER_CURRENT,
++                            )
++                        if (mode >= 0) {
++                            mode
++                        } else {
++                            // Unset: follow the stock Settings > Battery percentage switch,
++                            // which shows the percentage inside the icon
++                            val stockDefault =
++                                context.resources.getBoolean(
++                                    com.android.internal.R.bool.config_defaultBatteryPercentageSetting
++                                )
++                            val stockOn =
++                                Settings.System.getIntForUser(
++                                    resolver,
++                                    Settings.System.SHOW_BATTERY_PERCENT,
++                                    if (stockDefault) 1 else 0,
++                                    UserHandle.USER_CURRENT,
++                                ) != 0
++                            if (stockOn) {
++                                BatteryRepository.SHOW_PERCENT_INSIDE
++                            } else {
++                                BatteryRepository.SHOW_PERCENT_HIDDEN
++                            }
++                        }
+                     }
+                 }
+ 
+-- 
+2.56.0
+

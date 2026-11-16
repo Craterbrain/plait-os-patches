@@ -1,0 +1,111 @@
+From fc5cd4a926adb7ce3efcbf686c6bb25ec47f3fee Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 22:08:17 -0600
+Subject: [PATCH 48/75] PlaitOS: Section 4 fixes from review
+
+- Heads-up timeout: while plait_heads_up_timeout is unset keep the stock
+  heads_up_notification_decay in milliseconds (crDroid rounds it through
+  whole seconds, which changes any overlay value that isn't a multiple of
+  1000), use it unrounded on the ambient display too, and ignore values
+  under one second so a stray 0 can't make heads-ups vanish at once
+- Quick pulldown: guard isOpenQsEvent() against mQs being null before the
+  QS fragment exists (the rest of the class checks it; LineageOS's
+  addition didn't)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../shade/QuickSettingsControllerImpl.java    | 13 ++++++++-----
+ .../headsup/HeadsUpManagerImpl.java           | 19 +++++++++++--------
+ 2 files changed, 19 insertions(+), 13 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java b/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
+index 0a8ec980d..69b125912 100644
+--- a/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
+@@ -49,6 +49,7 @@ import android.util.MathUtils;
+ import android.view.Display;
+ import android.view.MotionEvent;
+ import android.view.VelocityTracker;
++import android.view.View;
+ import android.view.ViewConfiguration;
+ import android.view.WindowInsets;
+ import android.view.WindowManager;
+@@ -637,17 +638,19 @@ public class QuickSettingsControllerImpl implements QuickSettingsController, Dum
+                         MotionEvent.BUTTON_SECONDARY) || event.isButtonPressed(
+                         MotionEvent.BUTTON_TERTIARY));
+ 
+-        final float w = mQs.getView().getMeasuredWidth();
++        boolean showQsOverride = false;
++        // PlaitOS: mQs is null until the QS fragment exists (checked everywhere else here)
++        final View qsView = mQs != null ? mQs.getView() : null;
++        final float w = qsView != null ? qsView.getMeasuredWidth() : 0;
+         final float x = event.getX();
+         float region = w * 1.f / 4.f; // TODO overlay region fraction?
+-        boolean showQsOverride = false;
+ 
+-        switch (mOneFingerQuickSettingsIntercept) {
++        switch (qsView != null ? mOneFingerQuickSettingsIntercept : 0) {
+             case 1: // Right side pulldown
+-                showQsOverride = mQs.getView().isLayoutRtl() ? x < region : w - region < x;
++                showQsOverride = qsView.isLayoutRtl() ? x < region : w - region < x;
+                 break;
+             case 2: // Left side pulldown
+-                showQsOverride = mQs.getView().isLayoutRtl() ? w - region < x : x < region;
++                showQsOverride = qsView.isLayoutRtl() ? w - region < x : x < region;
+                 break;
+             case 3: // PlaitOS: anywhere on the status bar
+                 showQsOverride = true;
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java b/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
+index dcb10aab2..78a7d0632 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/notification/headsup/HeadsUpManagerImpl.java
+@@ -129,6 +129,13 @@ public class HeadsUpManagerImpl
+     /** Settings.System key (written by Plait Settings): heads-up timeout in seconds; unset = stock. */
+     private static final String PLAIT_HEADS_UP_TIMEOUT = "plait_heads_up_timeout";
+ 
++    /** The chosen timeout in ms; unset (or under a second) keeps the stock decay exactly. */
++    private int readPlaitHeadsUpTimeout(Context context) {
++        final int seconds = Settings.System.getIntForUser(context.getContentResolver(),
++                PLAIT_HEADS_UP_TIMEOUT, -1, UserHandle.USER_CURRENT);
++        return seconds >= 1 ? seconds * 1000 : mDecayDefault;
++    }
++
+     private final int mExtensionTime;
+ 
+     // TODO(b/328393698) move the topHeadsUpRow logic to an interactor
+@@ -211,10 +218,8 @@ public class HeadsUpManagerImpl
+                 R.integer.heads_up_notification_minimum_time_for_user_initiated);
+         mStickyForSomeTimeAutoDismissTime = resources.getInteger(
+                 R.integer.sticky_heads_up_notification_time);
+-        mDecayDefault = resources.getInteger(R.integer.heads_up_notification_decay) / 1000;
+-        mAutoDismissTime = Settings.System.getIntForUser(context.getContentResolver(),
+-                PLAIT_HEADS_UP_TIMEOUT,
+-                mDecayDefault, UserHandle.USER_CURRENT) * 1000;
++        mDecayDefault = resources.getInteger(R.integer.heads_up_notification_decay);
++        mAutoDismissTime = readPlaitHeadsUpTimeout(context);
+         mExtensionTime = resources.getInteger(R.integer.ambient_notification_extension_time);
+         mTouchAcceptanceDelay = resources.getInteger(R.integer.touch_acceptance_delay);
+         mSnoozedPackages = new ArrayMap<>();
+@@ -232,9 +237,7 @@ public class HeadsUpManagerImpl
+                     mSnoozeLengthMs = packageSnoozeLengthMs;
+                     mLogger.logSnoozeLengthChange(packageSnoozeLengthMs);
+                 }
+-                mAutoDismissTime = Settings.System.getIntForUser(
+-                    context.getContentResolver(), PLAIT_HEADS_UP_TIMEOUT,
+-                    mDecayDefault, UserHandle.USER_CURRENT) * 1000;
++                mAutoDismissTime = readPlaitHeadsUpTimeout(context);
+             }
+         };
+         globalSettings.registerContentObserverAsync(
+@@ -1428,7 +1431,7 @@ public class HeadsUpManagerImpl
+             FinishTimeUpdater finishTimeCalculator = () -> {
+                 RemainingDuration remainingDuration =
+                         mAvalancheController.getDuration(this,
+-                        mDozing ? mDecayDefault * 1000 : mAutoDismissTime);
++                        mDozing ? mDecayDefault : mAutoDismissTime);
+ 
+                 if (remainingDuration instanceof RemainingDuration.HideImmediately) {
+                     if (AvalancheReplaceHunWhenCritical.isEnabled()) {
+-- 
+2.56.0
+

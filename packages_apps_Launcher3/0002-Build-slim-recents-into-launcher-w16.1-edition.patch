@@ -1,0 +1,179 @@
+From 2374563710214195e6b786d588705608f8b0a4ae Mon Sep 17 00:00:00 2001
+From: SpiritCroc <dev@spiritcroc.de>
+Date: Sat, 12 Jul 2025 16:24:09 +0200
+Subject: [PATCH 02/15] Build slim recents into launcher, w16.1 edition
+
+Change-Id: Id2b714e86e633a8f7d43d2e7c2126229c1f7fac4
+[Craterbrain: applied by hand to GrapheneOS Launcher3 (Android 17).
+ Without the slimrecent -> frameworks/opt/slimrecent symlink, as the
+ code is imported in-tree, and without the AicpGear-preference and
+ AicpGear-util libraries, which PlaitOS doesn't have.]
+Original: https://github.com/AICP/packages_apps_Launcher3/commit/e2530ecc53c27a258f21b7b286fbdbff2f87af73
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Android.bp                                    |  6 +-
+ quickstep/AndroidManifest.xml                 |  4 ++
+ .../quickstep/AicpOverviewCommandHelper.kt    | 67 +++++++++++++++++++
+ .../quickstep/OverviewCommandHelper.kt        | 11 +++
+ 4 files changed, 87 insertions(+), 1 deletion(-)
+ create mode 100644 quickstep/src/com/android/quickstep/AicpOverviewCommandHelper.kt
+
+diff --git a/Android.bp b/Android.bp
+index 80d9130..5f9af7b 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -57,6 +57,8 @@ filegroup {
+     srcs: [
+         "quickstep/src/**/*.kt",
+         "quickstep/src/**/*.java",
++        "slimrecent/src/**/*.kt",
++        "slimrecent/src/**/*.java",
+     ],
+     device_common_srcs: [
+         ":launcher-quickstep-processed-protolog-src",
+@@ -410,6 +412,7 @@ android_library {
+     srcs: [],
+     resource_dirs: [
+         "quickstep/res",
++        "slimrecent/res",
+     ],
+     libs: [
+         "framework-statsd.stubs.module_lib",
+@@ -520,6 +523,7 @@ java_defaults {
+     static_libs: [
+         "SystemUI-statsd",
+         "QuickstepResLib",
++        "androidx.cardview_cardview",
+         // Compose dep
+         "androidx.compose.runtime_runtime",
+     ],
+@@ -578,7 +582,7 @@ android_app {
+         "launcher.quickstep.protolog.pb",
+     ],
+ 
+-    resource_dirs: ["quickstep/res"],
++    resource_dirs: ["quickstep/res", "slimrecent/res"],
+ 
+     additional_manifests: [
+         "quickstep/AndroidManifest-launcher.xml",
+diff --git a/quickstep/AndroidManifest.xml b/quickstep/AndroidManifest.xml
+index 789e0a5..a148007 100644
+--- a/quickstep/AndroidManifest.xml
++++ b/quickstep/AndroidManifest.xml
+@@ -43,6 +43,10 @@
+     <uses-permission android:name="android.permission.READ_REMOTE_TASKS"/>
+     <uses-permission android:name="android.permission.REQUEST_TASK_HANDOFF"/>
+ 
++    <!-- Slim recents -->
++    <uses-permission android:name="android.permission.REORDER_TASKS" />
++    <uses-permission android:name="android.permission.FORCE_STOP_PACKAGES" />
++
+     <uses-permission android:name="android.permission.REPORT_UI_LATENCY_STATS"
+                      android:featureFlag="com.android.server.ui_latency_stats.ui_latency_stats_service" />
+     <uses-permission android:name="android.permission.SYSTEM_APPLICATION_OVERLAY" />
+diff --git a/quickstep/src/com/android/quickstep/AicpOverviewCommandHelper.kt b/quickstep/src/com/android/quickstep/AicpOverviewCommandHelper.kt
+new file mode 100644
+index 0000000..43c4bfc
+--- /dev/null
++++ b/quickstep/src/com/android/quickstep/AicpOverviewCommandHelper.kt
+@@ -0,0 +1,67 @@
++package com.android.quickstep
++
++import android.content.ContentResolver;
++import android.content.Context
++import android.database.ContentObserver
++import android.os.Handler
++import android.provider.Settings
++import com.android.systemui.slimrecent.RecentController
++
++class AicpOverviewCommandHelper(
++    val context: Context
++) {
++    private var useSlimRecents = false
++
++    private val slimRecents = RecentController().also {
++        it.onStart(context)
++    }
++
++    private val settingsObserver = object : ContentObserver(Handler()) {
++        fun observe() {
++            val resolver: ContentResolver = context.getContentResolver()
++            resolver.registerContentObserver(
++                Settings.System.getUriFor(
++                    Settings.System.USE_SLIM_RECENTS
++                ), false, this
++            )
++            update()
++        }
++
++        fun unobserve() { // TODO call onDestroy of launcher (could use lifecycleTracker?)
++            context.getContentResolver().unregisterContentObserver(this)
++        }
++
++        public override fun onChange(selfChange: Boolean) {
++            update()
++        }
++
++        fun update() {
++            val resolver = context.getContentResolver()
++
++            useSlimRecents = Settings.System.getInt(resolver, Settings.System.USE_SLIM_RECENTS, 0) == 1
++        }
++    }.also {
++        it.observe()
++    }
++
++
++    fun overrideExecuteCommand(type: OverviewCommandHelper.CommandType): Boolean {
++        if (!useSlimRecents) {
++            return false
++        }
++        return when (type) {
++            OverviewCommandHelper.CommandType.TOGGLE -> {
++                slimRecents.toggleRecentApps()
++                true
++            }
++            OverviewCommandHelper.CommandType.SHOW_ALT_TAB -> {
++                slimRecents.showRecentApps()
++                true
++            }
++            OverviewCommandHelper.CommandType.HIDE_ALT_TAB -> {
++                slimRecents.hideRecents(false)
++            }
++            else -> false
++        }
++    }
++}
+diff --git a/quickstep/src/com/android/quickstep/OverviewCommandHelper.kt b/quickstep/src/com/android/quickstep/OverviewCommandHelper.kt
+index 779d413..ee7230b 100644
+--- a/quickstep/src/com/android/quickstep/OverviewCommandHelper.kt
++++ b/quickstep/src/com/android/quickstep/OverviewCommandHelper.kt
+@@ -100,6 +100,7 @@ constructor(
+         CoroutineScope(SupervisorJob() + dispatcherProvider.lightweightBackground)
+ 
+     private val commandQueue = ConcurrentLinkedDeque<CommandInfo>()
++    private var aicpCommandHelper: AicpOverviewCommandHelper? = null
+ 
+     /**
+      * Index of the TaskView that should be focused when launching Overview. Persisted so that we do
+@@ -227,6 +228,16 @@ constructor(
+     fun executeCommand(command: CommandInfo, onCallbackResult: () -> Unit): Boolean {
+         val recentsView = getVisibleRecentsView(command.displayId)
+         OverviewCommandHelperProtoLogProxy.logExecutingCommand(command, recentsView)
++        val aicpHelper = aicpCommandHelper ?: run {
++            getContainerInterface(command.displayId)?.getCreatedContainer()?.asContext()?.let {
++                AicpOverviewCommandHelper(it.applicationContext)
++            }?.also {
++                aicpCommandHelper = it
++            }
++        }
++        if (aicpHelper?.overrideExecuteCommand(command.type) == true) {
++            return true
++        }
+         return if (recentsView != null) {
+             executeWhenRecentsIsVisible(command, recentsView, onCallbackResult)
+         } else {
+-- 
+2.56.0
+
