@@ -1,0 +1,503 @@
+From 8c219e49437176475c055bafbed6a6f271ce8276 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 17:22:20 -0600
+Subject: [PATCH 77/78] PlaitOS: plait_backup and icon pack review fixes
+
+plait_backup:
+- Restores hold the package manager's freezer (new
+  PackageManagerInternal.plaitFreezePackage) for the whole data
+  replacement, instead of a one-off force-stop: nothing can start the
+  app on half-restored data.
+- Never restore into privileged apps or system apps as shipped (data,
+  permissions, or an APK update over them); backing them up is fine.
+- Android/data, obb and media are on primary (internal) storage, not on
+  the app's volume.
+- The broker manager, its key, grant checks and the audit log are the
+  caller's own user's.
+- Uid-mode app-ops (All files access, exact alarms, ...) are backed up
+  as "Uid mode: OP: mode" lines and restored with setUidMode, under the
+  same rule as package modes.
+- APK installs: the archive must end with the end-of-archive block, the
+  rest of the stream is drained, and the unpacking must have finished
+  without errors before the session is committed.
+
+Icon packs:
+- The pack is reloaded when it was updated, or retried after a failed
+  load, checked at most once a minute (long-lived processes kept stale
+  icons until they restarted).
+- HashMap instead of ArrayMap (large appfilters took quadratic time),
+  and the parser or asset stream is closed.
+- An activity with its own icon no longer gets the pack's icon for the
+  app; only activities showing the app's icon do.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ core/java/android/app/PlaitIconPack.java      |  73 +++++++----
+ .../content/pm/PackageManagerInternal.java    |   8 ++
+ .../server/plait/PlaitBackupService.java      | 122 ++++++++++++++----
+ .../server/pm/PackageManagerInternalBase.java |   6 +
+ 4 files changed, 163 insertions(+), 46 deletions(-)
+
+diff --git a/core/java/android/app/PlaitIconPack.java b/core/java/android/app/PlaitIconPack.java
+index cd05e6679..c83317091 100644
+--- a/core/java/android/app/PlaitIconPack.java
++++ b/core/java/android/app/PlaitIconPack.java
+@@ -14,15 +14,16 @@ import android.content.pm.PackageManager;
+ import android.content.res.Resources;
+ import android.content.res.XmlResourceParser;
+ import android.graphics.drawable.Drawable;
++import android.os.SystemClock;
+ import android.provider.Settings;
+ import android.text.TextUtils;
+-import android.util.ArrayMap;
+ import android.util.Log;
+ import android.util.Xml;
+ 
+ import org.xmlpull.v1.XmlPullParser;
+ 
+ import java.io.InputStream;
++import java.util.HashMap;
+ 
+ /**
+  * PlaitOS system-wide icon packs: the app icons that apps load through the package manager
+@@ -49,9 +50,14 @@ final class PlaitIconPack {
+     // The pack loaded in this process, and its icons by component and by package
+     private static String sPack;
+     private static Resources sPackRes;
+-    private static ArrayMap<String, String> sByComponent;
+-    private static ArrayMap<String, String> sByPackage;
++    private static HashMap<String, String> sByComponent;
++    private static HashMap<String, String> sByPackage;
+     private static boolean sFailed;
++    // When the pack was loaded (uptime) and its install time then: an update, or a pack that became installed or
++    // visible after a failed load, is picked up within a minute
++    private static long sCheckedAt;
++    private static long sPackUpdated;
++    private static final long RECHECK_MS = 60_000;
+ 
+     private PlaitIconPack() {}
+ 
+@@ -69,8 +75,12 @@ final class PlaitIconPack {
+                 return null;
+             }
+             synchronized (sLock) {
++                final long now = SystemClock.uptimeMillis();
+                 if (!pack.equals(sPack)) {
+                     load(context, pack);
++                } else if (now - sCheckedAt > RECHECK_MS) {
++                    sCheckedAt = now;
++                    if (sFailed || packUpdated(context, pack) != sPackUpdated) load(context, pack);
+                 }
+                 if (sFailed) {
+                     return null;
+@@ -79,8 +89,8 @@ final class PlaitIconPack {
+                 if (item instanceof ActivityInfo) {
+                     drawable = sByComponent.get(item.packageName + "/" + item.name);
+                 }
+-                if (drawable == null) {
+-                    // The app's icon, or an activity the pack has no own icon for
++                if (drawable == null && usesAppIcon(item)) {
++                    // The app's icon, or an activity that shows the app's icon
+                     drawable = sByPackage.get(item.packageName);
+                 }
+                 if (drawable == null) {
+@@ -96,22 +106,45 @@ final class PlaitIconPack {
+         }
+     }
+ 
++    /** An activity without an icon of its own (or with the app's) gets the pack's icon for the app. */
++    private static boolean usesAppIcon(PackageItemInfo item) {
++        if (!(item instanceof ActivityInfo)) return true;
++        final ApplicationInfo app = ((ActivityInfo) item).applicationInfo;
++        return item.icon == 0 || (app != null && item.icon == app.icon);
++    }
++
++    private static long packUpdated(Context context, String pack) {
++        try {
++            return context.getPackageManager().getPackageInfo(pack, 0).lastUpdateTime;
++        } catch (PackageManager.NameNotFoundException e) {
++            return -1;
++        }
++    }
++
+     private static void load(Context context, String pack) {
+         sPack = pack;
+         sFailed = true;
+         sPackRes = null;
+-        sByComponent = new ArrayMap<>();
+-        sByPackage = new ArrayMap<>();
++        sByComponent = new HashMap<>();
++        sByPackage = new HashMap<>();
++        sCheckedAt = SystemClock.uptimeMillis();
++        sPackUpdated = packUpdated(context, pack);
+         try {
+             sPackRes = context.getPackageManager().getResourcesForApplication(pack);
+         } catch (PackageManager.NameNotFoundException e) {
+             // Not installed, or not visible to this app
+             return;
+         }
++        XmlPullParser parser = null;
++        InputStream assetIn = null;
+         try {
+-            final XmlPullParser parser = openAppFilter(sPackRes, pack);
+-            if (parser == null) {
+-                return;
++            final int id = sPackRes.getIdentifier("appfilter", "xml", pack);
++            if (id != 0) {
++                parser = sPackRes.getXml(id);
++            } else {
++                assetIn = sPackRes.getAssets().open("appfilter.xml");
++                parser = Xml.newPullParser();
++                parser.setInput(assetIn, null);
+             }
+             for (int type = parser.next(); type != XmlPullParser.END_DOCUMENT;
+                     type = parser.next()) {
+@@ -130,21 +163,17 @@ final class PlaitIconPack {
+             sFailed = sByComponent.isEmpty();
+         } catch (Exception e) {
+             Log.w(TAG, "could not read the appfilter of " + pack, e);
++        } finally {
++            if (parser instanceof XmlResourceParser) ((XmlResourceParser) parser).close();
++            if (assetIn != null) {
++                try {
++                    assetIn.close();
++                } catch (java.io.IOException ignored) {
++                }
++            }
+         }
+     }
+ 
+-    private static XmlPullParser openAppFilter(Resources res, String pack) throws Exception {
+-        final int id = res.getIdentifier("appfilter", "xml", pack);
+-        if (id != 0) {
+-            final XmlResourceParser parser = res.getXml(id);
+-            return parser;
+-        }
+-        final InputStream in = res.getAssets().open("appfilter.xml");
+-        final XmlPullParser parser = Xml.newPullParser();
+-        parser.setInput(in, null);
+-        return parser;
+-    }
+-
+     /** "ComponentInfo{package/activity}", with a relative activity name allowed. */
+     private static ComponentName parseComponent(String value) {
+         if (value == null || !value.startsWith("ComponentInfo{") || !value.endsWith("}")) {
+diff --git a/services/core/java/android/content/pm/PackageManagerInternal.java b/services/core/java/android/content/pm/PackageManagerInternal.java
+index 595494a04..5575e77ea 100644
+--- a/services/core/java/android/content/pm/PackageManagerInternal.java
++++ b/services/core/java/android/content/pm/PackageManagerInternal.java
+@@ -1629,4 +1629,12 @@ public abstract class PackageManagerInternal {
+     public abstract void destroyAppDataSnapshot(
+             String packageName, int userId, int rollbackId, int storageFlags)
+             throws Installer.InstallerException;
++
++    /**
++     * PlaitOS (plait_backup): keeps the package frozen (killed, and not restartable) until the returned object is
++     * closed, as during an install, while its data is replaced.
++     */
++    public AutoCloseable plaitFreezePackage(String packageName, @UserIdInt int userId, String reason) {
++        throw new UnsupportedOperationException();
++    }
+ }
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index 30a2bda92..b6868cf61 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -16,6 +16,7 @@ import android.content.pm.ApplicationInfo;
+ import android.content.pm.PackageInfo;
+ import android.content.pm.PackageInstaller;
+ import android.content.pm.PackageManager;
++import android.content.pm.PackageManagerInternal;
+ import android.content.pm.PermissionInfo;
+ import android.content.pm.ProviderInfo;
+ import android.content.pm.Signature;
+@@ -26,10 +27,13 @@ import android.os.Bundle;
+ import android.os.IBinder;
+ import android.os.ParcelFileDescriptor;
+ import android.os.Process;
++import android.os.ServiceManager;
+ import android.os.UserHandle;
+ import android.util.Slog;
+ 
++import com.android.internal.app.IAppOpsService;
+ import com.android.internal.plait.IPlaitBackup;
++import com.android.server.LocalServices;
+ import com.android.server.pm.Installer;
+ import com.android.server.pm.Installer.InstallerException;
+ 
+@@ -115,7 +119,7 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             if (!mContext.getSystemService(android.os.UserManager.class).isUserUnlocked(userId)) {
+                 throw new IllegalStateException("unlock the phone first (its storage is still locked)");
+             }
+-            PlaitGrant g = PlaitGrant.verify(token, managerKey());
++            PlaitGrant g = PlaitGrant.verify(token, managerKey(userId));
+             if (g == null) throw new SecurityException("grant signature is invalid");
+             if (g.uid != callingUid) throw new SecurityException("grant was issued to another uid");
+             PackageManager pm = mContext.getPackageManager();
+@@ -132,16 +136,22 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             if (pkg.equals(g.packageName) || pkg.equals(BROKER) || pkg.equals("android")) {
+                 throw new SecurityException(pkg + " is never backed up or restored (it guards backups)");
+             }
+-            if (!isActive(g.grantId)) throw new SecurityException("grant was revoked");
++            if (!isActive(g.grantId, userId)) throw new SecurityException("grant was revoked");
+             return new Call(g, pkg, userId);
+         } finally {
+             Binder.restoreCallingIdentity(ident);
+         }
+     }
+ 
++    /** The user's own context: each user has its own broker manager, key, grants and audit log. */
++    private Context userContext(int userId) {
++        return mContext.createContextAsUser(UserHandle.of(userId), 0);
++    }
++
+     /** The manager's public key; only if the provider belongs to the broker as installed in the system image. */
+-    private PublicKey managerKey() {
+-        PackageManager pm = mContext.getPackageManager();
++    private PublicKey managerKey(int userId) {
++        Context user = userContext(userId);
++        PackageManager pm = user.getPackageManager();
+         ProviderInfo pi = pm.resolveContentProvider(GRANTS, PackageManager.ComponentInfoFlags.of(0));
+         if (pi == null || !BROKER.equals(pi.packageName) || pi.applicationInfo == null) {
+             throw new SecurityException("the Plait Broker manager is not installed");
+@@ -151,7 +161,7 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+                 || (flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) {
+             throw new SecurityException("the Plait Broker manager is not the system's own");
+         }
+-        Bundle b = mContext.getContentResolver().call(GRANTS_URI, "publicKey", null, null);
++        Bundle b = user.getContentResolver().call(GRANTS_URI, "publicKey", null, null);
+         byte[] key = b == null ? null : b.getByteArray("key");
+         if (key == null) throw new SecurityException("could not read the manager's key");
+         try {
+@@ -161,8 +171,8 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }
+     }
+ 
+-    private boolean isActive(String grantId) {
+-        Bundle b = mContext.getContentResolver().call(GRANTS_URI, "check", grantId, null);
++    private boolean isActive(String grantId, int userId) {
++        Bundle b = userContext(userId).getContentResolver().call(GRANTS_URI, "check", grantId, null);
+         return b != null && b.getBoolean("active", false);
+     }
+ 
+@@ -171,7 +181,7 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         try {
+             Bundle extras = new Bundle();
+             extras.putString("what", what + " " + call.pkg);
+-            mContext.getContentResolver().call(GRANTS_URI, "used", call.grant.grantId, extras);
++            userContext(call.userId).getContentResolver().call(GRANTS_URI, "used", call.grant.grantId, extras);
+         } catch (RuntimeException e) {
+             Slog.w(TAG, "could not log the use of " + call.grant, e);
+         } finally {
+@@ -199,18 +209,39 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+ 
+     /** The installed target, which must be a real app (not one sharing a system uid). */
+     private ApplicationInfo target(Call call) {
++        return target(call, false);
++    }
++
++    /**
++     * As [target]; for restores also not a privileged app or a system app as shipped: their data feeds code that
++     * runs with more rights than the app's own, so an archive must not be able to plant files there.
++     */
++    private ApplicationInfo target(Call call, boolean forRestore) {
+         try {
+             ApplicationInfo ai = mContext.getPackageManager().getApplicationInfoAsUser(call.pkg, 0,
+                     call.userId);
+             if (UserHandle.getAppId(ai.uid) < Process.FIRST_APPLICATION_UID) {
+                 throw new SecurityException(call.pkg + " shares a system uid; never backed up or restored");
+             }
++            boolean shippedSystem = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0
++                    && (ai.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0;
++            if (forRestore && (ai.isPrivilegedApp() || shippedSystem)) {
++                throw new SecurityException(call.pkg + " is a system app; its data is never restored");
++            }
+             return ai;
+         } catch (PackageManager.NameNotFoundException e) {
+             throw new IllegalArgumentException(call.pkg + " is not installed");
+         }
+     }
+ 
++    /**
++     * CE and DE data live on the app's volume; Android/data, obb and media on primary shared storage, which is
++     * internal storage on PlaitOS devices (no adoptable primary).
++     */
++    private static String volumeFor(ApplicationInfo ai, int part) {
++        return part == PART_CE || part == PART_DE ? ai.volumeUuid : null;
++    }
++
+     private static void checkPart(int part) {
+         if (part < PART_CE || part > PART_EXT_MEDIA) {
+             throw new IllegalArgumentException("unknown part " + part);
+@@ -231,7 +262,8 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             final long ident = Binder.clearCallingIdentity();
+             try {
+                 ApplicationInfo ai = target(call);
+-                boolean written = mInstaller.plaitBackupAppData(ai.volumeUuid, call.pkg, userId, part, out);
++                boolean written = mInstaller.plaitBackupAppData(volumeFor(ai, part), call.pkg, userId, part,
++                        out);
+                 logUse(call, "backup part " + part + " of");
+                 return written;
+             } catch (InstallerException e) {
+@@ -274,6 +306,23 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             for (String p : grantedRuntimePermissions(call)) sb.append(p).append('\n');
+             sb.append("---\n");
+             AppOpsManager appOps = mContext.getSystemService(AppOpsManager.class);
++            // Uid modes first (All files access, exact alarms, ... are set per uid), each line marked, then the
++            // package modes as `appops get` prints them
++            try {
++                IAppOpsService ops = IAppOpsService.Stub.asInterface(
++                        ServiceManager.getService(Context.APP_OPS_SERVICE));
++                List<AppOpsManager.PackageOps> uidOps = ops.getUidOps(ai.uid, null);
++                if (uidOps != null) {
++                    for (AppOpsManager.PackageOps po : uidOps) {
++                        for (AppOpsManager.OpEntry op : po.getOps()) {
++                            sb.append("Uid mode: ").append(AppOpsManager.opToName(op.getOp())).append(": ")
++                                    .append(AppOpsManager.modeToName(op.getMode())).append('\n');
++                        }
++                    }
++                }
++            } catch (android.os.RemoteException e) {
++                Slog.w(TAG, "could not read the uid modes of " + call.pkg, e);
++            }
+             for (AppOpsManager.PackageOps ops : appOps.getOpsForPackage(ai.uid, call.pkg, (String[]) null)) {
+                 for (AppOpsManager.OpEntry op : ops.getOps()) {
+                     sb.append(AppOpsManager.opToName(op.getOp())).append(": ")
+@@ -324,6 +373,13 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
+             final long ident = Binder.clearCallingIdentity();
+             try {
++                // Never an update over a system app; a new install or an update of an ordinary app is fine
++                try {
++                    mContext.getPackageManager().getApplicationInfoAsUser(call.pkg, 0, call.userId);
++                    target(call, true);
++                } catch (PackageManager.NameNotFoundException notInstalled) {
++                    // not installed: nothing to protect
++                }
+                 install(call, source);
+                 logUse(call, "install APKs of");
+             } finally {
+@@ -344,12 +400,13 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }
+         final ParcelFileDescriptor readEnd = pipe[0];
+         final ParcelFileDescriptor writeEnd = pipe[1];
+-        final String[] decompressError = new String[1];
++        final java.util.concurrent.atomic.AtomicReference<String> decompressError =
++                new java.util.concurrent.atomic.AtomicReference<>();
+         Thread unpack = new Thread(() -> {
+             try {
+                 mInstaller.plaitZstdDecompress(source, writeEnd);
+             } catch (InstallerException e) {
+-                decompressError[0] = e.getMessage();
++                decompressError.set(e.getMessage());
+             } finally {
+                 closeQuietly(writeEnd);
+             }
+@@ -384,9 +441,18 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+                     }
+                     apks++;
+                 }
++                // Read to the end so installd finishes, then insist it did, without errors
++                byte[] drain = new byte[8192];
++                while (in.read(drain) >= 0) {
++                    // anything after the end of the archive is ignored
++                }
+                 unpack.join(TimeUnit.MINUTES.toMillis(INSTALL_TIMEOUT_MINUTES));
+-                if (decompressError[0] != null) {
+-                    throw new IllegalStateException("APK archive is damaged: " + decompressError[0]);
++                if (unpack.isAlive()) {
++                    unpack.interrupt();
++                    throw new IllegalStateException("the APK archive did not finish unpacking");
++                }
++                if (decompressError.get() != null) {
++                    throw new IllegalStateException("APK archive is damaged: " + decompressError.get());
+                 }
+                 if (apks == 0) throw new IllegalArgumentException("no APKs in the archive");
+                 LinkedBlockingQueue<Intent> result = new LinkedBlockingQueue<>();
+@@ -427,17 +493,21 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
+             final long ident = Binder.clearCallingIdentity();
+             try {
+-                ApplicationInfo ai = target(call);
+-                // Nothing of the app may run while its data is replaced
+-                ActivityManager.getService().forceStopPackage(call.pkg, call.userId);
++                ApplicationInfo ai = target(call, true);
+                 String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
+-                mInstaller.plaitRestoreAppData(ai.volumeUuid, call.pkg, userId, UserHandle.getAppId(ai.uid),
+-                        seInfo, part, source);
++                // Frozen, not just stopped: an alarm, job or push must not start the app on half-restored data
++                try (AutoCloseable frozen = LocalServices.getService(PackageManagerInternal.class)
++                        .plaitFreezePackage(call.pkg, call.userId, "plait_backup restore")) {
++                    mInstaller.plaitRestoreAppData(volumeFor(ai, part), call.pkg, userId,
++                            UserHandle.getAppId(ai.uid), seInfo, part, source);
++                }
+                 logUse(call, "restore part " + part + " of");
+             } catch (InstallerException e) {
+                 throw failed("restore of " + call.pkg, e);
+-            } catch (android.os.RemoteException e) {
+-                throw new IllegalStateException("could not stop " + call.pkg);
++            } catch (RuntimeException e) {
++                throw e;
++            } catch (Exception e) {
++                throw new IllegalStateException("restore of " + call.pkg + ": " + e.getMessage());
+             } finally {
+                 Binder.restoreCallingIdentity(ident);
+             }
+@@ -452,7 +522,7 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
+         final long ident = Binder.clearCallingIdentity();
+         try {
+-            ApplicationInfo ai = target(call);
++            ApplicationInfo ai = target(call, true);
+             PackageInfo info = packageInfo(call, PackageManager.GET_PERMISSIONS);
+             Set<String> requested = new HashSet<>();
+             if (info.requestedPermissions != null) requested.addAll(Arrays.asList(info.requestedPermissions));
+@@ -470,7 +540,9 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             if (ops != null && modes != null && ops.length == modes.length) {
+                 AppOpsManager appOps = mContext.getSystemService(AppOpsManager.class);
+                 for (int i = 0; i < ops.length; i++) {
+-                    int code = opCode(ops[i]);
++                    // "uid:OP" = a uid mode (see getState), else a package mode
++                    boolean uidMode = ops[i] != null && ops[i].startsWith("uid:");
++                    int code = opCode(uidMode ? ops[i].substring(4) : ops[i]);
+                     int mode = Arrays.asList(AppOpsManager.MODE_NAMES).indexOf(modes[i]);
+                     if (code < 0 || mode < 0) continue;
+                     boolean loosens = mode == AppOpsManager.MODE_ALLOWED
+@@ -478,7 +550,8 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+                     String opPerm = AppOpsManager.opToPermission(code);
+                     if (loosens && (opPerm == null || !requested.contains(opPerm))) continue;
+                     try {
+-                        appOps.setMode(code, ai.uid, call.pkg, mode);
++                        if (uidMode) appOps.setUidMode(code, ai.uid, mode);
++                        else appOps.setMode(code, ai.uid, call.pkg, mode);
+                     } catch (RuntimeException e) {
+                         Slog.w(TAG, "could not set " + ops[i] + " for " + call.pkg + ": " + e.getMessage());
+                     }
+@@ -530,7 +603,8 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+                 try {
+                     mIn.readFully(h);
+                 } catch (EOFException e) {
+-                    return null;
++                    // Only the end-of-archive block ends it: a stream that just stops is incomplete
++                    throw new IOException("the APK archive is incomplete");
+                 }
+                 boolean zero = true;
+                 for (byte b : h) if (b != 0) zero = false;
+diff --git a/services/core/java/com/android/server/pm/PackageManagerInternalBase.java b/services/core/java/com/android/server/pm/PackageManagerInternalBase.java
+index 8d56c2f99..061de33be 100644
+--- a/services/core/java/com/android/server/pm/PackageManagerInternalBase.java
++++ b/services/core/java/com/android/server/pm/PackageManagerInternalBase.java
+@@ -830,4 +830,10 @@ abstract class PackageManagerInternalBase extends PackageManagerInternal {
+     public final void shutdown() {
+         mService.shutdown();
+     }
++
++    @Override
++    public AutoCloseable plaitFreezePackage(String packageName, @UserIdInt int userId, String reason) {
++        return mService.freezePackage(packageName, userId, reason,
++                android.app.ApplicationExitInfo.REASON_OTHER, /* request= */ null);
++    }
+ }
+-- 
+2.56.0
+

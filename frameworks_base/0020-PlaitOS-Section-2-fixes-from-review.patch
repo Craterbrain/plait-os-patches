@@ -1,7 +1,7 @@
-From 2b141ed2c1b2ce8a4453e589ac5d04a4bbfacf0e Mon Sep 17 00:00:00 2001
+From 582a5998eeb9ceb09bdf89299549ade47d84dafc Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 19:31:29 -0600
-Subject: [PATCH 20/75] PlaitOS: Section 2 fixes from review
+Subject: [PATCH 20/78] PlaitOS: Section 2 fixes from review
 
 - Advanced restart: the main-user check used getCallingUserId(), which in
   SystemUI is always the system user; ask UserTracker for the current user

@@ -1,7 +1,7 @@
-From 01da67d65acfef61993e3772fcacd6f78d10324f Mon Sep 17 00:00:00 2001
+From 812424308cc7282a0b124449237293f7ff50c0b6 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 21:55:00 -0600
-Subject: [PATCH 38/75] PlaitOS: volume panel on the left edge
+Subject: [PATCH 38/78] PlaitOS: volume panel on the left edge
 
 Android 17 replaced VolumeDialogImpl (where LineageOS and crDroid had their
 left-side options) with the new volume dialog, so this is new code: with

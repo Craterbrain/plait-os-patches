@@ -1,7 +1,7 @@
-From 5cbdab88a5ca21ffb3c895da2195b8bc1bac8e38 Mon Sep 17 00:00:00 2001
+From 69e3cb2164c7681d17e2cd8b86ad3fa28160f442 Mon Sep 17 00:00:00 2001
 From: LibXZR <i@xzr.moe>
 Date: Thu, 17 Mar 2022 22:58:19 +0800
-Subject: [PATCH 21/75] base: Add support for application downgrade [1/2]
+Subject: [PATCH 21/78] base: Add support for application downgrade [1/2]
 
 Can be useful in some cases.
 
@@ -18,10 +18,10 @@ read as a string literal instead of adding Settings.Global.PM_DOWNGRADE_ALLOWED]
  1 file changed, 3 insertions(+), 2 deletions(-)
 
 diff --git a/services/core/java/com/android/server/pm/InstallPackageHelper.java b/services/core/java/com/android/server/pm/InstallPackageHelper.java
-index 7c7e9c4a0..c1e66851b 100644
+index 1c5c1c813..4dc59e956 100644
 --- a/services/core/java/com/android/server/pm/InstallPackageHelper.java
 +++ b/services/core/java/com/android/server/pm/InstallPackageHelper.java
-@@ -3092,8 +3092,9 @@ final class InstallPackageHelper {
+@@ -3096,8 +3096,9 @@ final class InstallPackageHelper {
                  // system apps case like below.
              } else if (dataOwnerPkg != null && !dataOwnerPkg.isSdkLibrary()) {
                  if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,

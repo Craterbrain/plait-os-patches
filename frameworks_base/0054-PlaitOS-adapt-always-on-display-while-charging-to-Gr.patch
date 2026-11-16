@@ -1,7 +1,7 @@
-From 832779e437038c3e7b37f7fa16894664a0390b54 Mon Sep 17 00:00:00 2001
+From 5a2600389524ca2963ea3bc823094d9c5d2c185c Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 22:13:15 -0600
-Subject: [PATCH 54/75] PlaitOS: adapt always-on display while charging to
+Subject: [PATCH 54/78] PlaitOS: adapt always-on display while charging to
  GrapheneOS
 
 - Key is Settings.Secure plait_doze_on_charge (default off) instead of a new

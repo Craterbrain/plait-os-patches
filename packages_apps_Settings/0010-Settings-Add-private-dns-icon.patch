@@ -1,7 +1,7 @@
-From 89efb510a1fb1cd2a3d7a45111d30305a183dfb7 Mon Sep 17 00:00:00 2001
+From c334fec5548ccab73159f8e4897c815a0654caa0 Mon Sep 17 00:00:00 2001
 From: penglezos <panagiotisegl@gmail.com>
 Date: Sun, 1 Oct 2023 16:02:58 +0300
-Subject: [PATCH 10/13] Settings: Add private dns icon
+Subject: [PATCH 10/14] Settings: Add private dns icon
 
 - Taken from Google's material symbols and icons
 

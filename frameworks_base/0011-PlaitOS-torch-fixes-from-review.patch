@@ -1,7 +1,7 @@
-From 12203826530f2465c293b209c2f4ebe356f612ae Mon Sep 17 00:00:00 2001
+From 3c40ab5410b8ab76c48f06b4cbb5a2f95d11bf82 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 18:22:01 -0600
-Subject: [PATCH 11/75] PlaitOS: torch fixes from review
+Subject: [PATCH 11/78] PlaitOS: torch fixes from review
 
 - A screen-off power press now always wakes the screen unless it may become the torch long
   press; before, it did not wake at all when no long-press behavior was configured

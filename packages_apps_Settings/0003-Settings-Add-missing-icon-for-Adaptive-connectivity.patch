@@ -1,7 +1,7 @@
-From 0aff7cdd6d87fbd9a8835e9ab67c504a809bee24 Mon Sep 17 00:00:00 2001
+From 81478b4963b5d5edce3fc93489670762e249dc44 Mon Sep 17 00:00:00 2001
 From: kleidione Freitas <kleidione@gmail.com>
 Date: Sat, 1 Apr 2023 16:39:03 +0530
-Subject: [PATCH 03/13] Settings: Add missing icon for Adaptive connectivity
+Subject: [PATCH 03/14] Settings: Add missing icon for Adaptive connectivity
 
 Change-Id: If51d68b298a0b4315e0c3b8c1fa8290d37116292
 Signed-off-by: kleidione <kleidione@gmail.com>

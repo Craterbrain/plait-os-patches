@@ -1,7 +1,7 @@
-From af50506a84169f1224063e3637f6153ec81f63c5 Mon Sep 17 00:00:00 2001
+From c1afc6c32b7d86ae49be0892aac10e9047719f98 Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Sat, 12 Oct 2024 14:43:50 +0530
-Subject: [PATCH 59/75] services: Start pocket mode service only if supported
+Subject: [PATCH 59/78] services: Start pocket mode service only if supported
 
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
 

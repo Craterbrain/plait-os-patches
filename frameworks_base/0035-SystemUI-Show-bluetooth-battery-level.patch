@@ -1,7 +1,7 @@
-From 0ac542f1f879073724a2626571c65614c4b694e0 Mon Sep 17 00:00:00 2001
+From 06c9d448f6a8dfc7fcc8692dff1fe689b5269079 Mon Sep 17 00:00:00 2001
 From: LuK1337 <priv.luk@gmail.com>
 Date: Wed, 31 Oct 2018 16:31:19 +0100
-Subject: [PATCH 35/75] SystemUI: Show bluetooth battery level
+Subject: [PATCH 35/78] SystemUI: Show bluetooth battery level
 
 * Somewhat inspired by change committed by Gavin Ni <gisngy@gmail.com>
   back in cm-13.0 days (see commit 88e7a6c). Since then completely

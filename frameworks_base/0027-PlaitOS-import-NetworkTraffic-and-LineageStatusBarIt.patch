@@ -1,7 +1,7 @@
-From 6917d860644959e49c02a6428afe8bf7e0746471 Mon Sep 17 00:00:00 2001
+From 4d88bc23e02ca0c9f0bbd01c88eda46acb0f5056 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 20:49:07 -0600
-Subject: [PATCH 27/75] PlaitOS: import NetworkTraffic and LineageStatusBarItem
+Subject: [PATCH 27/78] PlaitOS: import NetworkTraffic and LineageStatusBarItem
  from lineage-sdk
 
 Both live in lineage-sdk (org.lineageos.internal.statusbar), which PlaitOS

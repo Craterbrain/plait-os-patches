@@ -1,7 +1,7 @@
-From 6ecd26b2a6a1f82e2e632b0578247fef409393ff Mon Sep 17 00:00:00 2001
+From 5cb965a9cbc98e983f7662b511e0e9799a5e2a36 Mon Sep 17 00:00:00 2001
 From: LuK1337 <priv.luk@gmail.com>
 Date: Sun, 28 Dec 2025 22:49:08 +0100
-Subject: [PATCH 33/75] SystemUI: Bring back good ol' circle battery style once
+Subject: [PATCH 33/78] SystemUI: Bring back good ol' circle battery style once
  again
 
 Change-Id: I8547891db0cecfaac703a049148c666b2b9940c8

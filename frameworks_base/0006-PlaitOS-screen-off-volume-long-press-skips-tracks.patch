@@ -1,7 +1,7 @@
-From 414cacf8253be583c81e087d7c2f3d49224ecbba Mon Sep 17 00:00:00 2001
+From 05bf8439db310ca05ae31aa7bf76cef5fdc32e8d Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 17:21:18 -0600
-Subject: [PATCH 06/75] PlaitOS: screen-off volume long-press skips tracks
+Subject: [PATCH 06/78] PlaitOS: screen-off volume long-press skips tracks
 
 Port of LineageOS's volume rocker music controls: Simon Shields' PhoneWindowManager hook
 (LineageOS frameworks_base dc15f1f9ef2a, "PhoneWindowManager: add LineageButtons volumekey hook")

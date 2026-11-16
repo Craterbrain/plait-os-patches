@@ -1,7 +1,7 @@
-From 303360a86508168b4f8733c81db70c50298fef0b Mon Sep 17 00:00:00 2001
+From a9d968f60e27ef8bdc6b601b2effd73668e23289 Mon Sep 17 00:00:00 2001
 From: Lars Greiss <kufikugel@googlemail.com>
 Date: Sat, 26 Mar 2016 21:18:14 -0400
-Subject: [PATCH 39/75] HeadsUp: add timeout option (1/2)
+Subject: [PATCH 39/78] HeadsUp: add timeout option (1/2)
 
 Forward ported to marshmallow/nougat By: BeansTown106
 this was basically a rewrite as everything about it changed

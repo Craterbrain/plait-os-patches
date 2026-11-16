@@ -1,7 +1,7 @@
-From 7da5fc8be6d78c66cc7d8c22b4b1bb9ab7bb815d Mon Sep 17 00:00:00 2001
+From 2e97a7f8f5eef1a9c64730b0697b8c8ceaa1a174 Mon Sep 17 00:00:00 2001
 From: Ido Ben-Hur <idoybh2@gmail.com>
 Date: Sat, 27 Feb 2021 01:52:33 +0200
-Subject: [PATCH 49/75] base: Allow scheduling always on display [1/2]
+Subject: [PATCH 49/78] base: Allow scheduling always on display [1/2]
 
 From sunset to sunrise or at a custom time
 

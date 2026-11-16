@@ -1,7 +1,7 @@
-From 1b985e30eb012e2a8174e30442df0952245a1baf Mon Sep 17 00:00:00 2001
+From 3e212520e0c3f0277f7e2eabe5ddb7b014a568df Mon Sep 17 00:00:00 2001
 From: rmp22 <195054967+rmp22@users.noreply.github.com>
 Date: Mon, 4 Aug 2025 14:06:58 +0800
-Subject: [PATCH 02/13] Settings: Use legacy material background color
+Subject: [PATCH 02/14] Settings: Use legacy material background color
 
 Change-Id: Ibef07b33633ed7d6db40865bfbeb9a547ef2c11e
 Co-authored-by: Pranav Vashi <neobuddy89@gmail.com>

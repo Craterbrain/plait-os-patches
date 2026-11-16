@@ -1,7 +1,7 @@
-From 6cb8b96c71956a97d0a30c17f31986b0d9b29653 Mon Sep 17 00:00:00 2001
+From 2331929528db7e6dc83befbe64af4385afcb8431 Mon Sep 17 00:00:00 2001
 From: darkobas <darkobas@gmail.com>
 Date: Mon, 7 Oct 2019 20:31:48 +0200
-Subject: [PATCH 52/75] base: Add Doze-on-charge customization [1/2]
+Subject: [PATCH 52/78] base: Add Doze-on-charge customization [1/2]
 
 @idoybh edits: Adapted to A11's settings backup
 [jhonboy121]: adapt to A12 changes in DozeParameters. Also in the og commit DOZE_ALWAYS_ON was being read from System namespace instead of Secure, fixed it here. Make use of SettingsProxy utlity classes for settings / getting values

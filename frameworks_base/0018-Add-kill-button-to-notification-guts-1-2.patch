@@ -1,7 +1,7 @@
-From 9b5c1cecde36e267797a0f1d2b9d4e1dc0cc778a Mon Sep 17 00:00:00 2001
+From bc9513669a226565bdef3580f0a6f38f640c02b1 Mon Sep 17 00:00:00 2001
 From: Daniel Koman <dankoman30@gmail.com>
 Date: Tue, 27 Nov 2018 15:31:39 -0700
-Subject: [PATCH 18/75] Add kill button to notification guts [1/2]
+Subject: [PATCH 18/78] Add kill button to notification guts [1/2]
 
 Change-Id: Id2c2f3259ae2ff45ab28288375bc14148a0e9f1e
 Co-authored-by: Pranav Vashi <neobuddy89@gmail.com>

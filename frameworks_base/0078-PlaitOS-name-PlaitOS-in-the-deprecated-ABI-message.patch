@@ -1,7 +1,7 @@
-From 1d42160a3ae0edb47b144b676c7460d28a45bfa3 Mon Sep 17 00:00:00 2001
+From 93b2a3635ce02391f5c271021aa1ca136be92c15 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Mon, 16 Nov 2026 08:46:03 -0600
-Subject: [PATCH] PlaitOS: name PlaitOS in the deprecated-ABI message
+Subject: [PATCH 78/78] PlaitOS: name PlaitOS in the deprecated-ABI message
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 ---

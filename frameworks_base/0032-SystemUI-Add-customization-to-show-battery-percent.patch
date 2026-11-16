@@ -1,7 +1,7 @@
-From f59ab9627e12c907f494584da3af3787a56ef0cc Mon Sep 17 00:00:00 2001
+From 66d54fff33bbbe72dbad7d0116bbb4d3cdfab5b7 Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Sun, 14 Dec 2025 23:21:46 +0530
-Subject: [PATCH 32/75] SystemUI: Add customization to show battery percent
+Subject: [PATCH 32/78] SystemUI: Add customization to show battery percent
 
 Co-authored-by: Michael Bestas <mkbestas@lineageos.org>
 Change-Id: Ic14d30987eac9b412684db987698e224b93a8071

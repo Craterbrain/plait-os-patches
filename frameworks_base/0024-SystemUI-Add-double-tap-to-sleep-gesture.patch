@@ -1,7 +1,7 @@
-From b295fd89374badba8bcdcec0f3233b644cd834f0 Mon Sep 17 00:00:00 2001
+From 5ada8071313531988ca029efb055c43f775fbea9 Mon Sep 17 00:00:00 2001
 From: Rashed Abdel-Tawab <rashed@linux.com>
 Date: Tue, 3 Oct 2017 17:17:37 -0400
-Subject: [PATCH 24/75] SystemUI: Add double tap to sleep gesture
+Subject: [PATCH 24/78] SystemUI: Add double tap to sleep gesture
 
 Co-authored-by: Adnan Begovic <adnan@cyngn.com>
 Co-authored-by: Altaf-Mahdi <altaf.mahdi@gmail.com>

@@ -1,7 +1,7 @@
-From 17e6667f6ac3146c25993bdf522cace30a761bd4 Mon Sep 17 00:00:00 2001
+From d4d2889a6b5e017c1251d751c720158074551783 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 17:20:15 -0600
-Subject: [PATCH 04/75] PlaitOS: adapt screen-off torch to GrapheneOS
+Subject: [PATCH 04/78] PlaitOS: adapt screen-off torch to GrapheneOS
 
 - Settings come from plain Settings.System keys plait_torch_long_press_power and
   plait_torch_long_press_power_timeout (written by Plait Settings) instead of lineage-sdk

@@ -1,4 +1,4 @@
-From d3a50878f1c6a108318c69830b874c5c64e13c6d Mon Sep 17 00:00:00 2001
+From 4d7fe7d44135ede20dbcfb3c1aad873284a0a98c Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Mon, 16 Nov 2026 01:00:28 +0530
 Subject: [PATCH 14/15] Launcher3: Fix icon-pack support for recents/splash

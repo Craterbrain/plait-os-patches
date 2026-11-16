@@ -1,7 +1,7 @@
-From a27a2911d23341ab38aef6ab91ad3898c1e518ff Mon Sep 17 00:00:00 2001
+From 148dcf770c882eb729f5b404231994b13b087e43 Mon Sep 17 00:00:00 2001
 From: Abhay Singh Gill <abhaygill017@gmail.com>
 Date: Sun, 19 Jul 2026 01:47:59 +0530
-Subject: [PATCH 44/75] SystemUI: Allow to change brightness slider positioning
+Subject: [PATCH 44/78] SystemUI: Allow to change brightness slider positioning
  in new compose QS
 
 Co-authored-by: Pranav Vashi <neobuddy89@gmail.com>

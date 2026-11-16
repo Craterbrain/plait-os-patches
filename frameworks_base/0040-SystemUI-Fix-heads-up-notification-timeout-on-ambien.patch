@@ -1,7 +1,7 @@
-From 5cb2fa11c7ef429941bfbabbe82d0a4d0b254474 Mon Sep 17 00:00:00 2001
+From 80b45e4b3bdb79f4889dd0353e564e5c1a164c2f Mon Sep 17 00:00:00 2001
 From: HELLBOY017 <abhaygill017@gmail.com>
 Date: Wed, 22 Mar 2023 18:35:31 +0530
-Subject: [PATCH 40/75] SystemUI: Fix heads up notification timeout on ambient
+Subject: [PATCH 40/78] SystemUI: Fix heads up notification timeout on ambient
  display
 
 Thanks to prochy-exe for pointing it out.

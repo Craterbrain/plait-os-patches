@@ -1,7 +1,7 @@
-From d5f679f29c732860ac1bdb183c1f9d416a29953e Mon Sep 17 00:00:00 2001
+From d8f96c961b706d970fb424605e518fcb1096184b Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 18:43:48 -0600
-Subject: [PATCH 13/75] PlaitOS: adapt advanced restart to GrapheneOS
+Subject: [PATCH 13/78] PlaitOS: adapt advanced restart to GrapheneOS
 
 - Inline lineage-sdk's PowerMenuUtils.isAdvancedRestartPossible: shown only when
   Settings.Secure plait_advanced_reboot is on, for the primary user, and never while a secure

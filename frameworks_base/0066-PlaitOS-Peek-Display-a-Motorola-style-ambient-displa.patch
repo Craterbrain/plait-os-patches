@@ -1,7 +1,7 @@
-From 4d774f90e8d0ba48493b24b1bc728bfd3b6b27e2 Mon Sep 17 00:00:00 2001
+From 3a693b3b76d8f58d166f72aedc7a77547abe0483 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 22:51:45 -0600
-Subject: [PATCH 66/75] PlaitOS: Peek Display, a Motorola-style ambient display
+Subject: [PATCH 66/78] PlaitOS: Peek Display, a Motorola-style ambient display
 
 New SystemUI feature (design: plait-os docs/peek-display-design.md), off
 unless Settings.Secure plait_peek_display is 1:

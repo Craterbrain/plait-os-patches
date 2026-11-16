@@ -1,7 +1,7 @@
-From 4e8ffef69776452dd214331e04e78f52f1244d49 Mon Sep 17 00:00:00 2001
+From f9f4942ecbfe25dc78b2fa703690a3a1656781ed Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 20:42:21 -0600
-Subject: [PATCH 23/75] PlaitOS: app downgrade switch turns itself off
+Subject: [PATCH 23/78] PlaitOS: app downgrade switch turns itself off
 
 plait_pm_downgrade_allowed is meant for a one-off install, so it doesn't stay on:
 - once a downgrade gets past the version check because of it
@@ -20,7 +20,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  create mode 100644 services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java
 
 diff --git a/services/core/java/com/android/server/pm/InstallPackageHelper.java b/services/core/java/com/android/server/pm/InstallPackageHelper.java
-index ae100e065..ed38a020e 100644
+index 9629f1694..d9eb4ffdd 100644
 --- a/services/core/java/com/android/server/pm/InstallPackageHelper.java
 +++ b/services/core/java/com/android/server/pm/InstallPackageHelper.java
 @@ -245,8 +245,6 @@ final class InstallPackageHelper {
@@ -32,7 +32,7 @@ index ae100e065..ed38a020e 100644
      private final PackageAbiHelper mPackageAbiHelper;
      private final SharedLibrariesImpl mSharedLibraries;
      private final PackageManagerServiceInjector mInjector;
-@@ -3030,9 +3028,11 @@ final class InstallPackageHelper {
+@@ -3034,9 +3032,11 @@ final class InstallPackageHelper {
          String packageName = pkgLite.packageName;
          // PlaitOS: app downgrades switched on in Settings (off by default). Read before taking
          // mPm.mLock, as a settings read goes through the settings provider. System apps still
@@ -46,7 +46,7 @@ index ae100e065..ed38a020e 100644
          synchronized (mPm.mLock) {
              PackageSetting dataOwnerPs = mPm.mSettings.getPackageLPr(packageName);
              if (dataOwnerPs == null) {
-@@ -3081,6 +3081,10 @@ final class InstallPackageHelper {
+@@ -3085,6 +3085,10 @@ final class InstallPackageHelper {
              // some users. Wwe should do the downgrade check. E.g. DELETE_KEEP_DATA and
              // archived apps
              if (dataOwnerPkg == null) {
@@ -57,7 +57,7 @@ index ae100e065..ed38a020e 100644
                  if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,
                          dataOwnerPs.isDebuggable()) && !plaitDowngradeAllowed) {
                      // The data exists on some users and downgrade is not permitted; a lower
-@@ -3098,6 +3102,10 @@ final class InstallPackageHelper {
+@@ -3102,6 +3106,10 @@ final class InstallPackageHelper {
                  // dataOwnerPs.getPkg() is not null on system apps case. Don't need to consider
                  // system apps case like below.
              } else if (dataOwnerPkg != null && !dataOwnerPkg.isSdkLibrary()) {
@@ -68,7 +68,7 @@ index ae100e065..ed38a020e 100644
                  if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,
                          dataOwnerPkg.isDebuggable()) && !plaitDowngradeAllowed) {
                      // Downgrade is not permitted; a lower version of the app will not be allowed
-@@ -3134,9 +3142,32 @@ final class InstallPackageHelper {
+@@ -3138,9 +3146,32 @@ final class InstallPackageHelper {
                  }
              }
          }

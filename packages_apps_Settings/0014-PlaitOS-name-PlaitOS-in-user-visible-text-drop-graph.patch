@@ -1,7 +1,7 @@
-From c7060f60a64e6fb81d7ad89f81f95e0e4fde8803 Mon Sep 17 00:00:00 2001
+From 17f897beba14244a7f7a7c5ad9edf05824f71497 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Mon, 16 Nov 2026 08:46:03 -0600
-Subject: [PATCH] PlaitOS: name PlaitOS in user-visible text, drop
+Subject: [PATCH 14/14] PlaitOS: name PlaitOS in user-visible text, drop
  grapheneos.org links
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>

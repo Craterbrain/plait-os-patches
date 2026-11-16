@@ -1,7 +1,7 @@
-From 778236bed934496a61ec77485e9b3de93149015a Mon Sep 17 00:00:00 2001
+From 79406dcd25b33c4bb1ba9e832ede217de2a1fa5b Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Wed, 2 Oct 2024 10:44:12 +0530
-Subject: [PATCH 06/13] Settings: Add icon for WEP in wifi network settings
+Subject: [PATCH 06/14] Settings: Add icon for WEP in wifi network settings
 
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
 

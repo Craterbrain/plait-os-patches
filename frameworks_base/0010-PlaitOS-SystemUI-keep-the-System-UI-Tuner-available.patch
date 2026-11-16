@@ -1,7 +1,7 @@
-From ff71e7a008666a6333886108c0cb2f8a45e37ca5 Mon Sep 17 00:00:00 2001
+From 24c27f7365b790d206677daf70f76eec81175e1f Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 17:22:27 -0600
-Subject: [PATCH 10/75] PlaitOS: SystemUI: keep the System UI Tuner available
+Subject: [PATCH 10/78] PlaitOS: SystemUI: keep the System UI Tuner available
 
 Enable TunerActivity in the manifest and drop the first-boot upgrade step that disabled it,
 so Settings > System lists the System UI Tuner: hide individual status bar icons

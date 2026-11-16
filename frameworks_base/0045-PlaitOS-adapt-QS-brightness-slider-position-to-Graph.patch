@@ -1,7 +1,7 @@
-From 2ae04e7d9e46798c1d38c8cc2eb89f39a778a84a Mon Sep 17 00:00:00 2001
+From 6771853108949b51d1da06f2769dc57b55d5ab30 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 21:57:16 -0600
-Subject: [PATCH 45/75] PlaitOS: adapt QS brightness slider position to
+Subject: [PATCH 45/78] PlaitOS: adapt QS brightness slider position to
  GrapheneOS
 
 - Keys are Settings.Secure plait_qs_brightness_slider_position (0 top,

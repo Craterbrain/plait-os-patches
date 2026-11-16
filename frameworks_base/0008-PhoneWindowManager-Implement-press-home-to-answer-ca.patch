@@ -1,7 +1,7 @@
-From bbb3b0cb113b7cf28bba9274602c95c0e0a70f4b Mon Sep 17 00:00:00 2001
+From d5a6b6f8b04a38c0e0570382dcf210e56074da8b Mon Sep 17 00:00:00 2001
 From: Oleksandr Byelkin <sanja.byelkin@gmail.com>
 Date: Sat, 29 Dec 2012 13:00:23 +0100
-Subject: [PATCH 08/75] PhoneWindowManager: Implement press home to answer call
+Subject: [PATCH 08/78] PhoneWindowManager: Implement press home to answer call
 
 Change-Id: I7662b593f5ba52cafe3d7ba7cf2099b29b8d308b
 

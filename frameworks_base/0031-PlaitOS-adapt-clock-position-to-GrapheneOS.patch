@@ -1,7 +1,7 @@
-From 78097f49a9398dce4b3b2fa06dcab639c9427ee9 Mon Sep 17 00:00:00 2001
+From 58e63068245036055b11d27126f6ea87180ca36a Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 20:58:33 -0600
-Subject: [PATCH 31/75] PlaitOS: adapt clock position to GrapheneOS
+Subject: [PATCH 31/78] PlaitOS: adapt clock position to GrapheneOS
 
 - Position is Settings.System plait_status_bar_clock (0 right, 1 center,
   2 left; unset = left, the stock place) instead of LineageSettings
