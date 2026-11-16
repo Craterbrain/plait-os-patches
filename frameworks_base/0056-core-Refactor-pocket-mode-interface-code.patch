@@ -1,7 +1,7 @@
-From f0626a35b7af57b112bb3a8340fe4048807a871a Mon Sep 17 00:00:00 2001
+From ed7988a9df08a445e9e2bf3348a042f4121304f1 Mon Sep 17 00:00:00 2001
 From: Jyotiraditya Panda <jyotiraditya@aospa.co>
 Date: Tue, 20 Aug 2024 15:14:12 +0530
-Subject: [PATCH 56/75] core: Refactor pocket mode interface code
+Subject: [PATCH 56/78] core: Refactor pocket mode interface code
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

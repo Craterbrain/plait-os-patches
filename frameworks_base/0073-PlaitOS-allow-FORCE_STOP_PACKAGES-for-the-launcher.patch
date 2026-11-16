@@ -1,7 +1,7 @@
-From fd43d642073e1be9963ce6c693e5b8b8071f5293 Mon Sep 17 00:00:00 2001
+From f3042c2d500153b9d02bbc2813a03b66408d8427 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sun, 15 Nov 2026 10:08:59 -0600
-Subject: [PATCH 73/75] PlaitOS: allow FORCE_STOP_PACKAGES for the launcher
+Subject: [PATCH 73/78] PlaitOS: allow FORCE_STOP_PACKAGES for the launcher
 
 Slim Recents (built into Launcher3) has a "force stop" option on each
 card. FORCE_STOP_PACKAGES is signature|privileged, so the privileged

@@ -1,7 +1,7 @@
-From 10a092e8fdd7ed9925e00ef5b0cd64a5910eb55c Mon Sep 17 00:00:00 2001
+From efcc1981798ebe0141b88e46863178e78badd9a4 Mon Sep 17 00:00:00 2001
 From: Rizky Benggolo <travarilo@gmail.com>
 Date: Mon, 26 Dec 2022 23:39:38 +0700
-Subject: [PATCH 72/75] SettingsLib: Change collapsed header color to match
+Subject: [PATCH 72/78] SettingsLib: Change collapsed header color to match
  background color
 
 [neobuddy89: Updated for A15 material colors.]

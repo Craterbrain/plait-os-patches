@@ -1,4 +1,4 @@
-From a3b830df4ab8506835a3731b0f60611527c51e4d Mon Sep 17 00:00:00 2001
+From c26b556e6285e6b44b5063728ccb7cec3077c087 Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Mon, 16 Nov 2026 00:54:46 +0530
 Subject: [PATCH 13/15] Launcher3: Wire icon-pack support into app open/close

@@ -1,7 +1,7 @@
-From b5746f2c1ce6420f58ba9c25ff21624c74360cfe Mon Sep 17 00:00:00 2001
+From 304908f1cc287d6b75fb4243340d1aee3c6eac21 Mon Sep 17 00:00:00 2001
 From: Roman Birg <roman@cyngn.com>
 Date: Sun, 9 Nov 2014 19:52:34 -0800
-Subject: [PATCH 42/75] SystemUI: Add quick settings pull down with one finger
+Subject: [PATCH 42/78] SystemUI: Add quick settings pull down with one finger
 
 Logic is currently set to use 1/3 of right hand side of the statusbar to
 trigger a quick settings quick pull down, quickly.

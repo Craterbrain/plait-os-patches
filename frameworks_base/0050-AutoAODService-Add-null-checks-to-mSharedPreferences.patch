@@ -1,7 +1,7 @@
-From d2db98715f711e5a80a779818a4f37d4f0e56d73 Mon Sep 17 00:00:00 2001
+From 512b52ac7d9837c6ad09ac80c93222b07b4eb315 Mon Sep 17 00:00:00 2001
 From: minaripenguin <minaripenguin@users.noreply.github.com>
 Date: Wed, 16 Oct 2024 14:59:00 +0800
-Subject: [PATCH 50/75] AutoAODService: Add null checks to mSharedPreferences
+Subject: [PATCH 50/78] AutoAODService: Add null checks to mSharedPreferences
 
 crash:
 10-16 14:49:40.890  1663  1663 E AndroidRuntime: *** FATAL EXCEPTION IN SYSTEM PROCESS: main

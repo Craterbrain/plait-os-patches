@@ -1,7 +1,7 @@
-From 7ae8cb93c69559a38a0974736cb98c175137e994 Mon Sep 17 00:00:00 2001
+From 968025d86791bc4ba2058fbe93b42b8341d83876 Mon Sep 17 00:00:00 2001
 From: minaripenguin <minaripenguin@users.noreply.github.com>
 Date: Thu, 21 Nov 2024 13:00:07 +0800
-Subject: [PATCH 71/75] SettingsLib: Use legacy material colors for settings'
+Subject: [PATCH 71/78] SettingsLib: Use legacy material colors for settings'
  surface container
 
 * the monet engine background color changes doesnt seem to be noticeable with the latest material surface colors

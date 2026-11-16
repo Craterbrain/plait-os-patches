@@ -1,7 +1,7 @@
-From 6cb287393bd2df099767249f86ecf734a6e78015 Mon Sep 17 00:00:00 2001
+From 7b016ae4682c2f7fe61338c9758c0d0803376067 Mon Sep 17 00:00:00 2001
 From: ReallySnow <reallysnow233@gmail.com>
 Date: Thu, 19 Jan 2023 09:01:45 +0800
-Subject: [PATCH 04/13] Settings: Add missing icon for media output
+Subject: [PATCH 04/14] Settings: Add missing icon for media output
 
 Change-Id: Id4ac89dba079ab46dcb7d97cca7b2c4c8f9fb612
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>

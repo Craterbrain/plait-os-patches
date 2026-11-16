@@ -1,4 +1,4 @@
-From eecbb0aaceb7297a676e0a1cb037fc68cc80a150 Mon Sep 17 00:00:00 2001
+From 0c6bed932d308165796c4a0d017c8b2d6c4a944b Mon Sep 17 00:00:00 2001
 From: Amir Zaidi <azaidi@live.nl>
 Date: Sat, 11 Jan 2020 13:55:58 +0100
 Subject: [PATCH 05/15] Launcher3: Add Icon Pack Support from Shade Launcher

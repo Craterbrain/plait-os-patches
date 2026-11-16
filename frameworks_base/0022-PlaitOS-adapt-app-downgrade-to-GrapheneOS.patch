@@ -1,7 +1,7 @@
-From 6d713edb6223d3012b42cfdc7df1068419a30c28 Mon Sep 17 00:00:00 2001
+From 4bcef4ed4abd22eb2fb75378d7207544ec8bb635 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 20:39:59 -0600
-Subject: [PATCH 22/75] PlaitOS: adapt app downgrade to GrapheneOS
+Subject: [PATCH 22/78] PlaitOS: adapt app downgrade to GrapheneOS
 
 - Key is Settings.Global plait_pm_downgrade_allowed (default 0 = stock),
   written by the PlaitOS page in Settings
@@ -19,7 +19,7 @@ Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
  1 file changed, 10 insertions(+), 4 deletions(-)
 
 diff --git a/services/core/java/com/android/server/pm/InstallPackageHelper.java b/services/core/java/com/android/server/pm/InstallPackageHelper.java
-index c1e66851b..ae100e065 100644
+index 4dc59e956..9629f1694 100644
 --- a/services/core/java/com/android/server/pm/InstallPackageHelper.java
 +++ b/services/core/java/com/android/server/pm/InstallPackageHelper.java
 @@ -245,6 +245,8 @@ final class InstallPackageHelper {
@@ -31,7 +31,7 @@ index c1e66851b..ae100e065 100644
      private final PackageAbiHelper mPackageAbiHelper;
      private final SharedLibrariesImpl mSharedLibraries;
      private final PackageManagerServiceInjector mInjector;
-@@ -3026,6 +3028,11 @@ final class InstallPackageHelper {
+@@ -3030,6 +3032,11 @@ final class InstallPackageHelper {
          }
  
          String packageName = pkgLite.packageName;
@@ -43,7 +43,7 @@ index c1e66851b..ae100e065 100644
          synchronized (mPm.mLock) {
              PackageSetting dataOwnerPs = mPm.mSettings.getPackageLPr(packageName);
              if (dataOwnerPs == null) {
-@@ -3075,7 +3082,7 @@ final class InstallPackageHelper {
+@@ -3079,7 +3086,7 @@ final class InstallPackageHelper {
              // archived apps
              if (dataOwnerPkg == null) {
                  if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,
@@ -52,7 +52,7 @@ index c1e66851b..ae100e065 100644
                      // The data exists on some users and downgrade is not permitted; a lower
                      // version of the app will not be allowed.
                      try {
-@@ -3092,9 +3099,8 @@ final class InstallPackageHelper {
+@@ -3096,9 +3103,8 @@ final class InstallPackageHelper {
                  // system apps case like below.
              } else if (dataOwnerPkg != null && !dataOwnerPkg.isSdkLibrary()) {
                  if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,

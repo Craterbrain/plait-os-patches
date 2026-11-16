@@ -1,7 +1,7 @@
-From 7a19c5678be75f4218f49e4e2a1e50203f4f9f44 Mon Sep 17 00:00:00 2001
+From 697e525d3bc98b7128352912037c4a40c9bfe27b Mon Sep 17 00:00:00 2001
 From: Fabian Leutenegger <fabian.leutenegger@bluewin.ch>
 Date: Wed, 7 Aug 2024 15:10:15 +0200
-Subject: [PATCH 58/75] base: Ensure pocket sensor is wakeup
+Subject: [PATCH 58/78] base: Ensure pocket sensor is wakeup
 
 Change-Id: I2784c23ad456e1ce5b042e5cc31f919f6b5a5436
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>

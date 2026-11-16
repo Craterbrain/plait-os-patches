@@ -1,7 +1,7 @@
-From 640514cd1f15bc438711ba868f5b7d22112b4679 Mon Sep 17 00:00:00 2001
+From 94951eb77555a5a8b1b0ce9c655c4b11c1944d4f Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 21:29:02 -0600
-Subject: [PATCH 36/75] PlaitOS: slide on the status bar to change brightness
+Subject: [PATCH 36/78] PlaitOS: slide on the status bar to change brightness
 
 Port of crDroid's status bar brightness control as it stands after its
 fixes (crDroid frameworks_base 16.0):

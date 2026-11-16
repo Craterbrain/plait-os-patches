@@ -1,7 +1,7 @@
-From 6da29957b38248431a2b51e6c1768dff4eba39f6 Mon Sep 17 00:00:00 2001
+From 274f8d6a976aa9a331ecba3de19939daba297dab Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 22:40:11 -0600
-Subject: [PATCH 65/75] PlaitOS: Smart Pixels dialog uses Android 17's
+Subject: [PATCH 65/78] PlaitOS: Smart Pixels dialog uses Android 17's
  AlertDialogContent
 
 AlertDialogContent moved from com.android.systemui.dialog.ui.composable to

@@ -1,7 +1,7 @@
-From 0c95680b0997d387b92c97b33307620f3d5e89cc Mon Sep 17 00:00:00 2001
+From f40412fc3193ce0aac4a32f968d25aeae41a5021 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 18:44:42 -0600
-Subject: [PATCH 15/75] PlaitOS: adapt power menu customizations to GrapheneOS
+Subject: [PATCH 15/78] PlaitOS: adapt power menu customizations to GrapheneOS
 
 The entries come from Settings.Secure plait_power_menu_actions ("|"-separated config keys,
 written by Plait Settings) instead of lineage-sdk's LineageGlobalActions. Unset means

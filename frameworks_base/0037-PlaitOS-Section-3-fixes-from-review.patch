@@ -1,7 +1,7 @@
-From 374750c61ffe20cd5a698d8b560c5a85d9dd8112 Mon Sep 17 00:00:00 2001
+From 28b400e4a1dd9d8b8ced3f682aec881affa5e71d Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 21:35:29 -0600
-Subject: [PATCH 37/75] PlaitOS: Section 3 fixes from review
+Subject: [PATCH 37/78] PlaitOS: Section 3 fixes from review
 
 - Battery percentage: keep GrapheneOS's Quick Settings header (always the
   percentage plus the time-left estimate, shade-blur text color) and lock

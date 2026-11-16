@@ -1,4 +1,4 @@
-From 2ce81f12e79056e09d36b39a5705fbabc8447ae9 Mon Sep 17 00:00:00 2001
+From 3ad28271a0e005973226fdeb3b34b43a0064d45a Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Tue, 29 Jul 2025 23:24:01 +0530
 Subject: [PATCH 06/15] Launcher3: Preserve icon provider constructors

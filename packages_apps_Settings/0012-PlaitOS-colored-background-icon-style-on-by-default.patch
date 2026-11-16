@@ -1,7 +1,7 @@
-From ba6f6b827776aab7364ec09cfbe7abaeb9804312 Mon Sep 17 00:00:00 2001
+From 2adbf740e83a69712a2a582491ea2046c5f5d090 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sun, 15 Nov 2026 09:46:36 -0600
-Subject: [PATCH 12/13] PlaitOS: colored-background icon style on by default
+Subject: [PATCH 12/14] PlaitOS: colored-background icon style on by default
 
 The PlaitOS look (colored background, white icon, circle) is the default
 Settings icon style; "Material expressive (stock)" is still one of the

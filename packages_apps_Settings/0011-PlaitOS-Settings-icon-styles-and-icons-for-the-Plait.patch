@@ -1,7 +1,7 @@
-From bf48a332f6d0cf0d4f52e88fa0b912296fcf57a6 Mon Sep 17 00:00:00 2001
+From 59a3335a56879c8d1982c30f5e367062d4302330 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sun, 15 Nov 2026 09:40:27 -0600
-Subject: [PATCH 11/13] PlaitOS: Settings icon styles and icons for the PlaitOS
+Subject: [PATCH 11/14] PlaitOS: Settings icon styles and icons for the PlaitOS
  rows
 
 - PlaitIconStyler (new code, inspired by crDroid's "Settings style"

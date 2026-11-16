@@ -1,7 +1,7 @@
-From 1e066a35b48bd68be67a549a50beff370260fcb7 Mon Sep 17 00:00:00 2001
+From b99d5ac55c7474b8ebda65f48c66e2c05f322c2a Mon Sep 17 00:00:00 2001
 From: Gegham Zakaryan <zakaryan.2004@outlook.com>
 Date: Mon, 29 Mar 2021 21:59:00 +0400
-Subject: [PATCH 14/75] frameworks: Add more power menu customizations
+Subject: [PATCH 14/78] frameworks: Add more power menu customizations
 
 * Forward-port the rest of power menu customizations (airplane mode,
   screenshot, lockdown, bugreport, user switcher).

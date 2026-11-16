@@ -1,7 +1,7 @@
-From 152968fab4e7d4ba586e592caf34fe2e011f6ca3 Mon Sep 17 00:00:00 2001
+From 815c1cf17608f45904bef333f49cf6031054fb28 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 23:00:51 -0600
-Subject: [PATCH 67/75] PlaitOS: Peek Display fixes from review
+Subject: [PATCH 67/78] PlaitOS: Peek Display fixes from review
 
 - Wake from doze before opening a notification, as a tap on a pulsing
   notification does (NotificationClicker.wakeUpIfDozing); otherwise the

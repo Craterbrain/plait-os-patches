@@ -1,7 +1,7 @@
-From b98e8317fd8cbd219ce071b9773ce1469d9957b3 Mon Sep 17 00:00:00 2001
+From 37941d0a9c45d98d4ac84018653e54b93fc1d3dd Mon Sep 17 00:00:00 2001
 From: Michael Bestas <mkbestas@lineageos.org>
 Date: Sun, 21 Jan 2018 00:22:10 +0200
-Subject: [PATCH 12/75] frameworks: Add support for advanced restart options
+Subject: [PATCH 12/78] frameworks: Add support for advanced restart options
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -1347,10 +1347,10 @@ index 7f4846909..470498910 100644
              });
          } finally {
 diff --git a/services/core/java/com/android/server/wm/WindowManagerService.java b/services/core/java/com/android/server/wm/WindowManagerService.java
-index 13fc85386..4e7cdaec9 100644
+index ea99d989a..4d121bac4 100644
 --- a/services/core/java/com/android/server/wm/WindowManagerService.java
 +++ b/services/core/java/com/android/server/wm/WindowManagerService.java
-@@ -4159,6 +4159,14 @@ public class WindowManagerService extends IWindowManager.Stub
+@@ -4160,6 +4160,14 @@ public class WindowManagerService extends IWindowManager.Stub
                  PowerManager.SHUTDOWN_USER_REQUESTED, confirm);
      }
  

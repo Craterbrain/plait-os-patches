@@ -1,7 +1,7 @@
-From 4812419483f7ecb10229b433e5fb370b26a3d6b7 Mon Sep 17 00:00:00 2001
+From 3609df0e5233818e9668fe9c30c664538eec77b8 Mon Sep 17 00:00:00 2001
 From: beanstown106 <nbenis106@gmail.com>
 Date: Sun, 17 Jan 2016 09:14:19 -0500
-Subject: [PATCH 03/75] Long-press power while display is off for torch
+Subject: [PATCH 03/78] Long-press power while display is off for torch
 
 Long-press the power button while the display is off
 to turn the torchlight on and off.

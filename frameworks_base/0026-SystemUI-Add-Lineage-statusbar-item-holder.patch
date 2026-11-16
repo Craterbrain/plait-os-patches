@@ -1,7 +1,7 @@
-From 3c3c38ef5bba6c404b78c100a278222bc5532ec0 Mon Sep 17 00:00:00 2001
+From 5622964573c1160d702487cc38475272aecce267 Mon Sep 17 00:00:00 2001
 From: Sam Mortimer <sam@mortimer.me.uk>
 Date: Tue, 9 Jan 2018 22:16:48 -0800
-Subject: [PATCH 26/75] SystemUI: Add Lineage statusbar item holder
+Subject: [PATCH 26/78] SystemUI: Add Lineage statusbar item holder
 
 *) To be used as a layout to hold one or more lineage-sdk status bar
    feature classes.

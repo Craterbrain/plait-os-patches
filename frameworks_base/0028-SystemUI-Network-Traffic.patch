@@ -1,7 +1,7 @@
-From 0002eb31155e4b5bfcd20de6069e5462476a2260 Mon Sep 17 00:00:00 2001
+From e63230dfe96b420d191bc62b750bcda63658f4c6 Mon Sep 17 00:00:00 2001
 From: Sam Mortimer <sam@mortimer.me.uk>
 Date: Sun, 8 Feb 2026 19:28:34 -0500
-Subject: [PATCH 28/75] SystemUI: Network Traffic
+Subject: [PATCH 28/78] SystemUI: Network Traffic
 
 Co-authored-by: Bruno Martins <bgcngm@gmail.com>
 Co-authored-by: LuK1337 <priv.luk@gmail.com>

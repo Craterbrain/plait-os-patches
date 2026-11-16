@@ -1,7 +1,7 @@
-From 4aa772095b1472cc71c30bb9622a6dc776099824 Mon Sep 17 00:00:00 2001
+From c84b4ba4b3d4f23d63963a14cbdd3974215718e9 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 22:00:51 -0600
-Subject: [PATCH 47/75] PlaitOS: adapt QS tile layout to GrapheneOS
+Subject: [PATCH 47/78] PlaitOS: adapt QS tile layout to GrapheneOS
 
 The column and row counts read plain Settings.System plait_qs_tiles_* and
 plait_qqs_tiles_* keys (PlaitQsLayoutSettings) instead of new Settings API

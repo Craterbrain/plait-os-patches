@@ -1,7 +1,7 @@
-From a0cf44e1e75f66daa211d6c8648e97a383ccf8a3 Mon Sep 17 00:00:00 2001
+From 461ea74963c7ba46f47a3c9ed5002f228c09feba Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sun, 15 Nov 2026 10:10:13 -0600
-Subject: [PATCH 13/13] PlaitOS: Slim Recents settings
+Subject: [PATCH 13/14] PlaitOS: Slim Recents settings
 
 A Slim Recents page (on/off, panel side, screenshots, apps shown, panel
 width, free memory, and how to use it), linked from the PlaitOS rows of

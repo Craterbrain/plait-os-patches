@@ -1,7 +1,7 @@
-From c5f463a9fe31e00d74cbed7cbd4cc49cc4e1472a Mon Sep 17 00:00:00 2001
+From ef205ab5be5e127c5ed213220b26521cf0d3b572 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 22:16:49 -0600
-Subject: [PATCH 62/75] PlaitOS: adapt pocket lock to GrapheneOS
+Subject: [PATCH 62/78] PlaitOS: adapt pocket lock to GrapheneOS
 
 - Switch is Settings.System plait_pocket_judge (default off, as in crDroid),
   observed for all users, instead of a new Settings API constant

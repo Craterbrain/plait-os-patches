@@ -1,7 +1,7 @@
-From 860f7d06f4bde8066353e5c2d7d949c8cbfc50d4 Mon Sep 17 00:00:00 2001
+From 4f257c51fa4489d1a33f296e97e657bb22058e2f Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 19:21:41 -0600
-Subject: [PATCH 19/75] PlaitOS: adapt notification kill button to GrapheneOS
+Subject: [PATCH 19/78] PlaitOS: adapt notification kill button to GrapheneOS
 
 Read the switch from a plain Settings.System key, plait_notification_kill_app_button
 (default off, written by Plait Settings), instead of a new Settings API

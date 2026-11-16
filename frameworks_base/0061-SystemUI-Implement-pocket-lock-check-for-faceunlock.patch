@@ -1,7 +1,7 @@
-From b395d05579d31adaa2b5d020b1f3d2a65ba3451d Mon Sep 17 00:00:00 2001
+From ba445b3945d8b4c7c533300b577d9ec83e465aa1 Mon Sep 17 00:00:00 2001
 From: Fabian Leutenegger <fabian.leutenegger@bluewin.ch>
 Date: Tue, 14 Jan 2025 09:20:06 +0100
-Subject: [PATCH 61/75] SystemUI: Implement pocket lock check for faceunlock
+Subject: [PATCH 61/78] SystemUI: Implement pocket lock check for faceunlock
 
 Change-Id: I36007db4e07ffb927192871edcf5bd6a3f99ed5a
 Signed-off-by: Dmitrii <bankersenator@gmail.com>

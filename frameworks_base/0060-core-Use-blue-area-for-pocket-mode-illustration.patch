@@ -1,7 +1,7 @@
-From 72e25244a08ad866287d4d6556edd161a992d013 Mon Sep 17 00:00:00 2001
+From 4a49c43c4dc8007c54060a886c174d4cd839b219 Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Sat, 12 Oct 2024 18:36:01 +0530
-Subject: [PATCH 60/75] core: Use blue area for pocket mode illustration
+Subject: [PATCH 60/78] core: Use blue area for pocket mode illustration
 
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
 

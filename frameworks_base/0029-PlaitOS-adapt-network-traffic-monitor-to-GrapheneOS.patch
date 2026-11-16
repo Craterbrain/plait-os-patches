@@ -1,7 +1,7 @@
-From b7122940957884c1e4a2416955f91fabb8e0a9b1 Mon Sep 17 00:00:00 2001
+From 180478becdf1628f0ae726e9163532dbe5531b24 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 20:49:50 -0600
-Subject: [PATCH 29/75] PlaitOS: adapt network traffic monitor to GrapheneOS
+Subject: [PATCH 29/78] PlaitOS: adapt network traffic monitor to GrapheneOS
 
 - Layout and transitions use com.android.systemui.statusbar.NetworkTraffic
 - Settings are plain Settings.Secure plait_network_traffic_* keys, read for

@@ -1,7 +1,7 @@
-From 4b62b32aece96ff7108c5a5ab8bc09a6fabb385b Mon Sep 17 00:00:00 2001
+From 51fa789693bfbf625dcba159bcfc2a5e21d79b42 Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Sat, 1 Apr 2023 13:30:59 +0530
-Subject: [PATCH 53/75] Doze-on-charge: Add few improvements and fixes
+Subject: [PATCH 53/78] Doze-on-charge: Add few improvements and fixes
 
 * Update detection logic when device is plugged in and is charging.
 * Fix issue in PowerManagerService - mIsPowered is updated dynamically and

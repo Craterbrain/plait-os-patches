@@ -1,0 +1,104 @@
+From be0aef0eaf250aaccbab55d0091ba2c0a89caed7 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 17:22:20 -0600
+Subject: [PATCH 3/3] installd: PlaitOS backup streams time out when the other
+ side stalls
+
+A caller that stops reading or writing (crashed, frozen) could keep an
+installd binder thread and the package lock waiting forever. The stream
+fds are non-blocking now and every wait is a poll with a 2 minute limit
+without progress; then the stream fails.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ cmds/installd/PlaitBackup.cpp | 34 +++++++++++++++++++++++++++++++++-
+ 1 file changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/cmds/installd/PlaitBackup.cpp b/cmds/installd/PlaitBackup.cpp
+index a88b80d..3221a2a 100644
+--- a/cmds/installd/PlaitBackup.cpp
++++ b/cmds/installd/PlaitBackup.cpp
+@@ -8,6 +8,7 @@
+ #include <dirent.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#include <poll.h>
+ #include <pthread.h>
+ #include <signal.h>
+ #include <string.h>
+@@ -64,10 +65,30 @@ class ScopedSigpipeBlock {
+     sigset_t mOld;
+ };
+ 
++// A stream that makes no progress for this long is abandoned, so a caller that stopped reading or writing can't
++// keep installd (and the package lock) waiting forever
++constexpr int kStallMs = 120 * 1000;
++
++bool waitFor(int fd, short events) {
++    struct pollfd p = {fd, events, 0};
++    int r = TEMP_FAILURE_RETRY(poll(&p, 1, kStallMs));
++    return r > 0 && (p.revents & events) != 0;
++}
++
++// The stream fds are switched to non-blocking, so every wait goes through waitFor's timeout
++void setNonBlocking(int fd) {
++    int flags = fcntl(fd, F_GETFL);
++    if (flags >= 0) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
++}
++
+ bool writeAll(int fd, const void* data, size_t size) {
+     const char* p = static_cast<const char*>(data);
+     while (size > 0) {
+         ssize_t n = TEMP_FAILURE_RETRY(write(fd, p, size));
++        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
++            if (!waitFor(fd, POLLOUT)) return false;
++            continue;
++        }
+         if (n <= 0) return false;
+         p += n;
+         size -= n;
+@@ -80,6 +101,7 @@ bool writeAll(int fd, const void* data, size_t size) {
+ class ZstdOut {
+   public:
+     explicit ZstdOut(int fd) : mFd(fd), mCtx(ZSTD_createCCtx()), mBuf(ZSTD_CStreamOutSize()) {
++        setNonBlocking(fd);
+         ZSTD_CCtx_setParameter(mCtx, ZSTD_c_compressionLevel, kZstdLevel);
+     }
+     ~ZstdOut() { ZSTD_freeCCtx(mCtx); }
+@@ -107,7 +129,9 @@ class ZstdOut {
+ class ZstdIn {
+   public:
+     explicit ZstdIn(int fd)
+-        : mFd(fd), mCtx(ZSTD_createDCtx()), mIn(ZSTD_DStreamInSize()), mOut(ZSTD_DStreamOutSize()) {}
++        : mFd(fd), mCtx(ZSTD_createDCtx()), mIn(ZSTD_DStreamInSize()), mOut(ZSTD_DStreamOutSize()) {
++        setNonBlocking(fd);
++    }
+     ~ZstdIn() { ZSTD_freeDCtx(mCtx); }
+ 
+     // Fills exactly size bytes; false at the end of the stream or on an error (see failed()).
+@@ -151,6 +175,13 @@ class ZstdIn {
+             // Only read more input once zstd has nothing left to flush from what it already has
+             if (mInBuf.pos == mInBuf.size && !mMayHaveOutput) {
+                 ssize_t n = TEMP_FAILURE_RETRY(read(mFd, mIn.data(), mIn.size()));
++                if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
++                    if (!waitFor(mFd, POLLIN)) {
++                        mFailed = true;  // stalled
++                        return false;
++                    }
++                    continue;
++                }
+                 if (n < 0) {
+                     mFailed = true;
+                     return false;
+@@ -782,6 +813,7 @@ int zstdDecompress(int inFd, int outFd, std::string* err) {
+     ZstdIn z(inFd);
+     std::vector<char> buf(kChunk);
+     ScopedSigpipeBlock noSigpipe;
++    setNonBlocking(outFd);
+     while (true) {
+         size_t got = z.readSome(buf.data(), buf.size());
+         if (got == 0) break;
+-- 
+2.56.0
+

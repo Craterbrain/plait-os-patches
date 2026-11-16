@@ -1,7 +1,7 @@
-From db227b68dd98c631bee3dba1211a2da8c4fbcfb6 Mon Sep 17 00:00:00 2001
+From 541394e1ba90f38726e6b319195d584342c2c890 Mon Sep 17 00:00:00 2001
 From: ShevT <evgeny.shishkov@gmail.com>
 Date: Tue, 21 Nov 2023 10:42:26 +0300
-Subject: [PATCH 08/13] Settings: Add icon for WiFi -> Install certificates
+Subject: [PATCH 08/14] Settings: Add icon for WiFi -> Install certificates
 
 [PlaitOS: ported from crDroid packages_apps_Settings 16.0]
 ---

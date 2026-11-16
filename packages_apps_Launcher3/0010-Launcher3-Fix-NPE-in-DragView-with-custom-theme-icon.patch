@@ -1,4 +1,4 @@
-From b62cd9f766e0060b4a7d5d96f91baae8841b9214 Mon Sep 17 00:00:00 2001
+From b7828eeec34a664922a2d0111f6a8b08da5b682f Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Mon, 2 Feb 2026 22:41:52 +0530
 Subject: [PATCH 10/15] Launcher3: Fix NPE in DragView with custom theme icon

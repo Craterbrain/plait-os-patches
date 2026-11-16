@@ -1,7 +1,7 @@
-From 8d8b8782e70838cdd9f190a156a0fdfe2f38110a Mon Sep 17 00:00:00 2001
+From 3f3892b4bc1b56fe4aa832706a71d02eeb9c5810 Mon Sep 17 00:00:00 2001
 From: rmp22 <195054967+rmp22@users.noreply.github.com>
 Date: Mon, 9 Mar 2026 08:08:43 +0800
-Subject: [PATCH 63/75] SystemUI: Add smart pixels support
+Subject: [PATCH 63/78] SystemUI: Add smart pixels support
 
 Change-Id: I003b0ef78309bbf18f0c7bf3d877102108f9931f
 Co-authored-by: Saikrishna1504 <saikrishna26918@gmail.com>

@@ -1,7 +1,7 @@
-From 5b9842a9ff70ff460b99f4d32393a8bb8ffb2ad9 Mon Sep 17 00:00:00 2001
+From 1c06d464ce483917a6323ca71d23385bff1c74e7 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 21:55:47 -0600
-Subject: [PATCH 41/75] PlaitOS: adapt heads-up timeout to GrapheneOS
+Subject: [PATCH 41/78] PlaitOS: adapt heads-up timeout to GrapheneOS
 
 - Key is Settings.System plait_heads_up_timeout (seconds; unset = the stock
   heads_up_notification_decay) instead of a new Settings API constant

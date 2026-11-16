@@ -1,7 +1,7 @@
-From d30be8b363faa943d777a41e1603e0090cab03ba Mon Sep 17 00:00:00 2001
+From ba9dd94480edb0e1d5ce67f9afb679cd0f9caa0a Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 17:18:11 -0600
-Subject: [PATCH 02/75] PlaitOS: BackupManager off by default without Seedvault
+Subject: [PATCH 02/78] PlaitOS: BackupManager off by default without Seedvault
 
 Seedvault is removed; Plait Backup does not use the BackupManager service.
 ---

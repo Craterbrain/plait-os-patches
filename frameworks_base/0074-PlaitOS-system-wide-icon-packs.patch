@@ -1,7 +1,7 @@
-From 0a80255ac3905a36cb7bddc4fc74587122bbdf87 Mon Sep 17 00:00:00 2001
+From 1d1f29024b2d004f57e9cbaaa81a65b0eae45b17 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sun, 15 Nov 2026 14:51:10 -0600
-Subject: [PATCH 74/75] PlaitOS: system-wide icon packs
+Subject: [PATCH 74/78] PlaitOS: system-wide icon packs
 
 App and activity icons loaded through the package manager (loadIcon,
 getApplicationIcon, getActivityIcon, IconDrawableFactory) come from the
@@ -22,24 +22,26 @@ Global Icon Pack (an Xposed module); no code from it is used.
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
- .../app/ApplicationPackageManager.java        |   6 +-
+ .../app/ApplicationPackageManager.java        |   8 +-
  core/java/android/app/PlaitIconPack.java      | 156 ++++++++++++++++++
- 2 files changed, 161 insertions(+), 1 deletion(-)
+ 2 files changed, 162 insertions(+), 2 deletions(-)
  create mode 100644 core/java/android/app/PlaitIconPack.java
 
 diff --git a/core/java/android/app/ApplicationPackageManager.java b/core/java/android/app/ApplicationPackageManager.java
-index b1f0fc042..76687a889 100644
+index f0dda5e82..28e2361a1 100644
 --- a/core/java/android/app/ApplicationPackageManager.java
 +++ b/core/java/android/app/ApplicationPackageManager.java
-@@ -3611,7 +3611,11 @@ public class ApplicationPackageManager extends PackageManager {
+@@ -3623,8 +3623,12 @@ public class ApplicationPackageManager extends PackageManager {
              if (itemInfo.isArchived) {
                  dr = getArchivedAppIcon(itemInfo.packageName);
              } else {
--                dr = getDrawable(itemInfo.packageName, itemInfo.icon, appInfo);
+-                dr = getDrawableInternal(
+-                        itemInfo.packageName, itemInfo.icon, appInfo, /* isIcon= */ true);
 +                // PlaitOS: the system-wide icon pack's icon, if it has one for this app
 +                dr = PlaitIconPack.loadIcon(mContext, itemInfo);
 +                if (dr == null) {
-+                    dr = getDrawable(itemInfo.packageName, itemInfo.icon, appInfo);
++                    dr = getDrawableInternal(
++                            itemInfo.packageName, itemInfo.icon, appInfo, /* isIcon= */ true);
 +                }
              }
          }

@@ -1,7 +1,7 @@
-From 38bfb1ec086c19da1760d580b8f7ed77e2ef8414 Mon Sep 17 00:00:00 2001
+From d698194841950ec7d2edc12877e9564dee3dcd26 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 22:18:54 -0600
-Subject: [PATCH 64/75] PlaitOS: adapt Smart Pixels to GrapheneOS
+Subject: [PATCH 64/78] PlaitOS: adapt Smart Pixels to GrapheneOS
 
 - Keys are Settings.Secure plait_smart_pixel_filter_enabled (default off)
   and plait_smart_pixel_filter_percent instead of new Settings API constants

@@ -1,7 +1,7 @@
-From 433a766cb20da841d68818cce53f74a6b66acabf Mon Sep 17 00:00:00 2001
+From 0af5a88c1f285fc76b5909886c98d2137b4dd8bc Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Sun, 28 Aug 2022 14:25:01 +0530
-Subject: [PATCH 46/75] SystemUI: Add QS tile layout settings [1/2]
+Subject: [PATCH 46/78] SystemUI: Add QS tile layout settings [1/2]
 
 * Updated for A16 QS Refactor + Split shade layout.
 * Renamed settings since we want to reset this for A15 -> A16 upgrade users.

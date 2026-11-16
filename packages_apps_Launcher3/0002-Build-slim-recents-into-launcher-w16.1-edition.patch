@@ -1,4 +1,4 @@
-From 2374563710214195e6b786d588705608f8b0a4ae Mon Sep 17 00:00:00 2001
+From fdeaaff4b07d92d1c67742225b3bda3e4bc9fc06 Mon Sep 17 00:00:00 2001
 From: SpiritCroc <dev@spiritcroc.de>
 Date: Sat, 12 Jul 2025 16:24:09 +0200
 Subject: [PATCH 02/15] Build slim recents into launcher, w16.1 edition
@@ -21,7 +21,7 @@ Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
  create mode 100644 quickstep/src/com/android/quickstep/AicpOverviewCommandHelper.kt
 
 diff --git a/Android.bp b/Android.bp
-index 80d9130..5f9af7b 100644
+index 3c4b25d..23bce00 100644
 --- a/Android.bp
 +++ b/Android.bp
 @@ -57,6 +57,8 @@ filegroup {

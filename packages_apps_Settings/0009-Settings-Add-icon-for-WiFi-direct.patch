@@ -1,7 +1,7 @@
-From f0ee8325de50bb640ed651167889b01870a1f6b8 Mon Sep 17 00:00:00 2001
+From 3b57284230cfc63793600ef5a0d4e7d864baacca Mon Sep 17 00:00:00 2001
 From: ShevT <evgeny.shishkov@gmail.com>
 Date: Tue, 21 Nov 2023 10:45:31 +0300
-Subject: [PATCH 09/13] Settings: Add icon for 'WiFi direct'
+Subject: [PATCH 09/14] Settings: Add icon for 'WiFi direct'
 
 [PlaitOS: ported from crDroid packages_apps_Settings 16.0]
 ---

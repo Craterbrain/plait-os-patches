@@ -1,7 +1,7 @@
-From b75d6f1c8fdd005d1aa6baa05266a3791ce3c15c Mon Sep 17 00:00:00 2001
+From 34563351d9b7c0008a6aae1d93c45d181ff7b77d Mon Sep 17 00:00:00 2001
 From: Pranav Vashi <neobuddy89@gmail.com>
 Date: Sun, 26 Nov 2023 19:05:34 +0530
-Subject: [PATCH 05/13] Settings: Add icon for emergency broadcasts
+Subject: [PATCH 05/14] Settings: Add icon for emergency broadcasts
 
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
 

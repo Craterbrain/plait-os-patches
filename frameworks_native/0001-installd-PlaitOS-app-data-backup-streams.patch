@@ -1,7 +1,7 @@
-From fc6ee3abfe7dc7a5fdf025aea41e1eb0fe9ebf73 Mon Sep 17 00:00:00 2001
+From 2b71882a72327daf1da2c44215dd074175c692a0 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sun, 15 Nov 2026 16:02:37 -0600
-Subject: [PATCH] installd: PlaitOS app data backup streams
+Subject: [PATCH 1/3] installd: PlaitOS app data backup streams
 
 For PlaitOS's plait_backup service in system_server (Plait Backup, the
 app with Android-DataBackup's UI): stream an app's data out as

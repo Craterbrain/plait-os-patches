@@ -1,7 +1,7 @@
-From 0dc3c4c8e7a55c35fc7f3f9b742a2cc1042b9a70 Mon Sep 17 00:00:00 2001
+From 7c9e9da87da9fc6883587c04a762d53110b8a9e0 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 23:32:12 -0600
-Subject: [PATCH 69/75] PlaitOS: long-press recents action; pocket mode on by
+Subject: [PATCH 69/78] PlaitOS: long-press recents action; pocket mode on by
  default
 
 - 3-button navigation: a long press on recents runs the action chosen in

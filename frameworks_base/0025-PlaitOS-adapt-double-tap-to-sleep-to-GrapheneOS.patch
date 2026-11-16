@@ -1,7 +1,7 @@
-From d1ac3a1a60608de7b41d1c616e49b210d7438aa0 Mon Sep 17 00:00:00 2001
+From 723d15ca20d35d7ead05f41e0fb3c8d99b37a5c4 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 20:47:27 -0600
-Subject: [PATCH 25/75] PlaitOS: adapt double tap to sleep to GrapheneOS
+Subject: [PATCH 25/78] PlaitOS: adapt double tap to sleep to GrapheneOS
 
 - Switch is Settings.System plait_double_tap_to_sleep (default off), read
   for the current user on the double tap itself instead of through two

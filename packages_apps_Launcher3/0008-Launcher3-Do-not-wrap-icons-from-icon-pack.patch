@@ -1,4 +1,4 @@
-From d83b10664f29d2429ccd193b97a6031c49504436 Mon Sep 17 00:00:00 2001
+From c2f1178d2c0352691b832561ef0fe1c232ea1acf Mon Sep 17 00:00:00 2001
 From: Adithya R <gh0strider.2k18.reborn@gmail.com>
 Date: Wed, 13 Aug 2025 22:17:18 +0530
 Subject: [PATCH 08/15] Launcher3: Do not wrap icons from icon pack

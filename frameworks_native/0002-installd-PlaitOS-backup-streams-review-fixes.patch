@@ -1,0 +1,425 @@
+From f35ab0506d9b475fe02f17a1751fcbc7e7a62754 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 17:12:33 -0600
+Subject: [PATCH 2/3] installd: PlaitOS backup streams, review fixes
+
+- zstd reader: drain output zstd still holds before reading more input,
+  and treat the end of input inside a frame as a damaged archive.
+- Restores need the end-of-archive blocks (a truncated tar is an error).
+- Restores extract into <pkg>/.plait_restore and only replace the app's
+  data once the whole archive arrived intact; a failed restore leaves
+  the old data as it was. The app's dir (and its inode) stays.
+- Backups open files with O_NONBLOCK and fstat the opened fd, so a file
+  swapped for a FIFO can't hang installd.
+- Directory depth limit (128) and one fd per level while walking.
+- Restored directories keep setgid (never setuid).
+- APK backups also from adopted storage (/mnt/expand/<uuid>/app).
+- One copy buffer per stream; the extractor reuses the last parent dir.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ cmds/installd/InstalldNativeService.cpp |  12 +-
+ cmds/installd/PlaitBackup.cpp           | 185 ++++++++++++++++++------
+ 2 files changed, 151 insertions(+), 46 deletions(-)
+
+diff --git a/cmds/installd/InstalldNativeService.cpp b/cmds/installd/InstalldNativeService.cpp
+index 4dc5199..c3ccd3d 100644
+--- a/cmds/installd/InstalldNativeService.cpp
++++ b/cmds/installd/InstalldNativeService.cpp
+@@ -2149,10 +2149,16 @@ binder::Status InstalldNativeService::plaitRestoreAppData(const std::optional<st
+ binder::Status InstalldNativeService::plaitBackupApks(const std::string& codePath,
+         const android::os::ParcelFileDescriptor& out) {
+     ENFORCE_UID(AID_SYSTEM);
+-    // An installed app's code dir only
++    // An installed app's code dir only: internal storage or an adopted volume
+     char real[PATH_MAX];
+-    if (realpath(codePath.c_str(), real) == nullptr ||
+-        !android::base::StartsWith(std::string(real), "/data/app/")) {
++    if (realpath(codePath.c_str(), real) == nullptr) {
++        return error("not an app code dir: " + codePath);
++    }
++    const std::string path(real);
++    const bool internal = android::base::StartsWith(path, "/data/app/");
++    const bool adopted = android::base::StartsWith(path, "/mnt/expand/") &&
++            path.find("/app/") != std::string::npos;
++    if (!internal && !adopted) {
+         return error("not an app code dir: " + codePath);
+     }
+     std::string err;
+diff --git a/cmds/installd/PlaitBackup.cpp b/cmds/installd/PlaitBackup.cpp
+index 2f4f16e..a88b80d 100644
+--- a/cmds/installd/PlaitBackup.cpp
++++ b/cmds/installd/PlaitBackup.cpp
+@@ -148,13 +148,18 @@ class ZstdIn {
+   private:
+     bool refill() {
+         while (true) {
+-            if (mInBuf.pos == mInBuf.size) {
++            // Only read more input once zstd has nothing left to flush from what it already has
++            if (mInBuf.pos == mInBuf.size && !mMayHaveOutput) {
+                 ssize_t n = TEMP_FAILURE_RETRY(read(mFd, mIn.data(), mIn.size()));
+                 if (n < 0) {
+                     mFailed = true;
+                     return false;
+                 }
+-                if (n == 0) return false;
++                if (n == 0) {
++                    // A clean end only after a complete frame; anything else is a truncated archive
++                    if (!mFrameDone) mFailed = true;
++                    return false;
++                }
+                 mInBuf = {mIn.data(), static_cast<size_t>(n), 0};
+             }
+             ZSTD_outBuffer out = {mOut.data(), mOut.size(), 0};
+@@ -163,6 +168,9 @@ class ZstdIn {
+                 mFailed = true;
+                 return false;
+             }
++            mFrameDone = r == 0;
++            // A full output buffer means zstd may hold more decoded data for the same input
++            mMayHaveOutput = out.pos == out.size;
+             if (out.pos > 0) {
+                 mOutPos = 0;
+                 mOutEnd = out.pos;
+@@ -179,6 +187,8 @@ class ZstdIn {
+     size_t mOutPos = 0;
+     size_t mOutEnd = 0;
+     bool mFailed = false;
++    bool mFrameDone = false;
++    bool mMayHaveOutput = false;
+ };
+ 
+ // ---- tar writer (GNU format: ustar header, long names in ././@LongLink entries) ----
+@@ -229,6 +239,9 @@ class TarOut {
+ 
+     bool data(const void* d, size_t n) { return mZ->write(d, n); }
+ 
++    // One copy buffer for the whole archive
++    std::vector<char>& buffer() { return mBuf; }
++
+     bool pad(uint64_t size) {
+         static const char zeros[kBlock] = {};
+         size_t rem = size % kBlock;
+@@ -249,27 +262,35 @@ class TarOut {
+     }
+ 
+     ZstdOut* mZ;
++    std::vector<char> mBuf = std::vector<char>(kChunk);
+ };
+ 
+ bool isCacheName(const char* n) {
+     return strcmp(n, "cache") == 0 || strcmp(n, "code_cache") == 0;
+ }
+ 
+-int writeFile(TarOut* tar, int dirFd, const char* leaf, const std::string& path, const struct stat& st,
+-              std::string* err) {
+-    unique_fd fd(openat(dirFd, leaf, O_RDONLY | O_NOFOLLOW | O_CLOEXEC));
++constexpr int kMaxDepth = 128;
++
++int writeFile(TarOut* tar, int dirFd, const char* leaf, const std::string& path, std::string* err) {
++    // O_NONBLOCK: if the app swapped the file for a FIFO since it was listed, the open must not hang installd;
++    // the fstat of the opened fd (not the earlier listing) decides what it is
++    unique_fd fd(openat(dirFd, leaf, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC));
+     if (fd < 0) {
+         // Files that vanish while the app is running are skipped, not fatal
+         if (errno == ENOENT) return 0;
+         *err = StringPrintf("open %s: %s", path.c_str(), strerror(errno));
+         return -errno;
+     }
++    struct stat st;
++    if (fstat(fd.get(), &st) != 0) return -errno;
++    if (!S_ISREG(st.st_mode)) return 0;
++    if (fcntl(fd.get(), F_SETFL, 0) != 0) return -errno;
+     uint64_t size = st.st_size;
+     if (!tar->header(path, '0', st.st_mode, size, st.st_mtime)) return -EIO;
+-    std::vector<char> buf(kChunk);
++    std::vector<char>& buf = tar->buffer();
+     uint64_t done = 0;
+     while (done < size) {
+-        ssize_t n = TEMP_FAILURE_RETRY(read(fd.get(), buf.data(), std::min<uint64_t>(kChunk, size - done)));
++        ssize_t n = TEMP_FAILURE_RETRY(read(fd.get(), buf.data(), std::min<uint64_t>(buf.size(), size - done)));
+         if (n < 0) {
+             *err = StringPrintf("read %s: %s", path.c_str(), strerror(errno));
+             return -errno;
+@@ -277,7 +298,7 @@ int writeFile(TarOut* tar, int dirFd, const char* leaf, const std::string& path,
+         if (n == 0) {
+             // Shrunk while reading: pad to the size in the header
+             std::fill(buf.begin(), buf.end(), 0);
+-            n = std::min<uint64_t>(kChunk, size - done);
++            n = std::min<uint64_t>(buf.size(), size - done);
+         }
+         if (!tar->data(buf.data(), n)) return -EIO;
+         done += n;
+@@ -285,19 +306,26 @@ int writeFile(TarOut* tar, int dirFd, const char* leaf, const std::string& path,
+     return tar->pad(size) ? 0 : -EIO;
+ }
+ 
+-int walk(TarOut* tar, int dirFd, const std::string& rel, bool skipCachesHere, std::string* err) {
+-    int dupFd = fcntl(dirFd, F_DUPFD_CLOEXEC, 0);
+-    if (dupFd < 0) return -errno;
+-    std::unique_ptr<DIR, decltype(&closedir)> dir(fdopendir(dupFd), closedir);
+-    if (!dir) {
+-        close(dupFd);
+-        return -errno;
++int walk(TarOut* tar, int dirFd, const std::string& rel, bool skipCachesHere, int depth, std::string* err) {
++    if (depth > kMaxDepth) {
++        *err = "directories nested deeper than " + std::to_string(kMaxDepth) + " levels at " + rel.substr(0, 200);
++        return -ELOOP;
+     }
+     std::vector<std::string> names;
+-    while (struct dirent* de = readdir(dir.get())) {
+-        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+-        if (skipCachesHere && isCacheName(de->d_name)) continue;
+-        names.emplace_back(de->d_name);
++    {
++        int dupFd = fcntl(dirFd, F_DUPFD_CLOEXEC, 0);
++        if (dupFd < 0) return -errno;
++        std::unique_ptr<DIR, decltype(&closedir)> dir(fdopendir(dupFd), closedir);
++        if (!dir) {
++            close(dupFd);
++            return -errno;
++        }
++        while (struct dirent* de = readdir(dir.get())) {
++            if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
++            if (skipCachesHere && isCacheName(de->d_name)) continue;
++            names.emplace_back(de->d_name);
++        }
++        // The DIR closes here, before going deeper: one fd per level, not two
+     }
+     std::sort(names.begin(), names.end());
+     for (const auto& n : names) {
+@@ -309,16 +337,15 @@ int walk(TarOut* tar, int dirFd, const std::string& rel, bool skipCachesHere, st
+             unique_fd child(openat(dirFd, n.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+             if (child < 0) continue;
+             if (!tar->header(path + "/", '5', st.st_mode, 0, st.st_mtime)) return -EIO;
+-            r = walk(tar, child.get(), path, false, err);
++            r = walk(tar, child.get(), path, false, depth + 1, err);
+         } else if (S_ISREG(st.st_mode)) {
+-            r = writeFile(tar, dirFd, n.c_str(), path, st, err);
++            r = writeFile(tar, dirFd, n.c_str(), path, err);
+         } else if (S_ISLNK(st.st_mode)) {
+-            char target[kMaxPath];
+-            ssize_t len = readlinkat(dirFd, n.c_str(), target, sizeof(target) - 1);
++            std::string target(kMaxPath, '\0');
++            ssize_t len = readlinkat(dirFd, n.c_str(), target.data(), target.size() - 1);
+             if (len < 0) continue;
+-            if (!tar->header(path, '2', st.st_mode, 0, st.st_mtime, std::string(target, len))) {
+-                return -EIO;
+-            }
++            target.resize(len);
++            if (!tar->header(path, '2', st.st_mode, 0, st.st_mtime, target)) return -EIO;
+         }
+         // Sockets, fifos and device nodes are runtime state, never part of a backup
+         if (r != 0) return r;
+@@ -405,11 +432,19 @@ class Extractor {
+         : mRoot(rootFd), mUid(uid), mGid(gid), mNewDirMode(newDirMode) {}
+ 
+     // An fd for the directory holding parts[1..n-1]'s last element, creating missing dirs; -1 on error.
++    // Archives list a directory's files together, so the last parent is kept open for the next entry.
+     unique_fd parentOf(const std::vector<std::string>& parts) {
++        std::string key;
++        for (size_t i = 1; i + 1 < parts.size(); i++) key += parts[i] + "/";
++        if (mCachedFd >= 0 && key == mCachedKey) return unique_fd(fcntl(mCachedFd.get(), F_DUPFD_CLOEXEC, 0));
+         unique_fd cur(fcntl(mRoot, F_DUPFD_CLOEXEC, 0));
+         for (size_t i = 1; i + 1 < parts.size() && cur >= 0; i++) {
+             cur = openDir(cur.get(), parts[i]);
+         }
++        if (cur >= 0) {
++            mCachedKey = key;
++            mCachedFd.reset(fcntl(cur.get(), F_DUPFD_CLOEXEC, 0));
++        }
+         return cur;
+     }
+ 
+@@ -437,9 +472,26 @@ class Extractor {
+     uid_t mUid;
+     gid_t mGid;
+     mode_t mNewDirMode;
++    std::string mCachedKey;
++    unique_fd mCachedFd;
+ };
+ 
+-// Deletes everything in the dir except (when skipCaches) its cache and code_cache.
++// Restores are extracted here (inside the app's own dir, so the dir and its inode stay) and only moved into
++// place once the whole archive has arrived intact.
++constexpr const char* kStage = ".plait_restore";
++
++void removeStage(int rootFd) {
++    struct stat st;
++    if (fstatat(rootFd, kStage, &st, AT_SYMLINK_NOFOLLOW) != 0) return;
++    if (S_ISDIR(st.st_mode)) {
++        delete_dir_contents_fd(rootFd, kStage);
++        unlinkat(rootFd, kStage, AT_REMOVEDIR);
++    } else {
++        unlinkat(rootFd, kStage, 0);
++    }
++}
++
++// Deletes everything in the dir except (when skipCaches) its cache and code_cache, and the staging dir.
+ int clearTree(int rootFd, bool skipCaches) {
+     int dupFd = fcntl(rootFd, F_DUPFD_CLOEXEC, 0);
+     if (dupFd < 0) return -errno;
+@@ -452,6 +504,7 @@ int clearTree(int rootFd, bool skipCaches) {
+     while (struct dirent* de = readdir(dir.get())) {
+         if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+         if (skipCaches && isCacheName(de->d_name)) continue;
++        if (strcmp(de->d_name, kStage) == 0) continue;
+         struct stat st;
+         if (fstatat(rootFd, de->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) continue;
+         entries.emplace_back(de->d_name, S_ISDIR(st.st_mode));
+@@ -481,7 +534,7 @@ int writeTreeTarZst(int outFd, const std::string& parent, const std::string& nam
+     ZstdOut z(outFd);
+     TarOut tar(&z);
+     if (!tar.header(name + "/", '5', st.st_mode, 0, st.st_mtime)) return -EIO;
+-    int r = walk(&tar, root.get(), name, skipCaches, err);
++    int r = walk(&tar, root.get(), name, skipCaches, 0, err);
+     if (r != 0) return r;
+     if (!tar.end() || !z.finish()) {
+         *err = "write failed (reader gone?)";
+@@ -516,9 +569,7 @@ int writeApksTarZst(int outFd, const std::string& dir, std::string* err) {
+     ZstdOut z(outFd);
+     TarOut tar(&z);
+     for (const auto& n : apks) {
+-        struct stat st;
+-        if (fstatat(dirFd.get(), n.c_str(), &st, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISREG(st.st_mode)) continue;
+-        int r = writeFile(&tar, dirFd.get(), n.c_str(), n, st, err);
++        int r = writeFile(&tar, dirFd.get(), n.c_str(), n, err);
+         if (r != 0) return r;
+     }
+     if (!tar.end() || !z.finish()) {
+@@ -528,6 +579,9 @@ int writeApksTarZst(int outFd, const std::string& dir, std::string* err) {
+     return 0;
+ }
+ 
++static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, uid_t uid, gid_t gid,
++                          bool skipCaches, mode_t* rootMode, std::string* err);
++
+ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
+                       mode_t newDirMode, bool skipCaches, std::string* err) {
+     unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+@@ -541,13 +595,55 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+         *err = StringPrintf("open %s/%s: %s", parent.c_str(), name.c_str(), strerror(errno));
+         return -EIO;
+     }
+-    // Only the app's own dir is ever opened from here on
+-    ex.mRoot = root.get();
+-    if (int r = clearTree(root.get(), skipCaches); r != 0) {
+-        *err = "could not clear the old data";
++    // Extract into the staging dir; the app's current data stays untouched until the archive is complete
++    removeStage(root.get());
++    unique_fd stage = ex.openDir(root.get(), kStage);
++    if (stage < 0) {
++        *err = "could not create the staging dir";
++        return -EIO;
++    }
++    ex.mRoot = stage.get();
++    mode_t rootMode = 0;
++    int r = extractEntries(inFd, &ex, name, uid, gid, skipCaches, &rootMode, err);
++    if (r != 0) {
++        stage.reset();
++        removeStage(root.get());
+         return r;
+     }
++    // Complete and intact: swap the old data for the new
++    if (int c = clearTree(root.get(), skipCaches); c != 0) {
++        *err = "could not clear the old data";
++        return c;
++    }
++    std::vector<std::string> staged;
++    {
++        int dupFd = fcntl(stage.get(), F_DUPFD_CLOEXEC, 0);
++        std::unique_ptr<DIR, decltype(&closedir)> d(dupFd >= 0 ? fdopendir(dupFd) : nullptr, closedir);
++        if (!d) {
++            if (dupFd >= 0) close(dupFd);
++            *err = "could not read the staging dir";
++            return -EIO;
++        }
++        while (struct dirent* de = readdir(d.get())) {
++            if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0) staged.emplace_back(de->d_name);
++        }
++    }
++    for (const auto& n : staged) {
++        if (renameat(stage.get(), n.c_str(), root.get(), n.c_str()) != 0) {
++            *err = StringPrintf("could not move %s into place: %s", n.c_str(), strerror(errno));
++            return -errno;
++        }
++    }
++    stage.reset();
++    removeStage(root.get());
++    if (rootMode != 0) fchmod(root.get(), rootMode);
++    return 0;
++}
+ 
++static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, uid_t uid, gid_t gid, bool skipCaches,
++                   mode_t* rootMode, std::string* err) {
++    Extractor& ex = *exPtr;
++    std::vector<char> buf(kChunk);
+     ZstdIn z(inFd);
+     std::string longName, longLink, paxPath, paxLink;
+     int zeroBlocks = 0;
+@@ -558,7 +654,8 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+                 *err = "archive is damaged (zstd)";
+                 return -EINVAL;
+             }
+-            break;  // tolerate archives without the closing zero blocks
++            *err = "archive is incomplete (no end of archive)";
++            return -EINVAL;
+         }
+         if (std::all_of(h, h + kBlock, [](char c) { return c == 0; })) {
+             if (++zeroBlocks == 2) break;
+@@ -603,7 +700,7 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+         };
+ 
+         std::vector<std::string> parts;
+-        if (!splitSafe(path, &parts) || parts[0] != name) {
++        if (!splitSafe(path, &parts) || parts[0] != name || (parts.size() >= 2 && parts[1] == kStage)) {
+             *err = "refused an entry outside the app's data: " + path.substr(0, 200);
+             return -EPERM;
+         }
+@@ -611,10 +708,11 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+             if (!skipData()) return -EINVAL;
+             continue;
+         }
+-        mode_t perm = parseNumber(h + 100, 8) & 0777;
++        mode_t rawMode = parseNumber(h + 100, 8);
++        mode_t perm = rawMode & 0777;
+         if (parts.size() == 1) {
+-            // The app's dir itself: keep it, just set its mode from the archive
+-            if (type == '5') fchmod(root.get(), perm | 0700);
++            // The app's dir itself: keep it, set its mode from the archive at the end
++            if (type == '5') *rootMode = perm | 0700;
+             if (!skipData()) return -EINVAL;
+             continue;
+         }
+@@ -626,7 +724,9 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+         const std::string& leaf = parts.back();
+         if (type == '5') {
+             unique_fd d = ex.openDir(dir.get(), leaf);
+-            if (d < 0 || fchown(d.get(), uid, gid) != 0 || fchmod(d.get(), perm | 0700) != 0) {
++            // Directories keep setgid (cache dirs use it); never setuid
++            if (d < 0 || fchown(d.get(), uid, gid) != 0 ||
++                fchmod(d.get(), (rawMode & 02777) | 0700) != 0) {
+                 *err = "could not create " + path.substr(0, 200);
+                 return -EIO;
+             }
+@@ -641,7 +741,6 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+                 *err = StringPrintf("create %s: %s", path.substr(0, 200).c_str(), strerror(errno));
+                 return -errno;
+             }
+-            std::vector<char> buf(kChunk);
+             uint64_t left = dataSize;
+             while (left > 0) {
+                 size_t n = std::min<uint64_t>(kChunk, left);
+@@ -676,7 +775,7 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+             if (!skipData()) return -EINVAL;
+         }
+     }
+-    return 0;
++    return 0;  // the end-of-archive blocks
+ }
+ 
+ int zstdDecompress(int inFd, int outFd, std::string* err) {
+-- 
+2.56.0
+

@@ -1,7 +1,7 @@
-From f1ce0865cb9305467016ef9e94fb1faa3ec6bc1f Mon Sep 17 00:00:00 2001
+From 5bb5dc60c75f6705631e75b04ecb36a3b0f7df42 Mon Sep 17 00:00:00 2001
 From: Fabian Leutenegger <fabian.leutenegger@bluewin.ch>
 Date: Wed, 7 Aug 2024 13:25:09 +0200
-Subject: [PATCH 57/75] base: Allow to define custom pocket sensor value
+Subject: [PATCH 57/78] base: Allow to define custom pocket sensor value
 
 Not all devices report 1.0 on their pocket mode sensor, Xiaomi for example report 1 if possibly in pocket and 2 if definitely in pocket by their NonUI sensor
 

@@ -1,7 +1,7 @@
-From c55b33681d82499a0163a29b4e01f5ae32a853ca Mon Sep 17 00:00:00 2001
+From 6f09b9dca1e02c3cc5f331fa6be9198be73892f5 Mon Sep 17 00:00:00 2001
 From: martincz <martincz@mokeedev.com>
 Date: Thu, 2 Apr 2015 22:21:36 +0800
-Subject: [PATCH 07/75] PhoneWindowManager: Tap volume buttons to answer call
+Subject: [PATCH 07/78] PhoneWindowManager: Tap volume buttons to answer call
 
 Change-Id: I5ebe1ad88950ba56ce1445b77b7f8cdf030463da
 

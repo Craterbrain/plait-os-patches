@@ -1,7 +1,7 @@
-From 86ce3f4a12e2b6002fe11bf13e2e5c8f31a558da Mon Sep 17 00:00:00 2001
+From dc5a48007376098dcccfcf12a50048d2b774d4b1 Mon Sep 17 00:00:00 2001
 From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 23:38:54 -0600
-Subject: [PATCH 01/13] PlaitOS: settings for the PlaitOS features
+Subject: [PATCH 01/14] PlaitOS: settings for the PlaitOS features
 
 Rows for every PlaitOS framework option, in two homes
 (design: plait-os docs/plait-settings-layout.md):
