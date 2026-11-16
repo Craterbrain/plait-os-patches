@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Apps (and the Shizuku client library) detect a Shizuku-compatible provider by looking for the app that
+         defines this permission, exactly as the Shizuku manager does -->
+    <permission
+        android:name="moe.shizuku.manager.permission.API_V23"
+        android:protectionLevel="dangerous" />
+
+    <!-- The Shizuku client library only hands its Binder to apps that request this permission -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Consent dialogs hide other apps' overlays while shown -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+    <!-- Quiet notifications when an app asks for something that waits in the list -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="Plait Broker"
+        android:theme="@style/Theme.Broker">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Opened by the daemon (shell user) when an app asks for access -->
+        <activity
+            android:name=".ConfirmActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="app.plait.broker.intent.action.REQUEST_PERMISSION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Opened by the daemon for questions a waiting call needs answered (installer name, ask, gate) -->
+        <activity
+            android:name=".QuestionActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="app.plait.broker.intent.action.ASK" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- An app that has updated its manifest of declared functions starts this (for a result) to ask the user to review
+             the new ones. What is shown comes from the caller's own manifest, found through the caller's verified package
+             name, never from anything the caller sends. -->
+        <activity
+            android:name=".RedeclareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="app.plait.broker.intent.action.REDECLARE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Plait Backup starts this for a result to ask for a signed grant. Only the pinned Plait Backup app is ever
+             shown a dialog; who is asking comes from the verified calling package, never from the extras. -->
+        <activity
+            android:name=".grants.GrantActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="app.plait.broker.intent.action.REQUEST_GRANT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".grants.GrantsActivity"
+            android:exported="false"
+            android:label="Signed grants" />
+
+        <!-- Grant verifiers only (plait_backup service in system_server, or the dev backend as root): public key and
+             revocation checks. INTERACT_ACROSS_USERS_FULL keeps apps out. -->
+        <provider
+            android:name=".grants.GrantProvider"
+            android:authorities="app.plait.broker.grants"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- Sent by the daemon (shell user) when an app's request was added to its list or refused -->
+        <receiver
+            android:name=".EventReceiver"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL">
+            <intent-filter>
+                <action android:name="app.plait.broker.intent.action.EVENT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- The daemon pushes its Binder here; only the shell/system may call it -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+</manifest>

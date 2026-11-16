@@ -1,0 +1,13 @@
+# Plait Broker: a Shizuku-compatible server that runs approved commands and system calls for apps, under the
+# per-app policy managed in the Plait Broker app. It runs as the shell user in the shell SELinux domain (what
+# Shizuku gets over adb), so PlaitOS needs no SELinux changes. Started through /system/bin/sh, like AOSP's console
+# service, so init's existing transition into the shell domain applies.
+service plait_broker /system/bin/sh /system_ext/bin/plait-broker
+    class late_start
+    user shell
+    group shell log readproc inet
+    seclabel u:r:shell:s0
+    disabled
+
+on property:sys.boot_completed=1
+    start plait_broker

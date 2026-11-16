@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Probes the addresses of your own network, and shows which network that is -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Listens for what devices announce about themselves (mDNS and SSDP are multicast) -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- The Connections tool names the app behind each connection, with its icon -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Plait Broker's review of what this app declares is started by name -->
+    <queries>
+        <package android:name="app.plait.broker" />
+    </queries>
+    <!-- Bluetooth page: looks for nearby devices. neverForLocation: the scan is not used to find where you are. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- The MAC address of each device comes from the neighbor table, which only the broker may read -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- usesCleartextTraffic: devices on your own network answer on plain HTTP; the page title and server name help identify them -->
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Plait Scan"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.Scan">
+
+        <!-- What Plait Scan will use through Plait Broker; shown when it asks for access -->
+        <meta-data
+            android:name="app.plait.broker.capabilities"
+            android:resource="@xml/plait_broker" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Standard Shizuku client wiring: the broker pushes its Binder here -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+</manifest>

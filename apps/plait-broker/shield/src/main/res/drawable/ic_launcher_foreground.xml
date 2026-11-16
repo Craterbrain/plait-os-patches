@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plait Shield: a shield holding a three-strand braid (generated; see the icon notes in the README) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M54,22 L80,31 L80,51 C80,68 69,80.5 54,87 C39,80.5 28,68 28,51 L28,31 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="54" android:startY="22" android:endX="54" android:endY="87"
+                android:startColor="#3FBFAD" android:endColor="#1F8576" />
+        </aapt:attr>
+    </path>
+    <path android:pathData="M54,22 L80,31 L80,51 C80,68 69,80.5 54,87 C39,80.5 28,68 28,51 L28,31 Z" android:strokeColor="#99C8FFF6" android:strokeWidth="1.5" />
+    <path android:pathData="M54.00,33.50 C54.00,38.50 44.50,38.50 44.50,43.50" android:strokeColor="#CFF7EF" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M63.50,33.50 C66.70,36.50 66.70,40.50 63.50,43.50" android:strokeColor="#8FE0D2" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M44.50,33.50 C44.50,38.50 54.00,38.50 54.00,43.50" android:strokeColor="#2A9C8C" android:strokeWidth="7.6" android:strokeLineCap="butt" />
+    <path android:pathData="M44.50,33.50 C44.50,38.50 54.00,38.50 54.00,43.50" android:strokeColor="#FFFFFF" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M54.00,43.50 C54.00,48.50 63.50,48.50 63.50,53.50" android:strokeColor="#FFFFFF" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M44.50,43.50 C41.30,46.50 41.30,50.50 44.50,53.50" android:strokeColor="#CFF7EF" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M63.50,43.50 C63.50,48.50 54.00,48.50 54.00,53.50" android:strokeColor="#2A9C8C" android:strokeWidth="7.6" android:strokeLineCap="butt" />
+    <path android:pathData="M63.50,43.50 C63.50,48.50 54.00,48.50 54.00,53.50" android:strokeColor="#8FE0D2" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M54.00,53.50 C54.00,58.50 44.50,58.50 44.50,63.50" android:strokeColor="#8FE0D2" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M63.50,53.50 C66.70,56.50 66.70,60.50 63.50,63.50" android:strokeColor="#FFFFFF" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M44.50,53.50 C44.50,58.50 54.00,58.50 54.00,63.50" android:strokeColor="#2A9C8C" android:strokeWidth="7.6" android:strokeLineCap="butt" />
+    <path android:pathData="M44.50,53.50 C44.50,58.50 54.00,58.50 54.00,63.50" android:strokeColor="#CFF7EF" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M54.00,63.50 C54.00,68.50 63.50,68.50 63.50,73.50" android:strokeColor="#CFF7EF" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M44.50,63.50 C41.30,66.50 41.30,70.50 44.50,73.50" android:strokeColor="#8FE0D2" android:strokeWidth="4.6" android:strokeLineCap="round" />
+    <path android:pathData="M63.50,63.50 C63.50,68.50 54.00,68.50 54.00,73.50" android:strokeColor="#2A9C8C" android:strokeWidth="7.6" android:strokeLineCap="butt" />
+    <path android:pathData="M63.50,63.50 C63.50,68.50 54.00,68.50 54.00,73.50" android:strokeColor="#FFFFFF" android:strokeWidth="4.6" android:strokeLineCap="round" />
+</vector>

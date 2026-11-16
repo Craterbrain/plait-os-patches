@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Effects on the global output mix (session 0) need this signature|privileged permission;
+         the Magisk module installs the app as a priv-app and allowlists it. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS_PRIVILEGED" />
+
+    <!-- persistent only takes effect for system apps: the Magisk module installs this APK under
+         /system/priv-app, so Android starts it at boot, never kills it, and restarts it if it dies. -->
+    <application
+        android:name=".BoostApp"
+        android:label="Loudness"
+        android:icon="@mipmap/ic_launcher"
+        android:persistent="true"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+        android:allowBackup="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

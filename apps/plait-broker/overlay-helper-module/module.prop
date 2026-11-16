@@ -1,0 +1,6 @@
+id=plait_overlay_helper
+name=Plait Overlay Helper (root, test phones only)
+version=v0.1
+versionCode=1
+author=Plait
+description=TEST ONLY. A root process that registers color-only "plait*" overlays for Plait Broker on a phone without the PlaitOS overlay patch. Remove it once running PlaitOS.

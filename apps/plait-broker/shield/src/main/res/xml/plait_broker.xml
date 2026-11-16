@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Everything Plait Shield uses through Plait Broker. Allowing Shield switches on exactly these. -->
+<plait-broker>
+    <command rule="settings get global private_dns_mode" reason="Show whether Private DNS is on" />
+    <command rule="settings get global private_dns_specifier" reason="Show which DNS provider is set" />
+    <command rule="wc -l /system/etc/hosts" reason="Show how big the active blocklist is" />
+    <ask key="private dns" reason="Set the DNS provider you pick" />
+    <ask key="hosts" reason="Write the blocklists you pick (blocking entries only)" />
+</plait-broker>

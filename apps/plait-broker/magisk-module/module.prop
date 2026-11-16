@@ -1,0 +1,6 @@
+id=plait_broker
+name=Plait Broker (PlaitOS test module)
+version=v1.21
+versionCode=31
+author=Plait
+description=Shizuku-compatible broker as a system_ext priv-app, started at boot as uid shell in u:r:shell:s0 through the same launcher PlaitOS uses. No custom SELinux policy. Action shows the daemon's status.

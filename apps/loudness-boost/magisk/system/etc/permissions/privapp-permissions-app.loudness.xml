@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<permissions>
+    <privapp-permissions package="app.loudness">
+        <permission name="android.permission.MODIFY_AUDIO_SETTINGS_PRIVILEGED"/>
+    </privapp-permissions>
+</permissions>

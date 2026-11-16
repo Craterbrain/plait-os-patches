@@ -1,0 +1,302 @@
+0	-1	Unknown
+1	-1	Phone
+2	-1	Computer
+2	1	Desktop Workstation
+2	2	Server-class Computer
+2	3	Laptop
+2	4	Handheld PC/PDA (clamshell)
+2	5	Palm-size PC/PDA
+2	6	Wearable computer (watch size)
+2	7	Tablet
+2	8	Docking Station
+2	9	All in One
+2	10	Blade Server
+2	11	Convertible
+2	12	Detachable
+2	13	IoT Gateway
+2	14	Mini PC
+2	15	Stick PC
+3	-1	Watch
+3	1	Sports Watch
+3	2	Smartwatch
+4	-1	Clock
+5	-1	Display
+6	-1	Remote Control
+7	-1	Eye-glasses
+8	-1	Tag
+9	-1	Keyring
+10	-1	Media Player
+11	-1	Barcode Scanner
+12	-1	Thermometer
+12	1	Ear Thermometer
+13	-1	Heart Rate Sensor
+13	1	Heart Rate Belt
+14	-1	Blood Pressure
+14	1	Arm Blood Pressure
+14	2	Wrist Blood Pressure
+15	-1	Human Interface Device
+15	1	Keyboard
+15	2	Mouse
+15	3	Joystick
+15	4	Gamepad
+15	5	Digitizer Tablet
+15	6	Card Reader
+15	7	Digital Pen
+15	8	Barcode Scanner
+15	9	Touchpad
+15	10	Presentation Remote
+16	-1	Glucose Meter
+17	-1	Running Walking Sensor
+17	1	In-Shoe Running Walking Sensor
+17	2	On-Shoe Running Walking Sensor
+17	3	On-Hip Running Walking Sensor
+18	-1	Cycling
+18	1	Cycling Computer
+18	2	Speed Sensor
+18	3	Cadence Sensor
+18	4	Power Sensor
+18	5	Speed and Cadence Sensor
+19	-1	Control Device
+19	1	Switch
+19	2	Multi-switch
+19	3	Button
+19	4	Slider
+19	5	Rotary Switch
+19	6	Touch Panel
+19	7	Single Switch
+19	8	Double Switch
+19	9	Triple Switch
+19	10	Battery Switch
+19	11	Energy Harvesting Switch
+19	12	Push Button
+19	13	Dial
+20	-1	Network Device
+20	1	Access Point
+20	2	Mesh Device
+20	3	Mesh Network Proxy
+21	-1	Sensor
+21	1	Motion Sensor
+21	2	Air quality Sensor
+21	3	Temperature Sensor
+21	4	Humidity Sensor
+21	5	Leak Sensor
+21	6	Smoke Sensor
+21	7	Occupancy Sensor
+21	8	Contact Sensor
+21	9	Carbon Monoxide Sensor
+21	10	Carbon Dioxide Sensor
+21	11	Ambient Light Sensor
+21	12	Energy Sensor
+21	13	Color Light Sensor
+21	14	Rain Sensor
+21	15	Fire Sensor
+21	16	Wind Sensor
+21	17	Proximity Sensor
+21	18	Multi-Sensor
+21	19	Flush Mounted Sensor
+21	20	Ceiling Mounted Sensor
+21	21	Wall Mounted Sensor
+21	22	Multisensor
+21	23	Energy Meter
+21	24	Flame Detector
+21	25	Vehicle Tire Pressure Sensor
+22	-1	Light Fixtures
+22	1	Wall Light
+22	2	Ceiling Light
+22	3	Floor Light
+22	4	Cabinet Light
+22	5	Desk Light
+22	6	Troffer Light
+22	7	Pendant Light
+22	8	In-ground Light
+22	9	Flood Light
+22	10	Underwater Light
+22	11	Bollard with Light
+22	12	Pathway Light
+22	13	Garden Light
+22	14	Pole-top Light
+22	15	Spotlight
+22	16	Linear Light
+22	17	Street Light
+22	18	Shelves Light
+22	19	Bay Light
+22	20	Emergency Exit Light
+22	21	Light Controller
+22	22	Light Driver
+22	23	Bulb
+22	24	Low-bay Light
+22	25	High-bay Light
+23	-1	Fan
+23	1	Ceiling Fan
+23	2	Axial Fan
+23	3	Exhaust Fan
+23	4	Pedestal Fan
+23	5	Desk Fan
+23	6	Wall Fan
+24	-1	HVAC
+24	1	Thermostat
+24	2	Humidifier
+24	3	De-humidifier
+24	4	Heater
+24	5	Radiator
+24	6	Boiler
+24	7	Heat Pump
+24	8	Infrared Heater
+24	9	Radiant Panel Heater
+24	10	Fan Heater
+24	11	Air Curtain
+25	-1	Air Conditioning
+26	-1	Humidifier
+27	-1	Heating
+27	1	Radiator
+27	2	Boiler
+27	3	Heat Pump
+27	4	Infrared Heater
+27	5	Radiant Panel Heater
+27	6	Fan Heater
+27	7	Air Curtain
+28	-1	Access Control
+28	1	Access Door
+28	2	Garage Door
+28	3	Emergency Exit Door
+28	4	Access Lock
+28	5	Elevator
+28	6	Window
+28	7	Entrance Gate
+28	8	Door Lock
+28	9	Locker
+29	-1	Motorized Device
+29	1	Motorized Gate
+29	2	Awning
+29	3	Blinds or Shades
+29	4	Curtains
+29	5	Screen
+30	-1	Power Device
+30	1	Power Outlet
+30	2	Power Strip
+30	3	Plug
+30	4	Power Supply
+30	5	LED Driver
+30	6	Fluorescent Lamp Gear
+30	7	HID Lamp Gear
+30	8	Charge Case
+30	9	Power Bank
+31	-1	Light Source
+31	1	Incandescent Light Bulb
+31	2	LED Lamp
+31	3	HID Lamp
+31	4	Fluorescent Lamp
+31	5	LED Array
+31	6	Multi-Color LED Array
+31	7	Low voltage halogen
+31	8	Organic light emitting diode (OLED)
+32	-1	Window Covering
+32	1	Window Shades
+32	2	Window Blinds
+32	3	Window Awning
+32	4	Window Curtain
+32	5	Exterior Shutter
+32	6	Exterior Screen
+33	-1	Audio Sink
+33	1	Standalone Speaker
+33	2	Soundbar
+33	3	Bookshelf Speaker
+33	4	Standmounted Speaker
+33	5	Speakerphone
+34	-1	Audio Source
+34	1	Microphone
+34	2	Alarm
+34	3	Bell
+34	4	Horn
+34	5	Broadcasting Device
+34	6	Service Desk
+34	7	Kiosk
+34	8	Broadcasting Room
+34	9	Auditorium
+35	-1	Motorized Vehicle
+35	1	Car
+35	2	Large Goods Vehicle
+35	3	2-Wheeled Vehicle
+35	4	Motorbike
+35	5	Scooter
+35	6	Moped
+35	7	3-Wheeled Vehicle
+35	8	Light Vehicle
+35	9	Quad Bike
+35	10	Minibus
+35	11	Bus
+35	12	Trolley
+35	13	Agricultural Vehicle
+35	14	Camper / Caravan
+35	15	Recreational Vehicle / Motor Home
+36	-1	Domestic Appliance
+36	1	Refrigerator
+36	2	Freezer
+36	3	Oven
+36	4	Microwave
+36	5	Toaster
+36	6	Washing Machine
+36	7	Dryer
+36	8	Coffee maker
+36	9	Clothes iron
+36	10	Curling iron
+36	11	Hair dryer
+36	12	Vacuum cleaner
+36	13	Robotic vacuum cleaner
+36	14	Rice cooker
+36	15	Clothes steamer
+37	-1	Wearable Audio Device
+37	1	Earbud
+37	2	Headset
+37	3	Headphones
+37	4	Neck Band
+38	-1	Aircraft
+38	1	Light Aircraft
+38	2	Microlight
+38	3	Paraglider
+38	4	Large Passenger Aircraft
+39	-1	AV Equipment
+39	1	Amplifier
+39	2	Receiver
+39	3	Radio
+39	4	Tuner
+39	5	Turntable
+39	6	CD Player
+39	7	DVD Player
+39	8	Bluray Player
+39	9	Optical Disc Player
+39	10	Set-Top Box
+40	-1	Display Equipment
+40	1	Television
+40	2	Monitor
+40	3	Projector
+41	-1	Hearing aid
+41	1	In-ear hearing aid
+41	2	Behind-ear hearing aid
+41	3	Cochlear Implant
+42	-1	Gaming
+42	1	Home Video Game Console
+42	2	Portable handheld console
+43	-1	Signage
+43	1	Digital Signage
+43	2	Electronic Label
+49	-1	Pulse Oximeter
+49	1	Fingertip Pulse Oximeter
+49	2	Wrist Worn Pulse Oximeter
+50	-1	Weight Scale
+51	-1	Personal Mobility Device
+51	1	Powered Wheelchair
+51	2	Mobility Scooter
+52	-1	Continuous Glucose Monitor
+53	-1	Insulin Pump
+53	1	Insulin Pump, durable pump
+53	4	Insulin Pump, patch pump
+53	8	Insulin Pen
+54	-1	Medication Delivery
+55	-1	Spirometer
+55	1	Handheld Spirometer
+81	-1	Outdoor Sports Activity
+81	1	Location Display
+81	2	Location and Navigation Display
+81	3	Location Pod
+81	4	Location and Navigation Pod

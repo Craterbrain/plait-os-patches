@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- the su test starts the su client from the broker's APK, so it must be able to find the broker -->
+    <queries>
+        <package android:name="app.plait.broker" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="Broker Test Client"
+        android:theme="@android:style/Theme.DeviceDefault.DayNight">
+
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Lets adb run the tests without opening the app; only the shell user (DUMP) may call it -->
+        <provider
+            android:name=".DriveProvider"
+            android:authorities="app.plait.testclient.drive"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+
+        <!-- Standard Shizuku client wiring: nothing here is specific to Plait's broker -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+</manifest>
