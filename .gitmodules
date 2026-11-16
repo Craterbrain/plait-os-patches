@@ -1,0 +1,3 @@
+[submodule "apps/angel-launcher"]
+	path = apps/angel-launcher
+	url = https://github.com/Craterbrain/angel-launcher.git

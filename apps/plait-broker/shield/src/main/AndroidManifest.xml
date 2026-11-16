@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Downloads the blocklists you pick -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Checks that lookups still work after switching DNS provider -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Everything privileged goes through Plait Broker (a Shizuku-compatible server) -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Plait Shield"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:largeHeap="true"
+        android:theme="@style/Theme.Shield">
+
+        <!-- What Shield will use through Plait Broker; shown when it asks for access, and all that is switched on -->
+        <meta-data
+            android:name="app.plait.broker.capabilities"
+            android:resource="@xml/plait_broker" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Standard Shizuku client wiring: the broker pushes its Binder here -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+</manifest>

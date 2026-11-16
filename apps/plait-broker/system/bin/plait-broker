@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# Plait Broker daemon launcher. init starts it (plait_broker.rc) as uid shell in u:r:shell:s0 once boot completes;
+# on a rooted test phone the Magisk module does the same. No root, no adb, no custom SELinux policy.
+#
+# It runs the daemon from the broker app's own APK, but only from one Android vouches for: the copy on system_ext
+# (verified by AVB, the bootloader stays locked), or an update in /data that the package manager accepted as an
+# update of that system app, which requires the same signing key. Anything else falls back to the system copy.
+SYSTEM_APK=/system_ext/priv-app/PlaitBroker/PlaitBroker.apk
+APK=$SYSTEM_APK
+
+# -s lists system packages only; an updated system app is listed with its /data path
+line=$(pm list packages -s -f app.plait.broker 2>/dev/null | grep '=app.plait.broker$' | head -n 1)
+path=${line#package:}
+path=${path%=app.plait.broker}
+case "$path" in
+    /data/app/*/base.apk) [ -f "$path" ] && APK=$path ;;
+esac
+
+if [ ! -f "$APK" ]; then
+    log -p e -t plait_broker "broker APK not found ($APK)"
+    exit 1
+fi
+exec app_process -Djava.class.path="$APK" /system/bin --nice-name=plait_broker app.plait.broker.server.BrokerService

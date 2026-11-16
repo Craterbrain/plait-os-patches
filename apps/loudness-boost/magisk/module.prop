@@ -1,0 +1,6 @@
+id=loudness_boost
+name=Loudness Boost
+version=1.2
+versionCode=3
+author=Craterbrain
+description=System-wide EQ + gain + limiter via Android's DynamicsProcessing, held by a persistent privileged system app (replaces JamesDSP's volume boost).

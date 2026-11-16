@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Everything Plait Scan uses through Plait Broker. Allowing Scan switches on exactly this. -->
+<plait-broker>
+    <command rule="ip neigh show" reason="Read the MAC address of each device on your network" />
+    <command rule="ip link show ..." reason="Read this phone's own MAC address" />
+    <command rule="cmd wifi start-scan" reason="Wi-Fi scanner: ask the radio to scan (no app scan limit)" />
+    <command rule="cmd wifi list-scan-results" reason="Wi-Fi scanner: read the networks it found" />
+    <command rule="cmd wifi status" reason="Wi-Fi scanner: show the network you are connected to" />
+    <command rule="cat /proc/net/tcp" reason="Connections: IPv4 TCP connections and the app behind each" />
+    <command rule="cat /proc/net/tcp6" reason="Connections: IPv6 TCP connections" />
+    <command rule="cat /proc/net/udp" reason="Connections: IPv4 UDP sockets" />
+    <command rule="cat /proc/net/udp6" reason="Connections: IPv6 UDP sockets" />
+    <command rule="pm list packages -U" reason="Connections: which app owns which user id" />
+    <ask key="connections" reason="Connections: see every app's network connections" />
+</plait-broker>

@@ -1,0 +1,6 @@
+id=plait_shield
+name=Plait Shield
+version=v0.4
+versionCode=4
+author=Craterbrain
+description=Ad blocker and DNS provider picker for PlaitOS. Uses Plait Broker for everything privileged (install the Plait Broker module too).
