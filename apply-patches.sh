@@ -21,6 +21,8 @@ declare -A MAP=(
   [packages_apps_Settings]=packages/apps/Settings
   [packages_apps_ThemePicker]=packages/apps/ThemePicker
   [branding]=branding
+  [packages_apps_SetupWizard2]=packages/apps/SetupWizard2
+  [packages_apps_Dialer]=packages/apps/Dialer
 )
 
 [ "$CHECK" = 1 ] || git config --global user.email >/dev/null 2>&1 || [ "$CHECK" = 1 ] || git config --global user.email "plaitos-build@localhost"
