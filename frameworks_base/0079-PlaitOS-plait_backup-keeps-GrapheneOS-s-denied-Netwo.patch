@@ -1,0 +1,82 @@
+From 70a16239bbefe839aacbba617f2ee74e17e6323a Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 23:04:43 -0600
+Subject: [PATCH] PlaitOS: plait_backup keeps GrapheneOS's denied
+ Network/Sensors permissions across a restore
+
+INTERNET and OTHER_SENSORS are granted at install on GrapheneOS, so a restore that only grants permissions
+silently undid the user's "denied". The backup now records those as "!permission" lines and the restore
+revokes them; archives made elsewhere have no such lines, so nothing is revoked for them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ .../server/plait/PlaitBackupService.java      | 31 +++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index b6868cf61..859475153 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -32,6 +32,7 @@ import android.os.UserHandle;
+ import android.util.Slog;
+ 
+ import com.android.internal.app.IAppOpsService;
++import com.android.server.pm.permission.SpecialRuntimePermUtils;
+ import com.android.internal.plait.IPlaitBackup;
+ import com.android.server.LocalServices;
+ import com.android.server.pm.Installer;
+@@ -304,6 +305,9 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             ApplicationInfo ai = target(call);
+             StringBuilder sb = new StringBuilder();
+             for (String p : grantedRuntimePermissions(call)) sb.append(p).append('\n');
++            // GrapheneOS's special runtime permissions (Network, Sensors) are granted at install, so a restore that
++            // only grants would silently undo the user's "denied": record those as "!permission" lines
++            for (String p : deniedSpecialRuntimePermissions(call)) sb.append('!').append(p).append('\n');
+             sb.append("---\n");
+             AppOpsManager appOps = mContext.getSystemService(AppOpsManager.class);
+             // Uid modes first (All files access, exact alarms, ... are set per uid), each line marked, then the
+@@ -348,6 +352,19 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         return out;
+     }
+ 
++    private List<String> deniedSpecialRuntimePermissions(Call call) {
++        List<String> out = new ArrayList<>();
++        PackageInfo info = packageInfo(call, PackageManager.GET_PERMISSIONS);
++        if (info.requestedPermissions == null) return out;
++        for (int i = 0; i < info.requestedPermissions.length; i++) {
++            boolean granted = (info.requestedPermissionsFlags[i]
++                    & PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0;
++            String perm = info.requestedPermissions[i];
++            if (!granted && SpecialRuntimePermUtils.isSpecialRuntimePermission(perm)) out.add(perm);
++        }
++        return out;
++    }
++
+     private boolean isRuntime(String perm) {
+         try {
+             PermissionInfo pi = mContext.getPackageManager().getPermissionInfo(perm, 0);
+@@ -529,6 +546,20 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             PackageManager pm = mContext.getPackageManager();
+             if (permissions != null) {
+                 for (String p : permissions) {
++                    if (p != null && p.startsWith("!")) {
++                        // A special runtime permission the user had denied (see getState); archives made elsewhere
++                        // have no such lines, so nothing is revoked for them
++                        String perm = p.substring(1);
++                        if (!requested.contains(perm) || !SpecialRuntimePermUtils.isSpecialRuntimePermission(perm)) {
++                            continue;
++                        }
++                        try {
++                            pm.revokeRuntimePermission(call.pkg, perm, UserHandle.of(call.userId));
++                        } catch (RuntimeException e) {
++                            Slog.w(TAG, "could not revoke " + perm + " from " + call.pkg + ": " + e.getMessage());
++                        }
++                        continue;
++                    }
+                     if (p == null || !requested.contains(p) || !isRuntime(p)) continue;
+                     try {
+                         pm.grantRuntimePermission(call.pkg, p, UserHandle.of(call.userId));
+-- 
+2.56.0
+
