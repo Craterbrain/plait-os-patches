@@ -11,6 +11,7 @@
 # Optional: PATCHES_URL (default the public patches repo), PATCHES_REF (default main), PROFILE=release|fast.
 # Nothing here reads, needs or accepts a signing key.
 set -euo pipefail
+unset OFFICIAL_BUILD   # never build GrapheneOS's Updater (releases.grapheneos.org)
 PATCHES_URL="${PATCHES_URL:-https://github.com/Craterbrain/plait-os-patches.git}"
 PATCHES_REF="${PATCHES_REF:-main}"
 PROFILE="${PROFILE:-release}"
