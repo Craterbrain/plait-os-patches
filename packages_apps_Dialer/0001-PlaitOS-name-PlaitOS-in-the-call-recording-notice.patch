@@ -1,0 +1,26 @@
+From 29a038bef1de61f329522963903a3cc5f5c7fe51 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 23:25:00 -0600
+Subject: [PATCH] PlaitOS: name PlaitOS in the call recording notice
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ java/com/android/incallui/res/values/strings_ext.xml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/java/com/android/incallui/res/values/strings_ext.xml b/java/com/android/incallui/res/values/strings_ext.xml
+index 4bc0bf4..fdad7ca 100644
+--- a/java/com/android/incallui/res/values/strings_ext.xml
++++ b/java/com/android/incallui/res/values/strings_ext.xml
+@@ -33,7 +33,7 @@
+     <string name="recording_warning_title">Enable call recording?</string>
+     <string name="recording_warning_text">Warning:
+     You are fully responsible for compliance with any laws, regulations and rules that apply to the use of call recording functionality and the use or distribution of those recordings.
+-    By continuing to use call recording, you acknowledge that you fully read this and GrapheneOS will not be held liable in any way for any possible consequences should there be any
++    By continuing to use call recording, you acknowledge that you fully read this and PlaitOS will not be held liable in any way for any possible consequences should there be any
+     due to your usage of the call recording feature.
+     </string>
+ </resources>
+-- 
+2.56.0
+
