@@ -1,0 +1,28 @@
+From 68999037214805fa88ed509b5c009fc39343c3ff Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 23:19:13 -0600
+Subject: [PATCH] PlaitOS: boot animation from vendor/plait when canvas_size is
+ "plait"
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
+---
+ Android.bp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Android.bp b/Android.bp
+index 3791c47..43dfa26 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -20,6 +20,8 @@ prebuilt_media {
+         "1344": "bootanimation/1344.zip",
+         "1440": "bootanimation/1440.zip",
+         "1600": "bootanimation/1600.zip",
++        // PlaitOS: the PlaitOS boot animation (vendor/plait/bootanimation)
++        "plait": ":plait_bootanimation_zip",
+         default: "bootanimation/1080.zip",
+     }),
+ }
+-- 
+2.56.0
+
