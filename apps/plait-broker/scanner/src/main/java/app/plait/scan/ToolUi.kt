@@ -1,5 +1,7 @@
 package app.plait.scan
 
+import app.plait.design.PlaitFilterChip
+import app.plait.design.PlaitCard
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -33,7 +33,7 @@ fun ToolField(label: String, value: String, onChange: (String) -> Unit, modifier
 @Composable
 fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        options.forEach { o -> FilterChip(selected = o == selected, onClick = { onSelect(o) }, label = { Text(label(o)) }) }
+        options.forEach { o -> PlaitFilterChip(label(o), o == selected, { onSelect(o) }) }
     }
 }
 
@@ -44,7 +44,7 @@ fun Mono(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun InfoCard(title: String? = null, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+    PlaitCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (title != null) Text(title, style = MaterialTheme.typography.titleSmall)
             content()

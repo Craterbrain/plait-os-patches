@@ -1,0 +1,101 @@
+From 27b7ab69e4d2af106c82836ba93de0253636c919 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 09:46:58 -0600
+Subject: [PATCH] installd: PlaitOS backup restores skip links in shared
+ storage, clamp the root mode
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ cmds/installd/InstalldNativeService.cpp |  2 +-
+ cmds/installd/PlaitBackup.cpp           | 16 ++++++++++------
+ cmds/installd/PlaitBackup.h             |  3 ++-
+ 3 files changed, 13 insertions(+), 8 deletions(-)
+
+diff --git a/cmds/installd/InstalldNativeService.cpp b/cmds/installd/InstalldNativeService.cpp
+index c3ccd3d..d56fecc 100644
+--- a/cmds/installd/InstalldNativeService.cpp
++++ b/cmds/installd/InstalldNativeService.cpp
+@@ -2133,7 +2133,7 @@ binder::Status InstalldNativeService::plaitRestoreAppData(const std::optional<st
+     gid_t gid = p.gid ? p.gid : uid;
+     std::string err;
+     int r = plait::extractTreeTarZst(source.get(), p.parent, packageName, uid, gid, p.newDirMode,
+-                                     /* skipCaches= */ true, &err);
++                                     /* skipCaches= */ true, p.external, &err);
+     if (r != 0) return error(-r, "restore of " + packageName + " failed: " + err);
+     if (!p.external) {
+         int flag = part == android::os::IInstalld::PLAIT_PART_CE ? FLAG_STORAGE_CE : FLAG_STORAGE_DE;
+diff --git a/cmds/installd/PlaitBackup.cpp b/cmds/installd/PlaitBackup.cpp
+index 3221a2a..dae3699 100644
+--- a/cmds/installd/PlaitBackup.cpp
++++ b/cmds/installd/PlaitBackup.cpp
+@@ -611,10 +611,10 @@ int writeApksTarZst(int outFd, const std::string& dir, std::string* err) {
+ }
+ 
+ static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, uid_t uid, gid_t gid,
+-                          bool skipCaches, mode_t* rootMode, std::string* err);
++                          bool skipCaches, bool external, mode_t* rootMode, std::string* err);
+ 
+ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
+-                      mode_t newDirMode, bool skipCaches, std::string* err) {
++                      mode_t newDirMode, bool skipCaches, bool external, std::string* err) {
+     unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+     if (parentFd < 0) {
+         *err = StringPrintf("open %s: %s", parent.c_str(), strerror(errno));
+@@ -635,7 +635,7 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+     }
+     ex.mRoot = stage.get();
+     mode_t rootMode = 0;
+-    int r = extractEntries(inFd, &ex, name, uid, gid, skipCaches, &rootMode, err);
++    int r = extractEntries(inFd, &ex, name, uid, gid, skipCaches, external, &rootMode, err);
+     if (r != 0) {
+         stage.reset();
+         removeStage(root.get());
+@@ -672,7 +672,7 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+ }
+ 
+ static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, uid_t uid, gid_t gid, bool skipCaches,
+-                   mode_t* rootMode, std::string* err) {
++                   bool external, mode_t* rootMode, std::string* err) {
+     Extractor& ex = *exPtr;
+     std::vector<char> buf(kChunk);
+     ZstdIn z(inFd);
+@@ -742,8 +742,9 @@ static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, u
+         mode_t rawMode = parseNumber(h + 100, 8);
+         mode_t perm = rawMode & 0777;
+         if (parts.size() == 1) {
+-            // The app's dir itself: keep it, set its mode from the archive at the end
+-            if (type == '5') *rootMode = perm | 0700;
++            // The app's dir itself: keep it, set its mode from the archive at the end, never more open than
++            // Android makes it (0751 for private data, 0770 for shared storage)
++            if (type == '5') *rootMode = (perm & (external ? 0770 : 0751)) | 0700;
+             if (!skipData()) return -EINVAL;
+             continue;
+         }
+@@ -793,6 +794,9 @@ static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, u
+                 return -EIO;
+             }
+             futimens(f.get(), times);
++        } else if (type == '2' && external) {
++            // Android never makes links in shared storage, and its files are served by MediaProvider: not restored
++            continue;
+         } else if (type == '2') {
+             // Kept as a link; nothing here ever follows it
+             if (!ex.clearNonDir(dir.get(), leaf) || link.empty() || link.size() > kMaxPath ||
+diff --git a/cmds/installd/PlaitBackup.h b/cmds/installd/PlaitBackup.h
+index 893fecd..30c4fec 100644
+--- a/cmds/installd/PlaitBackup.h
++++ b/cmds/installd/PlaitBackup.h
+@@ -32,8 +32,9 @@ int writeTreeTarZst(int outFd, const std::string& parent, const std::string& nam
+ int writeApksTarZst(int outFd, const std::string& dir, std::string* err);
+ 
+ // Replaces the contents of <parent>/<name> (except cache and code_cache when skipCaches) with the archive's.
++// external: shared storage (Android/data, obb, media), where symbolic links are never restored.
+ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
+-                      mode_t newDirMode, bool skipCaches, std::string* err);
++                      mode_t newDirMode, bool skipCaches, bool external, std::string* err);
+ 
+ // Plain zstd decompression from one fd to another (APK archives, which system_server unpacks itself).
+ int zstdDecompress(int inFd, int outFd, std::string* err);
+-- 
+2.56.0
+

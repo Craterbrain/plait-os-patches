@@ -11,7 +11,7 @@ import kotlin.math.sqrt
  * Runs in Android's own DynamicsProcessing effect inside the audio HAL; this app only configures it.
  */
 object Boost {
-    const val MAX_GAIN_DB = 30f
+    const val MAX_GAIN_DB = 11f
     const val BAND_RANGE_DB = 12f
 
     val CENTERS = floatArrayOf(
@@ -60,7 +60,7 @@ object Boost {
             processing = p.getBoolean("processing", true),
             eqOn = p.getBoolean("eq_on", true),
             gainOn = p.getBoolean("gain_on", true),
-            gainDb = p.getFloat("gain_db", 0f),
+            gainDb = p.getFloat("gain_db", 0f).coerceIn(0f, MAX_GAIN_DB),
             bands = bands,
             preset = p.getString("preset", "Flat") ?: "Flat"
         )

@@ -1,0 +1,99 @@
+From 31b6d926d115101a07378a771e1f506fc999a38e Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 21:35:11 -0600
+Subject: [PATCH] PlaitOS: a real dark theme for the Dialer
+
+At night every Dialer.ThemeBase* is the dark base (colours from the wallpaper tones) instead of a light theme darkened by Android,
+which inverted avatar tiles and icons unpredictably. Status bar, window and tile colours defined for night.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../lettertile/res/values-night/colors.xml       | 16 ++++++++--------
+ .../main/impl/res/values-night-v27/styles.xml    | 15 +++++++++++++++
+ .../base/res/values-night/theme_dialer_night.xml | 11 +++++++++++
+ .../res/values-night/colors_dialer_dark.xml      |  5 ++++-
+ 4 files changed, 38 insertions(+), 9 deletions(-)
+ create mode 100644 java/com/android/dialer/main/impl/res/values-night-v27/styles.xml
+ create mode 100644 java/com/android/dialer/theme/base/res/values-night/theme_dialer_night.xml
+
+diff --git a/java/com/android/dialer/lettertile/res/values-night/colors.xml b/java/com/android/dialer/lettertile/res/values-night/colors.xml
+index 6ae5f44..6eb44bc 100644
+--- a/java/com/android/dialer/lettertile/res/values-night/colors.xml
++++ b/java/com/android/dialer/lettertile/res/values-night/colors.xml
+@@ -1,13 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+   <array name="letter_tile_colors">
+-    <item>@android:color/system_accent1_200</item>
+-    <item>@android:color/system_accent2_200</item>
+-    <item>@android:color/system_accent3_200</item>
+-    <item>@android:color/system_accent1_100</item>
+-    <item>@android:color/system_accent2_100</item>
+-    <item>@android:color/system_accent3_100</item>
++    <item>@android:color/system_accent1_700</item>
++    <item>@android:color/system_accent2_700</item>
++    <item>@android:color/system_accent3_700</item>
++    <item>@android:color/system_accent1_600</item>
++    <item>@android:color/system_accent2_600</item>
++    <item>@android:color/system_accent3_600</item>
+   </array>
+-  <color name="letter_tile_font_color">@android:color/system_accent1_900</color>
+-  <color name="letter_tile_default_color">@android:color/system_neutral2_100</color>
++  <color name="letter_tile_font_color">@android:color/system_accent1_100</color>
++  <color name="letter_tile_default_color">@android:color/system_neutral2_700</color>
+ </resources>
+diff --git a/java/com/android/dialer/main/impl/res/values-night-v27/styles.xml b/java/com/android/dialer/main/impl/res/values-night-v27/styles.xml
+new file mode 100644
+index 0000000..7529255
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/values-night-v27/styles.xml
+@@ -0,0 +1,15 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++  <!-- PlaitOS: night, sdk 27+: light system bars are for the light theme only -->
++  <style name="MainActivityTheme" parent="MainActivityThemeBase">
++    <item name="android:windowLightNavigationBar">false</item>
++    <item name="android:navigationBarColor">?android:attr/colorBackgroundFloating</item>
++    <item name="android:navigationBarDividerColor">@android:color/transparent</item>
++  </style>
++
++  <style name="MainActivityTheme.Dark" parent="MainActivityThemeBase.Dark">
++    <item name="android:windowLightNavigationBar">false</item>
++    <item name="android:navigationBarColor">?android:attr/colorBackgroundFloating</item>
++    <item name="android:navigationBarDividerColor">@android:color/transparent</item>
++  </style>
++</resources>
+diff --git a/java/com/android/dialer/theme/base/res/values-night/theme_dialer_night.xml b/java/com/android/dialer/theme/base/res/values-night/theme_dialer_night.xml
+new file mode 100644
+index 0000000..7d3b949
+--- /dev/null
++++ b/java/com/android/dialer/theme/base/res/values-night/theme_dialer_night.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++  PlaitOS: a real dark theme. The Dialer's themes were light themes that relied on Android's automatic dark mode, which
++  inverts drawn colours unpredictably (avatar tiles, icons). At night every Dialer.ThemeBase* is the dark base instead,
++  whose colours come from the system's wallpaper tones (colors_dialer_dark.xml, colors_pallet.xml).
++-->
++<resources>
++  <style name="Dialer.ThemeBase.ActionBar" parent="Dialer.Dark.ThemeBase.ActionBar"/>
++  <style name="Dialer.ThemeBase.NoActionBar" parent="Dialer.Dark.ThemeBase.NoActionBar"/>
++  <style name="Dialer.ThemeBase" parent="Dialer.Dark.ThemeBase"/>
++</resources>
+diff --git a/java/com/android/dialer/theme/hidden/res/values-night/colors_dialer_dark.xml b/java/com/android/dialer/theme/hidden/res/values-night/colors_dialer_dark.xml
+index f16011f..414a370 100644
+--- a/java/com/android/dialer/theme/hidden/res/values-night/colors_dialer_dark.xml
++++ b/java/com/android/dialer/theme/hidden/res/values-night/colors_dialer_dark.xml
+@@ -20,5 +20,8 @@
+   <color name="dialer_secondary_color">@android:color/system_accent1_200</color>
+   <color name="dialer_ripple_color">#33ffffff</color>
+   <color name="dialer_search_bar_color">@android:color/system_neutral1_800</color>
+-  <color name="settings_primary_dark">#2374CE</color>
++  <!-- PlaitOS: a real dark theme: status bar and window colours that the light palette defined as light -->
++  <color name="dialer_background_color">@android:color/system_neutral1_900</color>
++  <color name="dialer_theme_color_dark">@android:color/system_neutral1_900</color>
++  <color name="settings_primary_dark">@android:color/system_neutral1_900</color>
+ </resources>
+-- 
+2.56.0
+

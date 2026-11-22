@@ -10,10 +10,10 @@
          /system/priv-app, so Android starts it at boot, never kills it, and restarts it if it dies. -->
     <application
         android:name=".BoostApp"
-        android:label="Loudness"
+        android:label="Boost &amp; EQ"
         android:icon="@mipmap/ic_launcher"
         android:persistent="true"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+        android:theme="@style/AppTheme"
         android:allowBackup="true">
 
         <activity

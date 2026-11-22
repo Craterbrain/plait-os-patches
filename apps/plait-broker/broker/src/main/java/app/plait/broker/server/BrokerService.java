@@ -234,7 +234,7 @@ public class BrokerService extends IShizukuService.Stub {
     private static final String SU_KEY = "su";
     private static final String SU_WHAT = "use su";
     private static final String SU_DETAIL = "su is Plait's stand-in for root on this phone: nothing runs as root. Every command "
-            + "the app sends is still checked by Plait Broker, with the same lists, questions and refusals as for any other app.";
+            + "the app sends is still checked by Broker, with the same lists, questions and refusals as for any other app.";
 
     /** Timed "allow" answers: uid -> elapsedRealtime when they end. In memory only: a restart asks again. */
     private final Map<Integer, Long> suAllowedUntil = new HashMap<>();
@@ -277,7 +277,7 @@ public class BrokerService extends IShizukuService.Stub {
             }
             Boolean remembered = policy.decision(uid, Policy.CAP_ASK, SU_KEY);
             if (Boolean.FALSE.equals(remembered)) {
-                why[0] = "su is denied for this app in Plait Broker";
+                why[0] = "su is denied for this app in Broker";
                 return null;
             }
             boolean allowed = Boolean.TRUE.equals(remembered);
@@ -294,7 +294,7 @@ public class BrokerService extends IShizukuService.Stub {
                 if (answer == SU_DENY_ALWAYS) {
                     policy.setCap(uid, Policy.CAP_ASK, SU_KEY, false);
                     policy.log(uid, pkg, "su", null, "denied for good");
-                    why[0] = "su is denied for this app in Plait Broker";
+                    why[0] = "su is denied for this app in Broker";
                     return null;
                 }
                 if (answer == SU_ALWAYS) {
@@ -317,7 +317,7 @@ public class BrokerService extends IShizukuService.Stub {
             Policy.Entry e = policy.find(uid);
             if (e == null || !e.allowed()) {
                 if (!policy.setMode(uid, pkg, Policy.MODE_RESTRICTED)) {
-                    why[0] = "this app is blocked in Plait Broker";
+                    why[0] = "this app is blocked in Broker";
                     return null;
                 }
             }
@@ -438,9 +438,16 @@ public class BrokerService extends IShizukuService.Stub {
         String key = command.key();
         SystemWrites.Plan write = SystemWrites.plan(command.argv, dir);
         if (write != null) return systemWrite(c, uid, key, command, write);
+        // Always an explicit directory, so relative paths are judged against the one they are really read from
+        if (dir == null) dir = "/";
         Classifier.Decision d = c != null
-                ? Classifier.command(command.argv, c.packageName, new DeviceApps(UserHandleCompat.getUserId(uid)))
+                ? Classifier.command(command.argv, dir, c.packageName, new DeviceApps(UserHandleCompat.getUserId(uid)))
                 : null;
+        String unlistedRefusal = d != null ? askIfUnlisted(c, uid, d) : null;
+        if (unlistedRefusal != null) {
+            policy.log(uid, c.packageName, "exec", key, "refused: " + unlistedRefusal);
+            return finished(c, 126, "", "plait-broker: " + unlistedRefusal + "\n");
+        }
         if (d != null && d.tier != Classifier.Tier.NORMAL) {
             String refusal = decide(c, uid, d, new ArrayList<>());
             if (refusal != null) {
@@ -760,11 +767,11 @@ public class BrokerService extends IShizukuService.Stub {
                 return "never allowed through the broker: " + d.reason;
             case GATED: {
                 // Discouraged on purpose: off globally by default, and off for each app until the user switches it on
-                if (!policy.gatesEnabled()) return "gated functions are switched off in Plait Broker";
+                if (!policy.gatesEnabled()) return "gated functions are switched off in Broker";
                 boolean gateKnown = policy.decision(uid, Policy.CAP_GATE, d.gate.id()) != null;
                 if (!policy.gateAllowed(uid, pkg, d.gate.id())) {
                     if (!gateKnown) notifyManager("request", uid, pkg, d.gate.description, null);
-                    return "not switched on for this app in Plait Broker: " + d.gate.description;
+                    return "not switched on for this app in Broker: " + d.gate.description;
                 }
                 String gate = uid + ":" + d.gate.id();
                 synchronized (openGates) {
@@ -800,7 +807,7 @@ public class BrokerService extends IShizukuService.Stub {
                     if (!policy.scopedAllowed(uid, pkg, key, Identity.signingCert(target, userId))) {
                         if (!known) notifyManager("request", uid, pkg, d.scope.description, target);
                         return pkg + " may not " + d.scope.description + " " + target
-                                + " (listed in Plait Broker, switched off; only you can switch it on)";
+                                + " (listed in Broker, switched off; only you can switch it on)";
                     }
                 }
                 return null;
@@ -811,6 +818,17 @@ public class BrokerService extends IShizukuService.Stub {
             default:
                 return null;
         }
+    }
+
+    /**
+     * Permissive mode allows what it sees, but not an unlisted call (an unknown system service or interface): that is
+     * asked about first, once per app and service. Restricted mode lists it as usual. Null if it may go on.
+     */
+    private String askIfUnlisted(Client c, int uid, Classifier.Decision d) {
+        if (!d.unlisted || c == null) return null;
+        Policy.Entry e = policy.find(uid);
+        if (e == null || !Policy.MODE_PERMISSIVE.equals(e.mode)) return null;
+        return decide(c, uid, d.askInstead(), new ArrayList<>());
     }
 
     /** Targets that can never be put on an app's list: the phone's core, the broker, anything running as a system uid. */
@@ -993,8 +1011,11 @@ public class BrokerService extends IShizukuService.Stub {
                 List<String> targets = new ArrayList<>();
                 Classifier.Decision d = BinderRules.classify(descriptor, key, newData, c.packageName,
                         new DeviceApps(UserHandleCompat.getUserId(uid)), targets);
-                String refusal = d.tier != Classifier.Tier.NORMAL ? decide(c, uid, d, targets)
-                        : policy.check(uid, c.packageName, Policy.CAP_BINDER, key) ? null : "not allowed for this app";
+                String refusal = askIfUnlisted(c, uid, d);
+                if (refusal == null) {
+                    refusal = d.tier != Classifier.Tier.NORMAL ? decide(c, uid, d, targets)
+                            : policy.check(uid, c.packageName, Policy.CAP_BINDER, key) ? null : "not allowed for this app";
+                }
                 if (refusal != null) {
                     policy.log(uid, c.packageName, "binder", key, "refused: " + refusal);
                     throw new SecurityException("Binder call refused: " + key + ": " + refusal);
@@ -1108,7 +1129,7 @@ public class BrokerService extends IShizukuService.Stub {
                 requireManager("resetHosts");
                 try {
                     HostsFile.reset();
-                    policy.log(OsUtils.getUid(), "Plait Broker", "hosts", null, "reset to stock");
+                    policy.log(OsUtils.getUid(), "Broker", "hosts", null, "reset to stock");
                     reply.writeNoException();
                 } catch (IOException e) {
                     reply.writeException(new IllegalStateException("Could not reset the hosts file: " + e.getMessage()));
@@ -1125,7 +1146,7 @@ public class BrokerService extends IShizukuService.Stub {
                         openGates.clear();
                     }
                 }
-                policy.log(OsUtils.getUid(), "Plait Broker", "gated functions", null, enabled ? "switched on" : "switched off");
+                policy.log(OsUtils.getUid(), "Broker", "gated functions", null, enabled ? "switched on" : "switched off");
                 reply.writeNoException();
                 return true;
             }

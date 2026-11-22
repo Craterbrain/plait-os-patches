@@ -1,5 +1,8 @@
 package app.plait.scan
 
+import app.plait.design.PlaitFilterChip
+import app.plait.design.PlaitTonalButton
+import app.plait.design.PlaitFilledButton
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -20,10 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,7 +53,7 @@ import java.util.Locale
 @Composable
 private fun Chips(options: List<String>, selected: String, onSelect: (String) -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        options.forEach { o -> FilterChip(selected = o == selected, onClick = { onSelect(o) }, label = { Text(o) }) }
+        options.forEach { o -> PlaitFilterChip(o, o == selected, { onSelect(o) }) }
     }
 }
 
@@ -126,9 +126,9 @@ fun DnsTool(pad: PaddingValues) {
                 if (server == "System") Text(if (system.isEmpty()) "No system DNS server found" else system.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (server == "Custom") ToolField("Server address", custom, { custom = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (running) OutlinedButton(onClick = { job?.cancel() }) { Text("Stop") } else {
-                        Button(onClick = { run(false) }, enabled = name.isNotBlank()) { Text("Look up") }
-                        OutlinedButton(onClick = { run(true) }, enabled = name.isNotBlank()) { Text("Compare servers") }
+                    if (running) PlaitTonalButton(onClick = { job?.cancel() }) { Text("Stop") } else {
+                        PlaitFilledButton(onClick = { run(false) }, enabled = name.isNotBlank()) { Text("Look up") }
+                        PlaitTonalButton(onClick = { run(true) }, enabled = name.isNotBlank()) { Text("Compare servers") }
                     }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -203,7 +203,7 @@ fun TlsTool(pad: PaddingValues) {
             InfoCard {
                 ToolField("Host, host:port or URL", input, { input = it })
                 Row { listOf("example.com", "github.com", "mail.google.com:993").forEach { s -> TextButton(onClick = { input = s }) { Text(s) } } }
-                if (running) OutlinedButton(onClick = { job?.cancel() }) { Text("Stop") } else Button(onClick = { inspect() }, enabled = input.isNotBlank()) { Text("Inspect") }
+                if (running) PlaitTonalButton(onClick = { job?.cancel() }) { Text("Stop") } else PlaitFilledButton(onClick = { inspect() }, enabled = input.isNotBlank()) { Text("Inspect") }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 Text("Works with any TLS service (web, mail, VPN gateways). A broken certificate is still shown; the platform's trust store decides whether it would be trusted.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -308,9 +308,9 @@ fun WhoisTool(pad: PaddingValues) {
             InfoCard {
                 ToolField("Domain or IP address", input, { input = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (running) OutlinedButton(onClick = { job?.cancel() }) { Text("Stop") } else {
-                        Button(onClick = { lookup(false) }, enabled = input.isNotBlank()) { Text("Look up") }
-                        OutlinedButton(onClick = { lookup(true) }) { Text("My public IP") }
+                    if (running) PlaitTonalButton(onClick = { job?.cancel() }) { Text("Stop") } else {
+                        PlaitFilledButton(onClick = { lookup(false) }, enabled = input.isNotBlank()) { Text("Look up") }
+                        PlaitTonalButton(onClick = { lookup(true) }) { Text("My public IP") }
                     }
                 }
                 if (status.isNotEmpty()) Text(status, style = MaterialTheme.typography.bodySmall)

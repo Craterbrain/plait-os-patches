@@ -1,0 +1,306 @@
+From 35ac36f181d9601b5ba27aa012380c44eddea6a6 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 20:01:55 -0600
+Subject: [PATCH] PlaitOS: plain PlaitOS page, home-tile icons on every page
+
+The PlaitOS page was a TabLayout + ViewPager2 of the four groups; on
+Android 17 the TabLayout can't resolve its Material color attributes
+in Settings' theme and the page crashed on open. It is now a plain
+DashboardFragment listing the four group pages.
+
+Row icons on every page now take the look of Android 17's home tiles
+(system icon shape, light background, dark symbol in the same hue, at
+the tile's 40dp/24dp sizes, symbol centered). The home page's own
+expressive tiles are left as stock draws them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ res/layout/plait_settings_tabs.xml            | 23 -------
+ res/xml/plait_settings.xml                    | 31 ++++++++++
+ .../android/settings/plait/PlaitIconStyler.kt | 60 +++++++++++++------
+ .../settings/plait/PlaitSettingsFragment.kt   | 55 ++++-------------
+ 4 files changed, 85 insertions(+), 84 deletions(-)
+ delete mode 100644 res/layout/plait_settings_tabs.xml
+ create mode 100644 res/xml/plait_settings.xml
+
+diff --git a/res/layout/plait_settings_tabs.xml b/res/layout/plait_settings_tabs.xml
+deleted file mode 100644
+index 5706386..0000000
+--- a/res/layout/plait_settings_tabs.xml
++++ /dev/null
+@@ -1,23 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- PlaitOS settings: swipeable tabs, as crDroid's settings (SPDX-License-Identifier: Apache-2.0). -->
+-<LinearLayout
+-    xmlns:android="http://schemas.android.com/apk/res/android"
+-    xmlns:app="http://schemas.android.com/apk/res-auto"
+-    android:layout_width="match_parent"
+-    android:layout_height="match_parent"
+-    android:orientation="vertical">
+-
+-    <com.google.android.material.tabs.TabLayout
+-        android:id="@+id/plait_tabs"
+-        android:layout_width="match_parent"
+-        android:layout_height="wrap_content"
+-        android:background="@android:color/transparent"
+-        app:tabMode="fixed"
+-        app:tabGravity="fill" />
+-
+-    <androidx.viewpager2.widget.ViewPager2
+-        android:id="@+id/plait_pager"
+-        android:layout_width="match_parent"
+-        android:layout_height="0dp"
+-        android:layout_weight="1" />
+-</LinearLayout>
+diff --git a/res/xml/plait_settings.xml b/res/xml/plait_settings.xml
+new file mode 100644
+index 0000000..801f4b4
+--- /dev/null
++++ b/res/xml/plait_settings.xml
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- The PlaitOS page: one entry per group, each its own page (SPDX-License-Identifier: Apache-2.0) -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    android:key="plait_settings"
++    android:title="@string/plait_settings_title">
++
++    <Preference
++        android:key="plait_status_bar"
++        android:icon="@drawable/ic_plait_traffic"
++        android:title="@string/plait_tab_status_bar"
++        android:fragment="com.android.settings.plait.PlaitStatusBarFragment" />
++
++    <Preference
++        android:key="plait_quick_settings"
++        android:icon="@drawable/ic_plait_qs_tile"
++        android:title="@string/plait_tab_quick_settings"
++        android:fragment="com.android.settings.plait.PlaitQuickSettingsFragment" />
++
++    <Preference
++        android:key="plait_buttons"
++        android:icon="@drawable/ic_plait_navbar_layout"
++        android:title="@string/plait_tab_buttons"
++        android:fragment="com.android.settings.plait.PlaitButtonsFragment" />
++
++    <Preference
++        android:key="plait_misc"
++        android:icon="@drawable/ic_plait_controls_icon"
++        android:title="@string/plait_tab_misc"
++        android:fragment="com.android.settings.plait.PlaitMiscFragment" />
++</PreferenceScreen>
+diff --git a/src/com/android/settings/plait/PlaitIconStyler.kt b/src/com/android/settings/plait/PlaitIconStyler.kt
+index df87fdb..2871113 100644
+--- a/src/com/android/settings/plait/PlaitIconStyler.kt
++++ b/src/com/android/settings/plait/PlaitIconStyler.kt
+@@ -11,13 +11,13 @@ import android.graphics.Color
+ import android.graphics.drawable.AdaptiveIconDrawable
+ import android.graphics.drawable.BitmapDrawable
+ import android.graphics.drawable.Drawable
+-import android.graphics.drawable.DrawableWrapper
+ import android.graphics.drawable.GradientDrawable
+ import android.graphics.drawable.LayerDrawable
+ import android.os.UserHandle
+ import android.provider.Settings
+ import androidx.preference.Preference
+ import androidx.preference.PreferenceGroup
++import com.android.settings.R
+ import com.android.settingslib.widget.AdaptiveIconShapeDrawable
+ import kotlin.math.abs
+ import kotlin.random.Random
+@@ -47,7 +47,7 @@ object PlaitIconStyler {
+     const val KEY_CORNER = "plait_settings_icon_corner_style"
+     const val KEY_RANDOM = "plait_settings_icon_random_colors"
+ 
+-    /** PlaitOS's own look by default: colored background, white icon (circle). */
++    /** By default every page's icons look like Android 17's home page tiles: a light colored shape, dark symbol. */
+     @JvmField val DEFAULT_STYLE = Style.COLORED_BACKGROUND
+ 
+     /** Material 3 tones that read on light and dark backgrounds with a white symbol. */
+@@ -101,27 +101,23 @@ object PlaitIconStyler {
+         if (icon is StyledIcon || icon is BitmapDrawable || icon is AdaptiveIconDrawable) return
+         val color = colorFor(preference.key, context)
+         val accent = accent(context)
+-        preference.icon = styled(symbolOf(icon).mutate(), style, color, accent, context)
++        if (isExpressiveTile(icon)) return
++        preference.icon = styled(icon.mutate(), style, color, accent, context)
+     }
+ 
+     /**
+-     * The symbol to restyle. Android 17's expressive home tiles are already finished artwork: a layer-list of a colored
+-     * shape (AdaptiveIconShapeDrawable) under the symbol in a TintDrawable. Restyling all of it would paint the whole
+-     * tile white, so only its symbol is taken. Any other icon is the symbol itself.
++     * Android 17's expressive home tiles: already a colored shape (AdaptiveIconShapeDrawable) under the symbol, drawn by
++     * the stock design. They stay exactly as stock draws them; restyling them painted them white, then off-size.
+      */
+-    private fun symbolOf(icon: Drawable): Drawable {
+-        if (icon !is LayerDrawable || icon.numberOfLayers < 2 || icon.getDrawable(0) !is AdaptiveIconShapeDrawable) {
+-            return icon
+-        }
+-        val top = icon.getDrawable(icon.numberOfLayers - 1) ?: return icon
+-        return (top as? DrawableWrapper)?.drawable ?: top
+-    }
++    private fun isExpressiveTile(icon: Drawable): Boolean =
++        icon is LayerDrawable && icon.numberOfLayers >= 2 && icon.getDrawable(0) is AdaptiveIconShapeDrawable
+ 
+     private fun styled(icon: Drawable, style: Style, color: Int, accent: Int, context: Context):
+         Drawable {
+         val density = context.resources.displayMetrics.density
+-        val size = (36 * density).toInt()
+-        val inset = (8 * density).toInt()
++        // The home page tile's measurements (40dp shape, 24dp symbol), so every page matches it
++        val size = context.resources.getDimensionPixelSize(R.dimen.dashboard_tile_image_size)
++        val inset = context.resources.getDimensionPixelSize(R.dimen.dashboard_tile_foreground_image_inset)
+         val circle = Settings.System.getIntForUser(context.contentResolver, KEY_CORNER, 0,
+             UserHandle.USER_CURRENT) == 0
+         fun shape() =
+@@ -133,8 +129,17 @@ object PlaitIconStyler {
+         return when (style) {
+             Style.STOCK -> icon
+             Style.COLORED_BACKGROUND -> {
+-                icon.setTint(Color.WHITE)
+-                layered(shape().apply { setColor(color) }, icon, size, inset)
++                // The stock home tile: a light shape (the system icon shape unless rounded squares are chosen)
++                // under the symbol in the same hue's dark tone
++                val (bg, fg) = tilePair(color, context)
++                icon.setTint(fg)
++                val tile =
++                    if (circle) AdaptiveIconShapeDrawable(context.resources).apply {
++                        paint.color = bg
++                        intrinsicWidth = size
++                        intrinsicHeight = size
++                    } else shape().apply { setColor(bg) }
++                layered(tile, icon, size, inset)
+             }
+             Style.GRADIENT_BACKGROUND -> {
+                 icon.setTint(Color.WHITE)
+@@ -167,10 +172,29 @@ object PlaitIconStyler {
+ 
+     private fun layered(bg: Drawable, icon: Drawable, size: Int, inset: Int): Drawable =
+         StyledIcon(arrayOf(bg, icon)).apply {
++            // Both layers get a fixed size, so a symbol drawn at another size still lands centered at 24dp
+             setLayerSize(0, size, size)
+-            setLayerInset(1, inset, inset, inset, inset)
++            setLayerSize(1, size - 2 * inset, size - 2 * inset)
++            setLayerGravity(1, android.view.Gravity.CENTER)
+         }
+ 
++    /** The home page's light/dark color pair (background, symbol) for a [PALETTE] hue. */
++    private fun tilePair(color: Int, context: Context): Pair<Int, Int> {
++        val (bg, fg) =
++            when (color) {
++                0xFF43A047.toInt(), 0xFF00897B.toInt() -> R.color.homepage_green_bg to R.color.homepage_green_fg
++                0xFFE53935.toInt() -> R.color.homepage_red_bg to R.color.homepage_red_fg
++                0xFFFB8C00.toInt(), 0xFF6D4C41.toInt() -> R.color.homepage_orange_bg to R.color.homepage_orange_fg
++                0xFF8E24AA.toInt(), 0xFF3949AB.toInt() -> R.color.homepage_purple_bg to R.color.homepage_purple_fg
++                0xFF00ACC1.toInt() -> R.color.homepage_cyan_bg to R.color.homepage_cyan_fg
++                0xFFD81B60.toInt() -> R.color.homepage_pink_bg to R.color.homepage_pink_fg
++                0xFFFDD835.toInt() -> R.color.homepage_yellow_bg to R.color.homepage_yellow_fg
++                0xFF546E7A.toInt() -> R.color.homepage_grey_bg to R.color.homepage_grey_fg
++                else -> R.color.homepage_blue_bg to R.color.homepage_blue_fg
++            }
++        return context.getColor(bg) to context.getColor(fg)
++    }
++
+     /** A stable color per row (same row, same color), or a random one when chosen. */
+     private fun colorFor(key: String?, context: Context): Int {
+         val random = Settings.System.getIntForUser(context.contentResolver, KEY_RANDOM, 0,
+diff --git a/src/com/android/settings/plait/PlaitSettingsFragment.kt b/src/com/android/settings/plait/PlaitSettingsFragment.kt
+index 16ed326..138bdb9 100644
+--- a/src/com/android/settings/plait/PlaitSettingsFragment.kt
++++ b/src/com/android/settings/plait/PlaitSettingsFragment.kt
+@@ -8,36 +8,25 @@ package com.android.settings.plait
+ import android.app.AlertDialog
+ import android.app.settings.SettingsEnums
+ import android.os.Bundle
+-import android.view.LayoutInflater
+ import android.view.Menu
+ import android.view.MenuInflater
+ import android.view.MenuItem
+-import android.view.View
+-import android.view.ViewGroup
+-import androidx.fragment.app.Fragment
+-import androidx.viewpager2.adapter.FragmentStateAdapter
+-import androidx.viewpager2.widget.ViewPager2
+ import com.android.settings.R
+-import com.android.settings.core.InstrumentedFragment
+-import com.google.android.material.tabs.TabLayout
+-import com.google.android.material.tabs.TabLayoutMediator
++import com.android.settings.dashboard.DashboardFragment
+ 
+ /**
+- * The PlaitOS page: options with no stock Settings home, in swipeable tabs as crDroid's settings
+- * are (Status bar, Quick Settings, Buttons, Misc), with "Reset PlaitOS settings" in the menu.
+- * Options that extend a stock setting are on that stock page instead.
++ * The PlaitOS page: options with no stock Settings home, one entry per group (Status bar, Quick Settings, Buttons,
++ * Misc), each its own page, with "Reset PlaitOS settings" in the menu. Options that extend a stock setting are on that
++ * stock page instead.
++ *
++ * A plain Settings page on purpose: the first version put the four groups in swipeable tabs (TabLayout + ViewPager2
++ * of nested settings fragments), the only custom-view page in Settings, and it crashed on open on Android 17.
+  */
+-class PlaitSettingsFragment : InstrumentedFragment() {
++class PlaitSettingsFragment : DashboardFragment() {
+ 
+-    private data class Tab(val title: Int, val create: () -> Fragment)
++    override fun getPreferenceScreenResId() = R.xml.plait_settings
+ 
+-    private val tabs =
+-        listOf(
+-            Tab(R.string.plait_tab_status_bar) { PlaitStatusBarFragment() },
+-            Tab(R.string.plait_tab_quick_settings) { PlaitQuickSettingsFragment() },
+-            Tab(R.string.plait_tab_buttons) { PlaitButtonsFragment() },
+-            Tab(R.string.plait_tab_misc) { PlaitMiscFragment() },
+-        )
++    override fun getLogTag() = TAG
+ 
+     override fun getMetricsCategory() = SettingsEnums.PAGE_UNKNOWN
+ 
+@@ -46,27 +35,6 @@ class PlaitSettingsFragment : InstrumentedFragment() {
+         setHasOptionsMenu(true)
+     }
+ 
+-    override fun onCreateView(
+-        inflater: LayoutInflater,
+-        container: ViewGroup?,
+-        savedInstanceState: Bundle?,
+-    ): View {
+-        requireActivity().setTitle(R.string.plait_settings_title)
+-        val root = inflater.inflate(R.layout.plait_settings_tabs, container, false)
+-        val pager = root.findViewById<ViewPager2>(R.id.plait_pager)
+-        pager.adapter =
+-            object : FragmentStateAdapter(this) {
+-                override fun getItemCount() = tabs.size
+-
+-                override fun createFragment(position: Int) = tabs[position].create()
+-            }
+-        TabLayoutMediator(root.findViewById<TabLayout>(R.id.plait_tabs), pager) { tab, position ->
+-                tab.setText(tabs[position].title)
+-            }
+-            .attach()
+-        return root
+-    }
+-
+     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+         menu.add(Menu.NONE, MENU_RESET, Menu.NONE, R.string.plait_reset_title)
+         super.onCreateOptionsMenu(menu, inflater)
+@@ -79,7 +47,7 @@ class PlaitSettingsFragment : InstrumentedFragment() {
+             .setMessage(R.string.plait_reset_message)
+             .setPositiveButton(R.string.plait_reset_confirm) { _, _ ->
+                 PlaitSettings.resetAll(requireContext())
+-                // Rebuild the tabs so every row shows its default again
++                // Rebuild the page so every row shows its default again
+                 requireActivity().recreate()
+             }
+             .setNegativeButton(android.R.string.cancel, null)
+@@ -88,6 +56,7 @@ class PlaitSettingsFragment : InstrumentedFragment() {
+     }
+ 
+     private companion object {
++        const val TAG = "PlaitSettingsFragment"
+         const val MENU_RESET = Menu.FIRST
+     }
+ }
+-- 
+2.56.0
+

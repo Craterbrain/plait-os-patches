@@ -1,5 +1,11 @@
 package app.plait.shield
 
+import app.plait.design.PlaitSwitch
+import app.plait.design.StateChip
+import app.plait.design.Tone
+import app.plait.design.PlaitTonalButton
+import app.plait.design.PlaitFilledButton
+import app.plait.design.PlaitIcon
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.DnsResolver
@@ -28,10 +34,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.Button
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.rememberScrollState
@@ -41,17 +43,14 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
+import app.plait.design.PlaitTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -104,16 +103,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ShieldTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val context = LocalContext.current
-    val scheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> darkColorScheme()
-        else -> lightColorScheme()
-    }
-    MaterialTheme(colorScheme = scheme, content = content)
-}
+fun ShieldTheme(content: @Composable () -> Unit) = PlaitTheme(content = content)
 
 private const val PREFS = "shield"
 
@@ -178,7 +168,7 @@ private fun ShieldApp(tick: Int) {
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Plait Shield") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Shield") }) }) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp),
@@ -205,7 +195,7 @@ private fun ShieldApp(tick: Int) {
             item { Header("Blocklists") }
             item {
                 Text(
-                    "Merged into the phone's hosts file through Plait Broker, which keeps only blocking entries. " +
+                    "Merged into the phone's hosts file through Broker, which keeps only blocking entries. " +
                         "Works with any DNS provider above.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp)
@@ -236,8 +226,8 @@ private fun ShieldApp(tick: Int) {
             }
             item {
                 Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { applyLists(false) }, enabled = busy == null && selected.isNotEmpty()) { Text("Apply blocklists") }
-                    OutlinedButton(onClick = { applyLists(true) }, enabled = busy == null) { Text("Turn off") }
+                    PlaitFilledButton(onClick = { applyLists(false) }, enabled = busy == null && selected.isNotEmpty()) { Text("Apply blocklists") }
+                    PlaitTonalButton(onClick = { applyLists(true) }, enabled = busy == null) { Text("Turn off") }
                 }
             }
         }
@@ -249,7 +239,7 @@ private fun ShieldApp(tick: Int) {
  * DNS. If a fresh lookup does not succeed within about 20 seconds, the previous setting goes back.
  */
 private suspend fun switchDns(context: Context, mode: String, host: String?): String {
-    val before = PrivateDns.read() ?: return "Could not read the current DNS setting through Plait Broker"
+    val before = PrivateDns.read() ?: return "Could not read the current DNS setting through Broker"
     val r = PrivateDns.set(mode, host)
     if (!r.ok) return "Not changed: ${r.err.removePrefix("plait-broker: ")}"
     if (mode != "hostname") return "DNS: ${PrivateDns(mode, host).description}"
@@ -309,7 +299,7 @@ private fun Header(title: String, small: Boolean = false) {
 private fun Card(selected: Boolean, onClick: (() -> Unit)? = null, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val accent = MaterialTheme.colorScheme.primary
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp)
     ) {
@@ -329,17 +319,17 @@ private fun StatusCard(
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             when {
                 !running -> {
-                    Text("Plait Broker is not running", style = MaterialTheme.typography.titleMedium)
-                    Text("Shield changes DNS and the blocklist only through Plait Broker.", style = MaterialTheme.typography.bodySmall)
+                    Text("Broker is not running", style = MaterialTheme.typography.titleMedium)
+                    Text("Shield changes DNS and the blocklist only through Broker.", style = MaterialTheme.typography.bodySmall)
                 }
                 !allowed -> {
-                    Text("Connect to Plait Broker", style = MaterialTheme.typography.titleMedium)
+                    Text("Connect to Broker", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Plait Broker will list what Shield declares it uses: reading and setting Private DNS, and writing the " +
+                        "Broker will list what Shield declares it uses: reading and setting Private DNS, and writing the " +
                             "blocklist. Nothing else is switched on.",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    Button(onClick = onConnect) { Text("Connect") }
+                    PlaitFilledButton(onClick = onConnect) { Text("Connect") }
                 }
                 else -> {
                     Text("DNS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -427,7 +417,7 @@ private fun DnsPicker(dns: PrivateDns?, custom: String, onCustom: (String) -> Un
                         }
                     }
                 }
-                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Choose a provider", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                PlaitIcon(PlaitIcon.ArrowDropDown, contentDescription = "Choose a provider", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         ExposedDropdownMenu(
@@ -483,10 +473,10 @@ private fun MenuRow(title: String, subtitle: String, p: Provider?, selected: Boo
                     Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false))
                     if (selected) {
                         Spacer(Modifier.width(6.dp))
-                        Icon(Icons.Filled.CheckCircle, contentDescription = "In use", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        PlaitIcon(PlaitIcon.CheckCircle, contentDescription = "In use", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                     }
                 }
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontFamily = if (p != null) FontFamily.Monospace else null)
                 if (p != null) {
                     Spacer(Modifier.size(3.dp))
@@ -499,17 +489,7 @@ private fun MenuRow(title: String, subtitle: String, p: Provider?, selected: Boo
 
 @Composable
 private fun Tag(text: String, good: Boolean? = null, compact: Boolean = false) {
-    val (bg, fg) = when (good) {
-        true -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
-        false -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-        null -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Surface(shape = RoundedCornerShape(if (compact) 6.dp else 8.dp), color = bg) {
-        Text(
-            text, color = fg, fontSize = if (compact) 10.sp else 12.sp,
-            modifier = Modifier.padding(horizontal = if (compact) 6.dp else 8.dp, vertical = if (compact) 1.dp else 3.dp)
-        )
-    }
+    StateChip(text, when (good) { true -> Tone.Success; false -> Tone.Danger; null -> Tone.Neutral })
 }
 
 @Composable
@@ -527,7 +507,7 @@ private fun ListCard(l: Blocklist, on: Boolean, onToggle: (Boolean) -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.width(12.dp))
-            Switch(checked = on, onCheckedChange = onToggle)
+            PlaitSwitch(on, onToggle)
         }
     }
 }

@@ -1,0 +1,291 @@
+From 70056bc10b57b6c519c16d67c8048b2be0d23bf0 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 08:24:08 -0600
+Subject: [PATCH] PlaitOS: installd restores an app's data in two steps (stage,
+ then commit or abort)
+
+stageTreeTarZst extracts into a staging dir and writes a done marker last; commitStage swaps it in
+only when the marker is there; abortStage removes it. The one-call restore is stage + commit. The
+staging names count as caches so a backup never archives them and a swap never clears them.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ cmds/installd/InstalldNativeService.cpp       | 62 +++++++++++++++
+ cmds/installd/InstalldNativeService.h         |  7 ++
+ cmds/installd/PlaitBackup.cpp                 | 75 +++++++++++++++++--
+ cmds/installd/PlaitBackup.h                   |  9 +++
+ .../installd/binder/android/os/IInstalld.aidl |  6 ++
+ 5 files changed, 153 insertions(+), 6 deletions(-)
+
+diff --git a/cmds/installd/InstalldNativeService.cpp b/cmds/installd/InstalldNativeService.cpp
+index d56fecc..4752f8d 100644
+--- a/cmds/installd/InstalldNativeService.cpp
++++ b/cmds/installd/InstalldNativeService.cpp
+@@ -2146,6 +2146,68 @@ binder::Status InstalldNativeService::plaitRestoreAppData(const std::optional<st
+     return ok();
+ }
+ 
++binder::Status InstalldNativeService::plaitRestoreAppDataStage(const std::optional<std::string>& uuid,
++        const std::string& packageName, int32_t userId, int32_t appId, const std::string& /* seInfo: labels are fixed by Finish */,
++        int32_t part, const android::os::ParcelFileDescriptor& source) {
++    ENFORCE_UID(AID_SYSTEM);
++    ENFORCE_VALID_USER(userId);
++    CHECK_ARGUMENT_UUID(uuid);
++    CHECK_ARGUMENT_PACKAGE_NAME(packageName);
++    LOCK_PACKAGE_USER();
++    if (appId < AID_APP_START || appId > AID_APP_END) {
++        return error("refusing to restore into appId " + std::to_string(appId));
++    }
++    const char* uuid_ = uuid ? uuid->c_str() : nullptr;
++    PlaitPart p;
++    if (!plaitPart(uuid_, userId, part, &p)) {
++        return error("unknown backup part " + std::to_string(part));
++    }
++    uid_t uid = multiuser_get_uid(userId, appId);
++    gid_t gid = p.gid ? p.gid : uid;
++    std::string err;
++    int r = plait::stageTreeTarZst(source.get(), p.parent, packageName, uid, gid, p.newDirMode,
++                                   /* skipCaches= */ true, p.external, &err);
++    if (r != 0) return error(-r, "staging the restore of " + packageName + " failed: " + err);
++    return ok();
++}
++
++binder::Status InstalldNativeService::plaitRestoreAppDataFinish(const std::optional<std::string>& uuid,
++        const std::string& packageName, int32_t userId, int32_t appId, const std::string& seInfo,
++        int32_t part, bool commit) {
++    ENFORCE_UID(AID_SYSTEM);
++    ENFORCE_VALID_USER(userId);
++    CHECK_ARGUMENT_UUID(uuid);
++    CHECK_ARGUMENT_PACKAGE_NAME(packageName);
++    LOCK_PACKAGE_USER();
++    if (appId < AID_APP_START || appId > AID_APP_END) {
++        return error("refusing to restore into appId " + std::to_string(appId));
++    }
++    const char* uuid_ = uuid ? uuid->c_str() : nullptr;
++    PlaitPart p;
++    if (!plaitPart(uuid_, userId, part, &p)) {
++        return error("unknown backup part " + std::to_string(part));
++    }
++    if (!commit) {
++        plait::abortStage(p.parent, packageName);
++        return ok();
++    }
++    std::string err;
++    int r = plait::commitStage(p.parent, packageName, /* skipCaches= */ true, &err);
++    if (r != 0) {
++        plait::abortStage(p.parent, packageName);
++        return error(-r, "restore of " + packageName + " failed: " + err);
++    }
++    if (!p.external) {
++        int flag = part == android::os::IInstalld::PLAIT_PART_CE ? FLAG_STORAGE_CE : FLAG_STORAGE_DE;
++        return restoreconAppDataLocked(uuid, packageName, userId, flag, appId, seInfo);
++    }
++    auto path = p.parent + "/" + packageName;
++    if (selinux_android_restorecon(path.c_str(), SELINUX_ANDROID_RESTORECON_RECURSE) < 0) {
++        return error("restorecon failed for " + path);
++    }
++    return ok();
++}
++
+ binder::Status InstalldNativeService::plaitBackupApks(const std::string& codePath,
+         const android::os::ParcelFileDescriptor& out) {
+     ENFORCE_UID(AID_SYSTEM);
+diff --git a/cmds/installd/InstalldNativeService.h b/cmds/installd/InstalldNativeService.h
+index 84b1dff..3992909 100644
+--- a/cmds/installd/InstalldNativeService.h
++++ b/cmds/installd/InstalldNativeService.h
+@@ -230,6 +230,13 @@ public:
+                                        const std::string& packageName, int32_t userId, int32_t appId,
+                                        const std::string& seInfo, int32_t part,
+                                        const android::os::ParcelFileDescriptor& source);
++    binder::Status plaitRestoreAppDataStage(const std::optional<std::string>& uuid,
++                                            const std::string& packageName, int32_t userId, int32_t appId,
++                                            const std::string& seInfo, int32_t part,
++                                            const android::os::ParcelFileDescriptor& source);
++    binder::Status plaitRestoreAppDataFinish(const std::optional<std::string>& uuid,
++                                             const std::string& packageName, int32_t userId, int32_t appId,
++                                             const std::string& seInfo, int32_t part, bool commit);
+     binder::Status plaitBackupApks(const std::string& codePath,
+                                    const android::os::ParcelFileDescriptor& out);
+     binder::Status plaitZstdDecompress(const android::os::ParcelFileDescriptor& source,
+diff --git a/cmds/installd/PlaitBackup.cpp b/cmds/installd/PlaitBackup.cpp
+index dae3699..4c65100 100644
+--- a/cmds/installd/PlaitBackup.cpp
++++ b/cmds/installd/PlaitBackup.cpp
+@@ -11,6 +11,7 @@
+ #include <poll.h>
+ #include <pthread.h>
+ #include <signal.h>
++#include <stdlib.h>
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <unistd.h>
+@@ -296,8 +297,11 @@ class TarOut {
+     std::vector<char> mBuf = std::vector<char>(kChunk);
+ };
+ 
++// The staging names (kStage, kDone, below) count as caches: a backup never archives a half-made restore and a
++// swap never clears one.
+ bool isCacheName(const char* n) {
+-    return strcmp(n, "cache") == 0 || strcmp(n, "code_cache") == 0;
++    return strcmp(n, "cache") == 0 || strcmp(n, "code_cache") == 0 || strcmp(n, ".plait_restore") == 0 ||
++           strcmp(n, ".plait_restore_done") == 0;
+ }
+ 
+ constexpr int kMaxDepth = 128;
+@@ -510,8 +514,12 @@ class Extractor {
+ // Restores are extracted here (inside the app's own dir, so the dir and its inode stay) and only moved into
+ // place once the whole archive has arrived intact.
+ constexpr const char* kStage = ".plait_restore";
++// Written when the archive has been extracted completely: holds the root dir's mode for the swap. Without it a
++// staged restore is never swapped in (a crash or kill mid-extract leaves a stage that the next restore removes).
++constexpr const char* kDone = ".plait_restore_done";
+ 
+ void removeStage(int rootFd) {
++    unlinkat(rootFd, kDone, 0);
+     struct stat st;
+     if (fstatat(rootFd, kStage, &st, AT_SYMLINK_NOFOLLOW) != 0) return;
+     if (S_ISDIR(st.st_mode)) {
+@@ -535,7 +543,7 @@ int clearTree(int rootFd, bool skipCaches) {
+     while (struct dirent* de = readdir(dir.get())) {
+         if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+         if (skipCaches && isCacheName(de->d_name)) continue;
+-        if (strcmp(de->d_name, kStage) == 0) continue;
++        if (strcmp(de->d_name, kStage) == 0 || strcmp(de->d_name, kDone) == 0) continue;
+         struct stat st;
+         if (fstatat(rootFd, de->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) continue;
+         entries.emplace_back(de->d_name, S_ISDIR(st.st_mode));
+@@ -613,8 +621,8 @@ int writeApksTarZst(int outFd, const std::string& dir, std::string* err) {
+ static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, uid_t uid, gid_t gid,
+                           bool skipCaches, bool external, mode_t* rootMode, std::string* err);
+ 
+-int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
+-                      mode_t newDirMode, bool skipCaches, bool external, std::string* err) {
++int stageTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
++                    mode_t newDirMode, bool skipCaches, bool external, std::string* err) {
+     unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+     if (parentFd < 0) {
+         *err = StringPrintf("open %s: %s", parent.c_str(), strerror(errno));
+@@ -626,7 +634,7 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+         *err = StringPrintf("open %s/%s: %s", parent.c_str(), name.c_str(), strerror(errno));
+         return -EIO;
+     }
+-    // Extract into the staging dir; the app's current data stays untouched until the archive is complete
++    // Extract into the staging dir; the app's current data stays untouched until commitStage
+     removeStage(root.get());
+     unique_fd stage = ex.openDir(root.get(), kStage);
+     if (stage < 0) {
+@@ -636,10 +644,48 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+     ex.mRoot = stage.get();
+     mode_t rootMode = 0;
+     int r = extractEntries(inFd, &ex, name, uid, gid, skipCaches, external, &rootMode, err);
++    if (r == 0) {
++        std::string mode = std::to_string(static_cast<unsigned>(rootMode));
++        unique_fd done(openat(root.get(), kDone, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600));
++        if (done < 0 || !writeAll(done.get(), mode.data(), mode.size())) {
++            *err = "could not mark the staged restore complete";
++            r = -EIO;
++        }
++    }
+     if (r != 0) {
+         stage.reset();
+         removeStage(root.get());
+-        return r;
++    }
++    return r;
++}
++
++int commitStage(const std::string& parent, const std::string& name, bool skipCaches, std::string* err) {
++    unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
++    if (parentFd < 0) {
++        *err = StringPrintf("open %s: %s", parent.c_str(), strerror(errno));
++        return -errno;
++    }
++    unique_fd root(openat(parentFd.get(), name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++    if (root < 0) {
++        *err = StringPrintf("open %s/%s: %s", parent.c_str(), name.c_str(), strerror(errno));
++        return -errno;
++    }
++    // Only a restore that was extracted completely (the marker is written last) is swapped in
++    mode_t rootMode = 0;
++    {
++        unique_fd done(openat(root.get(), kDone, O_RDONLY | O_NOFOLLOW | O_CLOEXEC));
++        char buf[16] = {};
++        ssize_t n = done < 0 ? -1 : TEMP_FAILURE_RETRY(read(done.get(), buf, sizeof(buf) - 1));
++        if (n <= 0) {
++            *err = "there is no complete staged restore";
++            return -ENOENT;
++        }
++        rootMode = static_cast<mode_t>(strtoul(buf, nullptr, 10)) & 07777;
++    }
++    unique_fd stage(openat(root.get(), kStage, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++    if (stage < 0) {
++        *err = "there is no staged restore";
++        return -ENOENT;
+     }
+     // Complete and intact: swap the old data for the new
+     if (int c = clearTree(root.get(), skipCaches); c != 0) {
+@@ -671,6 +717,23 @@ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& na
+     return 0;
+ }
+ 
++void abortStage(const std::string& parent, const std::string& name) {
++    unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
++    if (parentFd < 0) return;
++    unique_fd root(openat(parentFd.get(), name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++    if (root < 0) return;
++    removeStage(root.get());
++}
++
++int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
++                      mode_t newDirMode, bool skipCaches, bool external, std::string* err) {
++    int r = stageTreeTarZst(inFd, parent, name, uid, gid, newDirMode, skipCaches, external, err);
++    if (r != 0) return r;
++    r = commitStage(parent, name, skipCaches, err);
++    if (r != 0) abortStage(parent, name);
++    return r;
++}
++
+ static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, uid_t uid, gid_t gid, bool skipCaches,
+                    bool external, mode_t* rootMode, std::string* err) {
+     Extractor& ex = *exPtr;
+diff --git a/cmds/installd/PlaitBackup.h b/cmds/installd/PlaitBackup.h
+index 30c4fec..a3d229a 100644
+--- a/cmds/installd/PlaitBackup.h
++++ b/cmds/installd/PlaitBackup.h
+@@ -36,6 +36,15 @@ int writeApksTarZst(int outFd, const std::string& dir, std::string* err);
+ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
+                       mode_t newDirMode, bool skipCaches, bool external, std::string* err);
+ 
++// The same in two steps, for a restore whose archive can only be checked once it has all been read (its signed
++// hash): stageTreeTarZst extracts into a staging dir inside <parent>/<name> and leaves the app's data alone;
++// commitStage swaps it in (-ENOENT if there is no complete staged restore); abortStage throws it away (always
++// safe, also when nothing is staged). A stage left by a crash is removed by the next stage or abort.
++int stageTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
++                    mode_t newDirMode, bool skipCaches, bool external, std::string* err);
++int commitStage(const std::string& parent, const std::string& name, bool skipCaches, std::string* err);
++void abortStage(const std::string& parent, const std::string& name);
++
+ // Plain zstd decompression from one fd to another (APK archives, which system_server unpacks itself).
+ int zstdDecompress(int inFd, int outFd, std::string* err);
+ 
+diff --git a/cmds/installd/binder/android/os/IInstalld.aidl b/cmds/installd/binder/android/os/IInstalld.aidl
+index 078d200..1bf7dfc 100644
+--- a/cmds/installd/binder/android/os/IInstalld.aidl
++++ b/cmds/installd/binder/android/os/IInstalld.aidl
+@@ -216,6 +216,12 @@ interface IInstalld {
+             int userId, int appId, @utf8InCpp String seInfo, int part, in ParcelFileDescriptor source);
+     /** The *.apk files of an installed package's code dir (under /data/app). */
+     void plaitBackupApks(@utf8InCpp String codePath, in ParcelFileDescriptor sink);
++    // A restore in two steps: Stage extracts the archive without touching the app's data, Finish then swaps it in
++    // (commit) or throws it away (not commit), once the caller has checked what only the whole stream can show.
++    void plaitRestoreAppDataStage(@nullable @utf8InCpp String uuid, @utf8InCpp String packageName,
++            int userId, int appId, @utf8InCpp String seInfo, int part, in ParcelFileDescriptor source);
++    void plaitRestoreAppDataFinish(@nullable @utf8InCpp String uuid, @utf8InCpp String packageName,
++            int userId, int appId, @utf8InCpp String seInfo, int part, boolean commit);
+     /** Plain zstd decompression (system_server unpacks APK archives itself). */
+     void plaitZstdDecompress(in ParcelFileDescriptor source, in ParcelFileDescriptor sink);
+ 
+-- 
+2.56.0
+

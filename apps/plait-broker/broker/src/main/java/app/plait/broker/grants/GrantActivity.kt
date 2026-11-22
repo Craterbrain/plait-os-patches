@@ -26,8 +26,10 @@ import java.util.UUID
  * revoked), `sessionMinutes` (backup + restore for that long, one of [GrantStore.SESSION_MINUTES]), or `revoke`
  * (a grantId the caller holds: revoked without a dialog).
  *
- * Only one app at a time is the backup app. A request from any other app says it would replace the current one;
- * allowing it moves the slot, which voids every grant the previous app had.
+ * Only apps that may hold the slot ([GrantStore.mayHoldSlot]: a system app, or Plait Backup's own release
+ * certificate) are ever shown a dialog; anything else is refused and logged. Only one app at a time is the backup app.
+ * A request from another eligible app says it would replace the current one; allowing it moves the slot, which voids
+ * every grant the previous app had.
  */
 class GrantActivity : ComponentActivity() {
 
@@ -104,6 +106,11 @@ class GrantActivity : ComponentActivity() {
             GrantStore.log(this, "Refused a grant request from $pkg (identity could not be verified)")
             return null
         }
+        // Backup access reads every app's private data: never offered to an app someone merely installed
+        if (!GrantStore.mayHoldSlot(packageManager, pkg, cert)) {
+            GrantStore.log(this, "Refused a grant request from $pkg (not a backup app this phone trusts)")
+            return null
+        }
         return Caller(pkg, uid, cert)
     }
 
@@ -143,16 +150,35 @@ class GrantActivity : ComponentActivity() {
     }
 
     private fun details(r: Request): String {
-        val whom = if (r.targets.isEmpty()) "every app" else r.targets.sorted().joinToString(", ")
+        // "@call_log", "@sms", "@mms", "@contacts" are the phone's personal data, not apps; no targets = all apps and all of those
+        val apps = r.targets.filterNot { it.startsWith("@") }.sorted()
+        val personal = if (r.targets.isEmpty()) PERSONAL.values.toList() else r.targets.mapNotNull { PERSONAL[it] }
+        val whom = when {
+            r.targets.isEmpty() -> "every app"
+            apps.isEmpty() -> null
+            else -> apps.joinToString(", ")
+        }
+        val what = personal.joinToString(", ")
         val parts = mutableListOf<String>()
-        if (GrantToken.SCOPE_BACKUP in r.scopes) parts += "Read the APKs, private data, Android/data, obb and media folders, permissions and app-ops of $whom."
-        if (GrantToken.SCOPE_RESTORE in r.scopes) parts += "Install and overwrite $whom, including their private data and permissions."
+        if (GrantToken.SCOPE_BACKUP in r.scopes) {
+            whom?.let { parts += "Read the APKs, private data, Android/data, obb and media folders, permissions and app-ops of $it." }
+            if (personal.isNotEmpty()) parts += "Read your $what."
+        }
+        if (GrantToken.SCOPE_RESTORE in r.scopes) {
+            whom?.let { parts += "Install and overwrite $it, including their private data and permissions, and record each as installed by its original app store (or the Play Store, if you choose that in Backup's settings)." }
+            if (personal.isNotEmpty()) parts += "Add to your $what."
+        }
         return parts.joinToString("\n\n")
     }
 
+    private companion object {
+        val PERSONAL = linkedMapOf("@call_log" to "call log", "@sms" to "text messages", "@mms" to "picture messages",
+            "@contacts" to "contacts")
+    }
+
     private fun lifetime(r: Request) = when {
-        r.sessionMinutes > 0 -> "Session: no more questions for ${r.sessionMinutes} minutes. End it early from the app, or revoke it in Plait Broker > Signed grants."
-        r.standing -> "Lasts until you revoke it in Plait Broker > Signed grants."
+        r.sessionMinutes > 0 -> "Session: no more questions for ${r.sessionMinutes} minutes. End it early from the app, or revoke it in Broker > Signed grants."
+        r.standing -> "Lasts until you revoke it in Broker > Signed grants."
         else -> "One-off: expires in ${GrantStore.ONE_OFF_MS / 60000} minutes."
     }
 

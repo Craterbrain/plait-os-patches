@@ -1,0 +1,221 @@
+From 670a9dff81994d74a51bd3fb33304882341ad20c Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 22:45:11 -0600
+Subject: [PATCH] PlaitOS: install an update from a file
+
+An Install update from file row opens a picker for an update zip. It is copied to the downloader's
+file and goes through the same checks (signature, device, A/B, source build); the build date and
+incremental come from the zip, which must be newer than the installed build.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ res/values/strings.xml                      |  2 +
+ res/xml/settings.xml                        |  5 ++
+ src/app/seamlessupdate/client/Service.java  | 73 +++++++++++++++++++--
+ src/app/seamlessupdate/client/Settings.java | 28 ++++++++
+ 4 files changed, 103 insertions(+), 5 deletions(-)
+
+diff --git a/res/values/strings.xml b/res/values/strings.xml
+index f5a1534..33c2093 100644
+--- a/res/values/strings.xml
++++ b/res/values/strings.xml
+@@ -48,6 +48,8 @@
+     <string name="idle_reboot_summary_off">Don\'t automatically reboot once the device is idle after successfully installing an update</string>
+     <string name="check_for_updates_title">Check for updates</string>
+     <string name="check_for_updates_summary">Tap to check for updates</string>
++    <string name="install_from_file_title">Install update from file</string>
++    <string name="install_from_file_summary">Pick an update zip (husky-ota_update-….zip) signed with your PlaitOS keys. It is checked like a downloaded update and must be newer than this build</string>
+     <string name="notification_settings_title">Notification settings</string>
+     <string name="notification_settings_summary">Modify notification channel settings</string>
+     <string name="use_security_preview_channel_title">Receive security preview releases</string>
+diff --git a/res/xml/settings.xml b/res/xml/settings.xml
+index 43517af..f0f4af3 100644
+--- a/res/xml/settings.xml
++++ b/res/xml/settings.xml
+@@ -5,6 +5,11 @@
+             app:summary="@string/check_for_updates_summary"
+             app:iconSpaceReserved="false" />
+ 
++    <Preference app:key="install_from_file"
++            app:title="@string/install_from_file_title"
++            app:summary="@string/install_from_file_summary"
++            app:iconSpaceReserved="false" />
++
+     <PreferenceCategory app:title="@string/settings_header"
+             app:allowDividerAbove="false"
+             app:allowDividerBelow="false"
+diff --git a/src/app/seamlessupdate/client/Service.java b/src/app/seamlessupdate/client/Service.java
+index c54c036..4055d67 100644
+--- a/src/app/seamlessupdate/client/Service.java
++++ b/src/app/seamlessupdate/client/Service.java
+@@ -13,6 +13,7 @@ import android.os.PowerManager.WakeLock;
+ import android.os.RecoverySystem;
+ import android.os.ServiceSpecificException;
+ import android.os.SystemProperties;
++import android.net.Uri;
+ import android.os.UpdateEngine;
+ import android.os.UpdateEngine.ErrorCodeConstants;
+ import android.os.UpdateEngine.UpdateStatusConstants;
+@@ -46,6 +47,10 @@ public class Service extends IntentService {
+     private static final String TAG = "Service";
+     static final String INTENT_EXTRA_NETWORK = "network";
+     static final String INTENT_EXTRA_IS_USER_INITIATED = "is_user_initiated";
++    // PlaitOS: the intent's data is an update zip picked by the user instead of one to download. The build
++    // date and incremental then come from the zip, which is checked the same way (signature, device, A/B,
++    // source build) and must be newer than the installed build.
++    private static final long LOCAL_FILE = -1;
+     private static final int CONNECT_TIMEOUT = 30000;
+     private static final int READ_TIMEOUT = 30000;
+     private static final File CARE_MAP_PATH = new File("/data/ota_package/care_map.pb");
+@@ -193,11 +198,17 @@ public class Service extends IntentService {
+                     }
+                 }
+             }
+-            if (timestamp != targetBuildDate) {
+-                throw new GeneralSecurityException("timestamp does not match server metadata");
+-            }
+-            if (!targetIncremental.equals(incremental)) {
+-                throw new GeneralSecurityException("incremental does not match server metadata");
++            if (targetBuildDate == LOCAL_FILE) {
++                if (timestamp <= SystemProperties.getLong("ro.build.date.utc", 0)) {
++                    throw new GeneralSecurityException("update is not newer than the installed build");
++                }
++            } else {
++                if (timestamp != targetBuildDate) {
++                    throw new GeneralSecurityException("timestamp does not match server metadata");
++                }
++                if (!targetIncremental.equals(incremental)) {
++                    throw new GeneralSecurityException("incremental does not match server metadata");
++                }
+             }
+             if (!DEVICE.equals(device)) {
+                 throw new GeneralSecurityException("device mismatch");
+@@ -248,6 +259,53 @@ public class Service extends IntentService {
+         }
+     }
+ 
++    /** Installs an update zip the user picked: copies it to where the downloader keeps its file, then verifies and applies it. */
++    private void installLocalFile(final Uri uri) throws IOException, GeneralSecurityException {
++        Files.deleteIfExists(UPDATE_PATH.toPath());
++        long size = -1;
++        try (final var descriptor = getContentResolver().openFileDescriptor(uri, "r")) {
++            if (descriptor != null) {
++                size = descriptor.getStatSize();
++            }
++        }
++        if (size > 0) {
++            try {
++                StorageManager sm = getSystemService(StorageManager.class);
++                sm.allocateBytes(sm.getUuidForPath(UPDATE_PATH), size, StorageManager.FLAG_ALLOCATE_AGGRESSIVE);
++            } catch (IOException e) {
++                Log.d(TAG, "unable to allocate " + size + " bytes, proceeding anyway", e);
++            }
++        }
++        // A different file than the server flow's, so its resume logic starts fresh next time
++        Settings.getPreferences(this).edit().remove(PREFERENCE_DOWNLOAD_FILE).commit();
++
++        notificationHandler.showDownloadNotification(0, Math.max(size, 1));
++        try (final InputStream input = getContentResolver().openInputStream(uri);
++                final OutputStream output = new FileOutputStream(UPDATE_PATH)) {
++            if (input == null) {
++                throw new IOException("unable to open the update file");
++            }
++            long copied = 0;
++            long last = System.nanoTime();
++            final byte[] buffer = new byte[16384];
++            int bytesRead;
++            while ((bytesRead = input.read(buffer)) != -1) {
++                output.write(buffer, 0, bytesRead);
++                copied += bytesRead;
++                final long now = System.nanoTime();
++                if (now - last > 1000 * 1000 * 1000) {
++                    notificationHandler.showDownloadNotification(copied, Math.max(size, copied));
++                    last = now;
++                }
++            }
++        } catch (final IOException e) {
++            UPDATE_PATH.delete();
++            throw e;
++        }
++        Log.d(TAG, "update file copied");
++        onDownloadFinished(false, LOCAL_FILE, null);
++    }
++
+     private void annoyUser() {
+         PeriodicJob.cancel(this);
+         final SharedPreferences preferences = Settings.getPreferences(this);
+@@ -285,6 +343,11 @@ public class Service extends IntentService {
+             mUpdating = true;
+             notificationHandler.start();
+ 
++            if (intent.getData() != null) {
++                installLocalFile(intent.getData());
++                return;
++            }
++
+             if (network == null) {
+                 throw new IOException("Network is unavailable");
+             }
+diff --git a/src/app/seamlessupdate/client/Settings.java b/src/app/seamlessupdate/client/Settings.java
+index 700d1cc..3f138e6 100644
+--- a/src/app/seamlessupdate/client/Settings.java
++++ b/src/app/seamlessupdate/client/Settings.java
+@@ -1,6 +1,7 @@
+ package app.seamlessupdate.client;
+ 
+ import android.net.Network;
++import android.app.Activity;
+ import android.content.Context;
+ import android.content.Intent;
+ import android.content.SharedPreferences;
+@@ -33,6 +34,8 @@ public class Settings extends CollapsingToolbarBaseActivity {
+     private static final String KEY_REQUIRES_CHARGING = "requires_charging";
+     private static final String KEY_IDLE_REBOOT = "idle_reboot";
+     private static final String KEY_CHECK_FOR_UPDATES = "check_for_updates";
++    private static final String KEY_INSTALL_FROM_FILE = "install_from_file";
++    private static final int REQUEST_INSTALL_FROM_FILE = 1;
+     static final String KEY_WAITING_FOR_REBOOT = "waiting_for_reboot";
+ 
+     static SharedPreferences getPreferences(final Context context) {
+@@ -155,6 +158,16 @@ public class Settings extends CollapsingToolbarBaseActivity {
+                 return true;
+             });
+ 
++            requirePreference(KEY_INSTALL_FROM_FILE).setOnPreferenceClickListener(pref -> {
++                if (!getPreferences(requireContext()).getBoolean(KEY_WAITING_FOR_REBOOT, false)) {
++                    final var picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
++                    picker.addCategory(Intent.CATEGORY_OPENABLE);
++                    picker.setType("application/zip");
++                    startActivityForResult(picker, REQUEST_INSTALL_FROM_FILE);
++                }
++                return true;
++            });
++
+             requirePreference(KEY_NETWORK_TYPE).setOnPreferenceChangeListener((pref, newValue) -> {
+                 final int value = Integer.parseInt((String) newValue);
+                 getPreferences(requireContext()).edit().putInt(KEY_NETWORK_TYPE, value).apply();
+@@ -190,6 +203,21 @@ public class Settings extends CollapsingToolbarBaseActivity {
+             return useSecurityPreviewChannel;
+         }
+ 
++        @Override
++        public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
++            super.onActivityResult(requestCode, resultCode, data);
++            if (requestCode != REQUEST_INSTALL_FROM_FILE || resultCode != Activity.RESULT_OK
++                    || data == null || data.getData() == null) {
++                return;
++            }
++            final Context context = requireContext();
++            final var intent = new Intent(context, Service.class);
++            intent.putExtra(Service.INTENT_EXTRA_IS_USER_INITIATED, true);
++            intent.setData(data.getData());
++            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++            context.startForegroundService(intent);
++        }
++
+         @Override
+         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+             switch (key) {
+-- 
+2.56.0
+

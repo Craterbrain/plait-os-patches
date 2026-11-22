@@ -1,0 +1,47 @@
+From e6509e8cbe3ae06db582b6f151fc6d2d237dd9b5 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 07:40:51 -0600
+Subject: [PATCH] PlaitOS: a restore grant may read the personal data it
+ restores into
+
+A restore queries the call log, messages and contacts that are already on the phone (to skip
+duplicates and find threads) before it adds rows, but personalQuery asked for the backup scope, so
+a restore-only grant failed with 'grant does not cover backup.apps of @call_log'.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../com/android/server/plait/PlaitBackupService.java  | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index 657ac47b4..039e1b129 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -851,7 +851,14 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         try {
+             PersonalUri p = personalUri(uri);
+             if (!p.query) throw new SecurityException("no queries on " + uri);
+-            Call call = verifyPersonal(grant, PlaitGrant.SCOPE_BACKUP, p, userId);
++            // A restore reads the rows that are already there (to skip duplicates and find conversation
++            // threads) before it adds any, so a restore grant may query as well as a backup grant
++            Call call;
++            try {
++                call = verifyPersonal(grant, PlaitGrant.SCOPE_BACKUP, p, userId);
++            } catch (SecurityException notBackup) {
++                call = verifyPersonal(grant, PlaitGrant.SCOPE_RESTORE, p, userId);
++            }
+             final long ident = Binder.clearCallingIdentity();
+             try (android.database.Cursor c = resolver(userId).query(p.uri, projection, selection, selectionArgs,
+                     sortOrder);
+@@ -886,7 +893,7 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+                     w.write(row.toString());
+                     w.write('\n');
+                 }
+-                logPersonal(call, "backup");
++                logPersonal(call, call.grant.scopes.contains(PlaitGrant.SCOPE_BACKUP) ? "backup" : "restore");
+             } catch (IOException | org.json.JSONException e) {
+                 throw new IllegalStateException("query of " + uri + " failed: " + e.getMessage());
+             } finally {
+-- 
+2.56.0
+

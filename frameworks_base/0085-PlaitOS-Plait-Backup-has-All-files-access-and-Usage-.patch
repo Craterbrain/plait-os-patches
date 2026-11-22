@@ -1,0 +1,99 @@
+From 0f919c986cc6542faee15fe2b008ae8f2b05f36c Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 22:06:48 -0600
+Subject: [PATCH] PlaitOS: Plait Backup has All files access and Usage access
+ by default
+
+plait_backup switches both app-ops on for the system-image app.plait.backup on
+each user's unlock and when the app is installed or updated, only while they are
+still at their default, so a user's choice to switch one off sticks.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../server/plait/PlaitBackupService.java      | 70 +++++++++++++++++++
+ 1 file changed, 70 insertions(+)
+
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index c55e6c4d7..657ac47b4 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -99,6 +99,76 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+     public PlaitBackupService(Context context, Installer installer) {
+         mContext = context;
+         mInstaller = installer;
++        watchForDefaultAccess();
++    }
++
++    // ---- Plait Backup's default access ----
++
++    /** The backup app that ships with PlaitOS. */
++    private static final String BACKUP_APP = "app.plait.backup";
++
++    /**
++     * Special access Plait Backup needs and has by default, as PlaitOS's own backup app: All files access (it writes
++     * the archive folder in shared storage) and Usage access (the size of what it will back up). Both are app-ops, so
++     * a permission grant alone does nothing; they are switched on the way Settings does. Only while the op is still at
++     * its default: if the user switches one off, it stays off.
++     */
++    private static final int[] BACKUP_APP_UID_OPS = { AppOpsManager.OP_MANAGE_EXTERNAL_STORAGE };
++    private static final int[] BACKUP_APP_PACKAGE_OPS = { AppOpsManager.OP_GET_USAGE_STATS };
++
++    /** On each user's unlock, and when Plait Backup is installed or updated. */
++    private void watchForDefaultAccess() {
++        android.content.BroadcastReceiver unlocked = new android.content.BroadcastReceiver() {
++            @Override
++            public void onReceive(Context context, Intent intent) {
++                int userId = intent.getIntExtra(Intent.EXTRA_USER_HANDLE, UserHandle.USER_NULL);
++                if (userId != UserHandle.USER_NULL) grantDefaultAccess(userId);
++            }
++        };
++        mContext.registerReceiverForAllUsers(unlocked, new android.content.IntentFilter(Intent.ACTION_USER_UNLOCKED),
++                null, null);
++        android.content.BroadcastReceiver added = new android.content.BroadcastReceiver() {
++            @Override
++            public void onReceive(Context context, Intent intent) {
++                Uri data = intent.getData();
++                if (data != null && BACKUP_APP.equals(data.getSchemeSpecificPart())) {
++                    grantDefaultAccess(UserHandle.getUserId(intent.getIntExtra(Intent.EXTRA_UID, -1)));
++                }
++            }
++        };
++        android.content.IntentFilter packages = new android.content.IntentFilter();
++        packages.addAction(Intent.ACTION_PACKAGE_ADDED);
++        packages.addAction(Intent.ACTION_PACKAGE_REPLACED);
++        packages.addDataScheme("package");
++        mContext.registerReceiverForAllUsers(added, packages, null, null);
++    }
++
++    private void grantDefaultAccess(int userId) {
++        if (userId < 0) return;
++        final long ident = Binder.clearCallingIdentity();
++        try {
++            ApplicationInfo ai = mContext.getPackageManager().getApplicationInfoAsUser(BACKUP_APP,
++                    PackageManager.MATCH_DIRECT_BOOT_AWARE | PackageManager.MATCH_DIRECT_BOOT_UNAWARE, userId);
++            // Only the copy in the system image (an update of it must carry the same signature)
++            if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) == 0) return;
++            AppOpsManager appOps = mContext.getSystemService(AppOpsManager.class);
++            for (int op : BACKUP_APP_UID_OPS) {
++                if (appOps.unsafeCheckOpRawNoThrow(op, ai.uid, BACKUP_APP) == AppOpsManager.MODE_DEFAULT) {
++                    appOps.setUidMode(op, ai.uid, AppOpsManager.MODE_ALLOWED);
++                }
++            }
++            for (int op : BACKUP_APP_PACKAGE_OPS) {
++                if (appOps.unsafeCheckOpRawNoThrow(op, ai.uid, BACKUP_APP) == AppOpsManager.MODE_DEFAULT) {
++                    appOps.setMode(op, ai.uid, BACKUP_APP, AppOpsManager.MODE_ALLOWED);
++                }
++            }
++        } catch (PackageManager.NameNotFoundException e) {
++            // not installed for this user
++        } catch (RuntimeException e) {
++            Slog.w(TAG, "could not give " + BACKUP_APP + " its default access for user " + userId, e);
++        } finally {
++            Binder.restoreCallingIdentity(ident);
++        }
+     }
+ 
+     // ---- grants ----
+-- 
+2.56.0
+

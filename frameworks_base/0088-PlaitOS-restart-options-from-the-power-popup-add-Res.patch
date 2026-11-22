@@ -1,0 +1,124 @@
+From 1b2018ee72b2d4ab7495ccf525d3847a9156c595 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 21:03:04 -0600
+Subject: [PATCH 88/91] PlaitOS: restart options from the power popup, add
+ Restart System UI
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ packages/SystemUI/res/values/plait_config.xml |  3 +-
+ .../SystemUI/res/values/plait_strings.xml     |  2 ++
+ .../GlobalActionsDialogLite.java              | 31 ++++++++++++++++---
+ 3 files changed, 30 insertions(+), 6 deletions(-)
+
+diff --git a/packages/SystemUI/res/values/plait_config.xml b/packages/SystemUI/res/values/plait_config.xml
+index 3c5b0a4d3..866634e4e 100644
+--- a/packages/SystemUI/res/values/plait_config.xml
++++ b/packages/SystemUI/res/values/plait_config.xml
+@@ -2,11 +2,12 @@
+ <!-- PlaitOS SystemUI configuration for features ported from LineageOS (Apache-2.0). -->
+ <resources>
+     <!-- Actions shown in the advanced restart submenu (from LineageOS's config_restartActionsList).
+-         Valid items: restart, restart_recovery, restart_bootloader, restart_download, restart_fastboot -->
++         Valid items: restart, restart_recovery, restart_bootloader, restart_download, restart_fastboot, restart_systemui -->
+     <string-array name="config_restartActionsList" translatable="false">
+         <item>restart</item>
+         <item>restart_recovery</item>
+         <item>restart_bootloader</item>
+         <item>restart_fastboot</item>
++        <item>restart_systemui</item>
+     </string-array>
+ </resources>
+diff --git a/packages/SystemUI/res/values/plait_strings.xml b/packages/SystemUI/res/values/plait_strings.xml
+index 5bb1ef4c0..d55f81bdf 100644
+--- a/packages/SystemUI/res/values/plait_strings.xml
++++ b/packages/SystemUI/res/values/plait_strings.xml
+@@ -17,6 +17,8 @@
+     <string name="global_action_restart_download">Download</string>
+     <!-- Button to restart the device into fastboot mode, within the Restart Options dialog -->
+     <string name="global_action_restart_fastboot">Fastbootd</string>
++    <!-- Button to restart only the system UI, within the Restart Options dialog -->
++    <string name="global_action_restart_systemui">System UI</string>
+ 
+     <!-- Restart progress dialog. This is shown if the user chooses to restart the device. -->
+     <string name="global_action_restart_progress">Restarting\u2026</string>
+diff --git a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+index 1a8486d7c..cdac8ec4e 100644
+--- a/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
++++ b/packages/SystemUI/src/com/android/systemui/globalactions/GlobalActionsDialogLite.java
+@@ -213,6 +213,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+     private static final String RESTART_ACTION_KEY_RESTART_BOOTLOADER = "restart_bootloader";
+     private static final String RESTART_ACTION_KEY_RESTART_DOWNLOAD = "restart_download";
+     private static final String RESTART_ACTION_KEY_RESTART_FASTBOOT = "restart_fastboot";
++    private static final String RESTART_ACTION_KEY_RESTART_SYSTEMUI = "restart_systemui";
+ 
+     // See NotificationManagerService#scheduleDurationReachedLocked
+     private static final long TOAST_FADE_TIME = 333;
+@@ -779,6 +780,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         RestartBootloaderAction blAction = new RestartBootloaderAction();
+         RestartDownloadAction dlAction = new RestartDownloadAction();
+         RestartFastbootAction fbAction = new RestartFastbootAction();
++        RestartSystemUiAction uiAction = new RestartSystemUiAction();
+         ArraySet<String> addedRestartKeys = new ArraySet<>();
+         var restartSafeModeAction = new RestartSafeModeAction(mContext);
+         List<Action> tempActions = new ArrayList<>();
+@@ -806,6 +808,8 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+                 addIfShouldShowAction(mRestartItems, dlAction);
+             } else if (RESTART_ACTION_KEY_RESTART_FASTBOOT.equals(actionKey)) {
+                 addIfShouldShowAction(mRestartItems, fbAction);
++            } else if (RESTART_ACTION_KEY_RESTART_SYSTEMUI.equals(actionKey)) {
++                addIfShouldShowAction(mRestartItems, uiAction);
+             }
+         }
+ 
+@@ -1296,6 +1300,18 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+         @Override String getReason() { return PowerManager.REBOOT_FASTBOOT; }
+     }
+ 
++    /** Kills SystemUI; the system restarts it, so the shade, lockscreen and navigation reset. */
++    private final class RestartSystemUiAction extends SinglePressAction {
++        RestartSystemUiAction() {
++            super(R.drawable.ic_restart,
++                    com.android.systemui.res.R.string.global_action_restart_systemui);
++        }
++
++        @Override public boolean showDuringKeyguard() { return true; }
++        @Override public boolean showBeforeProvisioning() { return true; }
++        @Override public void onPress() { android.os.Process.killProcess(android.os.Process.myPid()); }
++    }
++
+     private final class RestartDownloadAction extends RestartReasonAction {
+         RestartDownloadAction() { super(com.android.systemui.res.R.drawable.ic_lock_restart_bootloader,
+                 com.android.systemui.res.R.string.global_action_restart_download); }
+@@ -2087,10 +2103,15 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             Action item = getItem(position);
+             if (!(item instanceof SilentModeTriStateAction)) {
+                 if (mDelegate != null) {
+-                    // Usually clicking an item shuts down the phone, locks, or starts an activity.
+-                    // We don't want to animate back into the power button when that happens, so we
+-                    // disable the dialog animation before dismissing.
+-                    mDelegate.dismissWithoutAnimation();
++                    if (item instanceof RestartAction && shouldShowRestartSubmenu()) {
++                        // PlaitOS: swap the popup for the restart options in the main dialog
++                        mDelegate.dismissPowerOptions();
++                    } else {
++                        // Usually clicking an item shuts down the phone, locks, or starts an
++                        // activity. We don't want to animate back into the power button when that
++                        // happens, so we disable the dialog animation before dismissing.
++                        mDelegate.dismissWithoutAnimation();
++                    }
+                 } else {
+                     Log.w(TAG, "Action clicked while mDialog is null.");
+                 }
+@@ -3459,7 +3480,7 @@ public class GlobalActionsDialogLite implements DialogInterface.OnDismissListene
+             }
+         }
+ 
+-        private void dismissPowerOptions() {
++        void dismissPowerOptions() {
+             if (mPowerOptionsDialog != null) {
+                 mPowerOptionsDialog.dismiss();
+             }
+-- 
+2.56.0
+

@@ -8,10 +8,10 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "app.plait.shield"
-        minSdk = 29
+        minSdk = 31
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4"
+        versionCode = 7
+        versionName = "0.7"
     }
     buildTypes {
         release {
@@ -38,7 +38,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-core")
+    implementation("app.plait:design")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")

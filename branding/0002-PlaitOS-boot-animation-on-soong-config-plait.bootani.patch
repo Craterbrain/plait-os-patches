@@ -1,0 +1,45 @@
+From ee295ede5a67c7b807074c1f746f685c72d3cd99 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 07:40:30 -0600
+Subject: [PATCH] PlaitOS: boot animation on soong config plait.bootanimation
+
+canvas_size "plait" was overwritten by husky.mk (inherited product files are
+evaluated after the product's own lines), so GrapheneOS's animation shipped.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Android.bp | 19 ++++++++++---------
+ 1 file changed, 10 insertions(+), 9 deletions(-)
+
+diff --git a/Android.bp b/Android.bp
+index 43dfa26..9df2c77 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -14,14 +14,15 @@ prebuilt_media {
+     product_specific: true,
+     filename: "bootanimation.zip",
+     symlinks: ["bootanimation-dark.zip"],
+-    src: select(soong_config_variable("bootanimation_zip", "canvas_size"), {
+-        "1080": "bootanimation/1080.zip",
+-        "1280": "bootanimation/1280.zip",
+-        "1344": "bootanimation/1344.zip",
+-        "1440": "bootanimation/1440.zip",
+-        "1600": "bootanimation/1600.zip",
+-        // PlaitOS: the PlaitOS boot animation (vendor/plait/bootanimation)
+-        "plait": ":plait_bootanimation_zip",
+-        default: "bootanimation/1080.zip",
++    // PlaitOS: its own animation whenever the product sets soong config plait.bootanimation (vendor/plait/config/plait.mk),
++    // whatever canvas_size the device makefile sets (it is evaluated after the product's own lines, so it would win)
++    src: select((soong_config_variable("plait", "bootanimation"), soong_config_variable("bootanimation_zip", "canvas_size")), {
++        (true, default): ":plait_bootanimation_zip",
++        (default, "1080"): "bootanimation/1080.zip",
++        (default, "1280"): "bootanimation/1280.zip",
++        (default, "1344"): "bootanimation/1344.zip",
++        (default, "1440"): "bootanimation/1440.zip",
++        (default, "1600"): "bootanimation/1600.zip",
++        (default, default): "bootanimation/1080.zip",
+     }),
+ }
+-- 
+2.56.0
+

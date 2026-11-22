@@ -1,5 +1,7 @@
 package app.plait.backup
 
+import app.plait.design.PlaitIcon
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,17 +17,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -45,6 +43,15 @@ fun SetupScreen(vm: BackupViewModel, flow: Flow, onBack: () -> Unit, onContinue:
             }
         },
     ) { padding ->
+        // Back from Settings > Usage access: measure again
+        val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+        androidx.compose.runtime.DisposableEffect(lifecycle) {
+            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && vm.needsUsageAccess) vm.measureSelection(flow)
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             // Where archives go: local only for now; cloud is not built yet
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -54,12 +61,19 @@ fun SetupScreen(vm: BackupViewModel, flow: Flow, onBack: () -> Unit, onContinue:
 
             Section("Storage")
             Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.Top) {
-                Icon(Icons.Default.Apps, null, Modifier.padding(top = 4.dp).size(28.dp))
+                Icon(painterResource(PlaitIcon.Apps), null, Modifier.padding(top = 4.dp).size(28.dp))
                 Spacer(Modifier.width(24.dp))
                 Column {
-                    Text("Apps", style = MaterialTheme.typography.headlineSmall)
+                    Text("Apps", style = MaterialTheme.typography.titleMedium)
                     Text(vm.selectionBytes?.let { (if (vm.selectionIsMinimum) "At least " else "") + formatSize(it) } ?: "Measuring…", style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (flow == Flow.BACKUP && vm.needsUsageAccess) {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        androidx.compose.material3.TextButton(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), onClick = {
+                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS,
+                                android.net.Uri.parse("package:${context.packageName}")))
+                        }) { Text("Allow usage access for the full size") }
+                    }
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         selected.take(12).forEach { AppIcon(it, vm, 36.dp) }
@@ -67,7 +81,7 @@ fun SetupScreen(vm: BackupViewModel, flow: Flow, onBack: () -> Unit, onContinue:
                 }
             }
             Text(
-                if (flow == Flow.BACKUP) "To ${vm.backend.archiveDir}" else "From ${vm.backend.archiveDir}",
+                if (flow == Flow.BACKUP) "To ${vm.backupDir}" else "From ${vm.backupDir}",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 52.dp),
             )
@@ -75,8 +89,8 @@ fun SetupScreen(vm: BackupViewModel, flow: Flow, onBack: () -> Unit, onContinue:
             Section("Parts")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Part.entries.forEach { p ->
-                    FilterChip(selected = p in vm.parts, onClick = { vm.parts = if (p in vm.parts) vm.parts - p else vm.parts + p },
-                        label = { Text(p.label) })
+                    app.plait.design.PlaitFilterChip(p.label, selected = p in vm.parts,
+                        onClick = { vm.parts = if (p in vm.parts) vm.parts - p else vm.parts + p })
                 }
             }
             Text("Each app's badge (APK and data, APK only, data only) narrows this further.",
@@ -97,6 +111,7 @@ fun SetupScreen(vm: BackupViewModel, flow: Flow, onBack: () -> Unit, onContinue:
                     value = vm.olderPassphrase, onValueChange = { vm.olderPassphrase = it },
                     label = { Text("Passphrase for older backups (optional)") }, singleLine = true,
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = PassphraseKeyboard,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
             }
@@ -113,7 +128,7 @@ fun SetupScreen(vm: BackupViewModel, flow: Flow, onBack: () -> Unit, onContinue:
                     "Unsigned archives, or ones signed before a wipe or on another phone. Only turn on for backups you copied yourself.",
                     vm.trustForeign,
                 ) { vm.trustForeign = it }
-                Text("Outside a session, restores ask Plait Broker for a one-off grant.", style = MaterialTheme.typography.bodySmall,
+                Text("Outside a session, restores ask Broker for a one-off grant.", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.height(24.dp))
@@ -123,17 +138,17 @@ fun SetupScreen(vm: BackupViewModel, flow: Flow, onBack: () -> Unit, onContinue:
 
 @Composable
 fun Section(text: String) {
-    Text(text, Modifier.padding(top = 20.dp, bottom = 6.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)
+    Text(text, Modifier.padding(top = 20.dp, bottom = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
 }
 
 @Composable
 fun SettingSwitch(title: String, summary: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(16.dp))
-        Switch(checked, onChange)
+        app.plait.design.PlaitSwitch(checked, onChange)
     }
 }

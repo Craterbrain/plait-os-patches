@@ -1,5 +1,11 @@
 package app.plait.scan
 
+import app.plait.design.Tone
+import app.plait.design.PlaitTonalButton
+import app.plait.design.PlaitFilledButton
+import app.plait.design.PlaitCard
+import app.plait.design.NoticeCard
+import app.plait.design.PlaitIcon
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,13 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -74,11 +76,11 @@ fun PhoneBluetoothPage(scanner: BtScanner, pad: PaddingValues) {
     LazyColumn(Modifier.padding(pad).fillMaxWidth(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (broker != Broker.State.READY) {
             item {
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                NoticeCard(Tone.Danger, Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("This needs Plait Broker", style = MaterialTheme.typography.titleSmall)
-                        Text(if (broker == Broker.State.NOT_RUNNING) "The broker is not running." else "Allow Plait Scan in the broker first.")
-                        if (broker == Broker.State.NO_ACCESS) Button(onClick = { Broker.requestAccess() }) { Text("Request access") }
+                        Text("This needs Broker", style = MaterialTheme.typography.titleSmall)
+                        Text(if (broker == Broker.State.NOT_RUNNING) "The broker is not running." else "Allow Scan in the broker first.")
+                        if (broker == Broker.State.NO_ACCESS) PlaitFilledButton(onClick = { Broker.requestAccess() }) { Text("Request access") }
                     }
                 }
             }
@@ -86,7 +88,7 @@ fun PhoneBluetoothPage(scanner: BtScanner, pad: PaddingValues) {
         }
         when (val s = state) {
             DumpState.Loading -> item {
-                Card(Modifier.fillMaxWidth()) {
+                PlaitCard(Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(24.dp))
                         Text("Asking the broker… if it shows a question on screen, answer it there.")
@@ -94,11 +96,11 @@ fun PhoneBluetoothPage(scanner: BtScanner, pad: PaddingValues) {
                 }
             }
             is DumpState.Failed -> item {
-                Card(Modifier.fillMaxWidth()) {
+                PlaitCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Could not read it", style = MaterialTheme.typography.titleSmall)
                         Text(s.message, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                        OutlinedButton(onClick = { reload++ }) { Text("Try again") }
+                        PlaitTonalButton(onClick = { reload++ }) { Text("Try again") }
                     }
                 }
             }
@@ -111,7 +113,7 @@ fun PhoneBluetoothPage(scanner: BtScanner, pad: PaddingValues) {
                 if (d.others.isNotEmpty()) item { OthersCard(d.others) }
                 item {
                     Text(
-                        "Read through Plait Broker with dumpsys bluetooth_manager. Android hides the first four bytes of every address in this report.",
+                        "Read through Broker with dumpsys bluetooth_manager. Android hides the first four bytes of every address in this report.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(4.dp),
                     )
                 }
@@ -122,7 +124,7 @@ fun PhoneBluetoothPage(scanner: BtScanner, pad: PaddingValues) {
 
 @Composable
 private fun SectionCard(title: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+    PlaitCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
             content()
@@ -146,7 +148,7 @@ private fun AdapterCard(d: BtDump, refresh: () -> Unit) {
             d.discovering?.let { BtFact("Searching now", if (it) "yes" else "no") }
             if (d.profiles.isNotEmpty()) BtFact("Profiles on", "${d.profiles.size}")
         }
-        OutlinedButton(onClick = refresh) { Text("Refresh") }
+        PlaitTonalButton(onClick = refresh) { Text("Refresh") }
     }
 }
 
@@ -154,7 +156,7 @@ private fun AdapterCard(d: BtDump, refresh: () -> Unit) {
 private fun PairedRow(r: BtRemote, nums: BtNumbers?) {
     val kind = BtFingerprint.kindOfClass(r.deviceClass) ?: BtKind.UNKNOWN
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(kind.icon(), kind.label, modifier = Modifier.size(28.dp).padding(top = 2.dp), tint = MaterialTheme.colorScheme.primary)
+        PlaitIcon(kind.icon(), kind.label, modifier = Modifier.size(28.dp).padding(top = 2.dp), tint = MaterialTheme.colorScheme.primary)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(r.name ?: "Unnamed device", style = MaterialTheme.typography.titleSmall)
             val on = listOfNotNull(if (r.connectedClassic) "Classic" else null, if (r.connectedLe) "LE" else null)

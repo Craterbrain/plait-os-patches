@@ -1,5 +1,7 @@
 package app.plait.broker
 
+import app.plait.design.PlaitSwitch
+import app.plait.design.PlaitFilledButton
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
@@ -22,10 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -134,7 +134,7 @@ class RedeclareActivity : ComponentActivity() {
             Screen.Loading -> {}
             is Screen.Message -> AlertDialog(
                 onDismissRequest = { reply(statusOnly ?: "later", 0, 0) },
-                title = { Text("Plait Broker") },
+                title = { Text("Broker") },
                 text = { Text(s.text) },
                 confirmButton = { TextButton(onClick = { reply(statusOnly ?: "later", 0, 0) }) { Text("OK") } },
             )
@@ -157,14 +157,14 @@ class RedeclareActivity : ComponentActivity() {
                         }
                     }
                     Text(
-                        "${r.label} now declares ${r.items.size} more thing${if (r.items.size > 1) "s" else ""} it would use through Plait Broker. " +
+                        "${r.label} now declares ${r.items.size} more thing${if (r.items.size > 1) "s" else ""} it would use through Broker. " +
                             "These are new since you last allowed it. Switch off anything you do not want it to have.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
                 itemsIndexed(r.items) { i, d ->
                     val on = i !in off
-                    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
                         Row(
                             Modifier.fillMaxWidth().clickable { off = if (on) off + i else off - i }.padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -175,7 +175,7 @@ class RedeclareActivity : ComponentActivity() {
                                 Text(d.reason.ifEmpty { "No reason given" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Spacer(Modifier.width(12.dp))
-                            Switch(checked = on, onCheckedChange = { off = if (it) off - i else off + i })
+                            PlaitSwitch(on, { off = if (it) off - i else off + i })
                         }
                     }
                 }
@@ -183,11 +183,11 @@ class RedeclareActivity : ComponentActivity() {
                     val chosen = r.items.filterIndexed { i, _ -> i !in off }
                     Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "${chosen.size} of ${r.items.size} switched on. You can change these later on ${r.label}'s page in Plait Broker.",
+                            "${chosen.size} of ${r.items.size} switched on. You can change these later on ${r.label}'s page in Broker.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.size(12.dp))
-                        Button(onClick = { apply(r, chosen) }, modifier = Modifier.fillMaxWidth()) { Text(if (chosen.isEmpty()) "Allow none of them" else "Authorize") }
+                        PlaitFilledButton(onClick = { apply(r, chosen) }, modifier = Modifier.fillMaxWidth()) { Text(if (chosen.isEmpty()) "Allow none of them" else "Authorize") }
                         TextButton(onClick = { reply("later", 0, 0) }) { Text("Not now") }
                     }
                 }

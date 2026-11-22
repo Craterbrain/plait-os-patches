@@ -1,0 +1,27 @@
+From c983468d1ce3eb52787dbe9ba532d8318bb5ca5d Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 21:41:07 -0600
+Subject: [PATCH] PlaitOS: secondary text in the call log readable in light
+ mode
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../theme/hidden/res/color/dialer_secondary_text_color.xml      | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/java/com/android/dialer/theme/hidden/res/color/dialer_secondary_text_color.xml b/java/com/android/dialer/theme/hidden/res/color/dialer_secondary_text_color.xml
+index 20dfd35..22b65c9 100644
+--- a/java/com/android/dialer/theme/hidden/res/color/dialer_secondary_text_color.xml
++++ b/java/com/android/dialer/theme/hidden/res/color/dialer_secondary_text_color.xml
+@@ -16,6 +16,6 @@
+   -->
+ <!-- Secondary text color in the Phone app -->
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+-  <item android:state_enabled="false" android:color="@color/google_grey_400"/>
++  <!-- PlaitOS: no separate disabled colour: code that resolves this list to one colour got the faint disabled one (the secondary lines in the call log were barely visible) -->
+   <item android:color="@color/google_grey_700"/>
+ </selector>
+\ No newline at end of file
+-- 
+2.56.0
+

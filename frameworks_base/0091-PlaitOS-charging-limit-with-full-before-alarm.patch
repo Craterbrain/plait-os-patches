@@ -1,0 +1,216 @@
+From f8c2ccc14400942d98dfe8dd8aeb31fd5afa7248 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 22:39:31 -0600
+Subject: [PATCH 91/91] PlaitOS: charging limit with full-before-alarm
+
+PlaitChargeLimitService sets sys.plait.charge_* properties from the Charging limit
+settings; init (vendor/plait/chargelimit) writes them to the Pixel charger, since the
+platform may not touch its sysfs. The alarm mode is LineageOS's deadline charging: a
+nine-hour window and the alarm handed to the charger as its charge_deadline.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../server/plait/PlaitChargeLimitService.java | 167 ++++++++++++++++++
+ .../java/com/android/server/SystemServer.java |   5 +
+ 2 files changed, 172 insertions(+)
+ create mode 100644 services/core/java/com/android/server/plait/PlaitChargeLimitService.java
+
+diff --git a/services/core/java/com/android/server/plait/PlaitChargeLimitService.java b/services/core/java/com/android/server/plait/PlaitChargeLimitService.java
+new file mode 100644
+index 000000000..7945e0b5c
+--- /dev/null
++++ b/services/core/java/com/android/server/plait/PlaitChargeLimitService.java
+@@ -0,0 +1,167 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-FileCopyrightText: The LineageOS Project (the alarm window and deadline, from ChargingControlController)
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.server.plait;
++
++import android.app.ActivityManager;
++import android.app.AlarmManager;
++import android.content.BroadcastReceiver;
++import android.content.Context;
++import android.content.Intent;
++import android.content.IntentFilter;
++import android.database.ContentObserver;
++import android.os.Handler;
++import android.os.SystemProperties;
++import android.os.UserHandle;
++import android.provider.Settings;
++import android.text.format.DateUtils;
++import android.util.Slog;
++
++import com.android.server.SystemService;
++
++/**
++ * PlaitOS charging limit for the Pixel's charger. The platform may not touch the charger's sysfs, so this only
++ * sets properties (sys.plait.charge_start, _stop and _deadline); init (plait_chargelimit.rc) writes them to the
++ * charger. Charging stops at the limit and resumes MARGIN percent below it. The charger can run over by one to
++ * three percent. The setting belongs to the owner (user 0); the charger levels reset at every boot, so they are
++ * applied again when the system is ready and whenever power is connected.
++ *
++ * "Full before my alarm" is LineageOS's automatic charging control: from WINDOW before the next alarm the limit
++ * is lifted and the alarm is handed to the charger as a deadline, and the charger paces itself to reach 100% when
++ * it rings (a slow charge). Outside the window, or without an alarm, the deadline is cleared.
++ */
++public final class PlaitChargeLimitService extends SystemService {
++    private static final String TAG = "PlaitChargeLimit";
++
++    static final String ENABLED = "plait_charge_limit_enabled";
++    static final String LIMIT = "plait_charge_limit";
++    static final String BY_ALARM = "plait_charge_limit_by_alarm";
++    private static final int DEFAULT_LIMIT = 80;
++    private static final int MIN_LIMIT = 50;
++    private static final int MARGIN = 5;
++    // Lineage starts a deadline charge nine hours before the alarm
++    private static final long WINDOW = 9 * DateUtils.HOUR_IN_MILLIS;
++    private static final int NO_DEADLINE = -1;
++
++    private static final String PROP_STOP = "sys.plait.charge_stop";
++    private static final String PROP_START = "sys.plait.charge_start";
++    private static final String PROP_DEADLINE = "sys.plait.charge_deadline";
++
++    private final Context mContext;
++    private final Handler mHandler = new Handler();
++    private final AlarmManager.OnAlarmListener mWindowAlarmListener = this::apply;
++
++    // What was last handed to init, so unchanged values are not set again
++    private int mAppliedStop = -1;
++    private int mAppliedStart = -1;
++    private long mAppliedTarget = 0;
++
++    private final ContentObserver mObserver = new ContentObserver(mHandler) {
++        @Override
++        public void onChange(boolean selfChange) {
++            apply();
++        }
++    };
++
++    private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
++        @Override
++        public void onReceive(Context context, Intent intent) {
++            apply();
++        }
++    };
++
++    public PlaitChargeLimitService(Context context) {
++        super(context);
++        mContext = context;
++    }
++
++    @Override
++    public void onStart() {
++    }
++
++    @Override
++    public void onBootPhase(int phase) {
++        if (phase != PHASE_SYSTEM_SERVICES_READY) {
++            return;
++        }
++        for (String key : new String[] {ENABLED, LIMIT, BY_ALARM}) {
++            mContext.getContentResolver().registerContentObserver(
++                    Settings.System.getUriFor(key), false, mObserver, UserHandle.USER_SYSTEM);
++        }
++        final IntentFilter filter = new IntentFilter(Intent.ACTION_POWER_CONNECTED);
++        filter.addAction(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED);
++        filter.addAction(Intent.ACTION_TIME_CHANGED);
++        filter.addAction(Intent.ACTION_TIMEZONE_CHANGED);
++        mContext.registerReceiverAsUser(mReceiver, UserHandle.ALL, filter, null, mHandler);
++        apply();
++    }
++
++    private void apply() {
++        final AlarmManager alarms = mContext.getSystemService(AlarmManager.class);
++        alarms.cancel(mWindowAlarmListener);
++
++        final boolean enabled = Settings.System.getIntForUser(mContext.getContentResolver(),
++                ENABLED, 0, UserHandle.USER_SYSTEM) == 1;
++        int stop = 100;
++        int start = 0;
++        long target = 0;
++        if (enabled) {
++            stop = Math.max(MIN_LIMIT, Math.min(100, Settings.System.getIntForUser(
++                    mContext.getContentResolver(), LIMIT, DEFAULT_LIMIT, UserHandle.USER_SYSTEM)));
++            start = stop == 100 ? 0 : stop - MARGIN;
++            if (stop < 100 && Settings.System.getIntForUser(mContext.getContentResolver(),
++                    BY_ALARM, 0, UserHandle.USER_SYSTEM) == 1) {
++                target = alarmTargetInWindow(alarms);
++                if (target != 0) {
++                    stop = 100;
++                    start = 0;
++                }
++            }
++        }
++        if (stop == mAppliedStop && start == mAppliedStart && target == mAppliedTarget) {
++            return;
++        }
++        try {
++            // The stop level is init's trigger for the levels, the deadline's property is its own
++            if (stop != mAppliedStop || start != mAppliedStart) {
++                SystemProperties.set(PROP_START, Integer.toString(start));
++                SystemProperties.set(PROP_STOP, Integer.toString(stop));
++            }
++            if (target != mAppliedTarget) {
++                final long seconds = target == 0 ? NO_DEADLINE
++                        : Math.max(1, (target - System.currentTimeMillis()) / 1000);
++                SystemProperties.set(PROP_DEADLINE, Long.toString(seconds));
++            }
++            mAppliedStop = stop;
++            mAppliedStart = start;
++            mAppliedTarget = target;
++        } catch (RuntimeException e) {
++            Slog.w(TAG, "Could not set the charging limit properties", e);
++        }
++    }
++
++    /**
++     * The next alarm's time while it is inside the window, else 0. Before the window it arms a wake-up for when
++     * the window opens, since nothing else would run apply() by then.
++     */
++    private long alarmTargetInWindow(AlarmManager alarms) {
++        final AlarmManager.AlarmClockInfo next =
++                alarms.getNextAlarmClock(ActivityManager.getCurrentUser());
++        if (next == null) {
++            return 0;
++        }
++        final long now = System.currentTimeMillis();
++        final long windowStart = next.getTriggerTime() - WINDOW;
++        if (now >= next.getTriggerTime()) {
++            return 0;
++        }
++        if (now >= windowStart) {
++            return next.getTriggerTime();
++        }
++        alarms.setExact(AlarmManager.RTC_WAKEUP, windowStart, TAG, mWindowAlarmListener, mHandler);
++        return 0;
++    }
++}
+diff --git a/services/java/com/android/server/SystemServer.java b/services/java/com/android/server/SystemServer.java
+index 0f13355c3..dee7562d4 100644
+--- a/services/java/com/android/server/SystemServer.java
++++ b/services/java/com/android/server/SystemServer.java
+@@ -248,6 +248,7 @@ import com.android.server.pm.permission.PermissionMigrationHelperImpl;
+ import com.android.server.pm.verify.domain.DomainVerificationService;
+ import com.android.server.pocket.PocketBridgeService;
+ import com.android.server.plait.PlaitBackupService;
++import com.android.server.plait.PlaitChargeLimitService;
+ import com.android.server.pocket.PocketService;
+ import com.android.server.policy.AppOpsPolicy;
+ import com.android.server.policy.PermissionPolicyService;
+@@ -2897,6 +2898,10 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
++            t.traceBegin("StartPlaitChargeLimitService");
++            mSystemServiceManager.startService(PlaitChargeLimitService.class);
++            t.traceEnd();
++
+             if (context.getResources().getBoolean(
+                     com.android.internal.R.bool.config_pocketModeSupported)) {
+                 t.traceBegin("StartPocketService");
+-- 
+2.56.0
+

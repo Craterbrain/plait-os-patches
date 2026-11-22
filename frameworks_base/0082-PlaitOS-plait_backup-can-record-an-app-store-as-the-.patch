@@ -1,0 +1,107 @@
+From 4411089fce55d59ee5973eefe80196c6dc8fd95f Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 17:06:46 -0600
+Subject: [PATCH] PlaitOS: plait_backup can record an app store as the
+ installer of a restored app
+
+installApksAs: as installApks, with the installer of record set to a known app
+store (Play Store, F-Droid and its clients, Aurora, Obtainium, Accrescent,
+Galaxy Store, Amazon); anything else is refused, so an archive cannot name an
+arbitrary app. Added last in the AIDL: the Plait Backup app calls by position.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../android/internal/plait/IPlaitBackup.aidl  |  7 ++++
+ .../server/plait/PlaitBackupService.java      | 32 +++++++++++++++++--
+ 2 files changed, 36 insertions(+), 3 deletions(-)
+
+diff --git a/core/java/com/android/internal/plait/IPlaitBackup.aidl b/core/java/com/android/internal/plait/IPlaitBackup.aidl
+index 71a9fab1e..cac1f152d 100644
+--- a/core/java/com/android/internal/plait/IPlaitBackup.aidl
++++ b/core/java/com/android/internal/plait/IPlaitBackup.aidl
+@@ -71,4 +71,11 @@ interface IPlaitBackup {
+ 
+     /** An MMS part's file (content://mms/part/<id>): "r" with backup.apps, "w" with restore.apps. */
+     ParcelFileDescriptor personalOpenFile(String grant, int userId, String uri, String mode);
++
++    /**
++     * As installApks, recording installer as the app's installer (what "Installed from" shows, and who updates it).
++     * Only a known app store is accepted (PlaitBackupService.INSTALLERS); anything else is refused. Scope restore.apps.
++     * Added after the other calls: keep it last, the Plait Backup app calls the methods by their position.
++     */
++    void installApksAs(String grant, String packageName, int userId, in ParcelFileDescriptor source, String installer);
+ }
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index bd3a508e1..646f9b661 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -84,6 +84,15 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+     private static final Uri GRANTS_URI = Uri.parse("content://" + GRANTS);
+     private static final long INSTALL_TIMEOUT_MINUTES = 10;
+ 
++    /**
++     * Installers a restore may record: app stores. An installer of record can update the apps it installed with fewer
++     * prompts, so an archive must not be able to name any app it likes. Keep in step with Plait Backup's InstallerSetting.
++     */
++    private static final Set<String> INSTALLERS = Set.of(
++            "com.android.vending", "org.fdroid.fdroid", "org.fdroid.basic", "com.looker.droidify", "com.machiav3lli.fdroid",
++            "in.sunilpaulmathew.izzyondroid", "com.aurora.store", "dev.imranr.obtainium", "app.accrescent.client",
++            "com.sec.android.app.samsungapps", "com.amazon.venezia");
++
+     private final Context mContext;
+     private final Installer mInstaller;
+ 
+@@ -399,6 +408,21 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+ 
+     @Override
+     public void installApks(String grant, String packageName, int userId, ParcelFileDescriptor source) {
++        installApksWith(grant, packageName, userId, source, null);
++    }
++
++    @Override
++    public void installApksAs(String grant, String packageName, int userId, ParcelFileDescriptor source,
++            String installer) {
++        if (installer == null || !INSTALLERS.contains(installer)) {
++            closeQuietly(source);
++            throw new SecurityException(installer + " is not an installer a restore may record");
++        }
++        installApksWith(grant, packageName, userId, source, installer);
++    }
++
++    private void installApksWith(String grant, String packageName, int userId, ParcelFileDescriptor source,
++            String installer) {
+         try {
+             Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
+             final long ident = Binder.clearCallingIdentity();
+@@ -422,8 +446,8 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+                         // not on the device at all: nothing to protect
+                     }
+                 }
+-                install(call, source);
+-                logUse(call, "install APKs of");
++                install(call, source, installer);
++                logUse(call, installer == null ? "install APKs of" : "install APKs (as " + installer + ") of");
+             } finally {
+                 Binder.restoreCallingIdentity(ident);
+             }
+@@ -432,7 +456,7 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }
+     }
+ 
+-    private void install(Call call, ParcelFileDescriptor source) {
++    private void install(Call call, ParcelFileDescriptor source, String installerName) {
+         // installd decompresses into a pipe, this thread reads the tar and writes each APK into a session
+         ParcelFileDescriptor[] pipe;
+         try {
+@@ -465,6 +489,8 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         // Installed from a file, as a sideload would be: Android's restricted settings (accessibility, notification
+         // access, ...) apply to the app as they would to any app the user installed from a file
+         params.setPackageSource(PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE);
++        // The installer of record (system_server may name one other than itself); the initiator stays "android"
++        if (installerName != null) params.installerPackageName = installerName;
+         params.installFlags |= PackageManager.INSTALL_REPLACE_EXISTING;
+         int sessionId = -1;
+         try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(readEnd)) {
+-- 
+2.56.0
+

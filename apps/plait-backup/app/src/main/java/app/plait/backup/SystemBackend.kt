@@ -1,5 +1,6 @@
 package app.plait.backup
 
+import android.content.ContentValues
 import android.content.Context
 import android.os.Environment
 import android.os.IBinder
@@ -23,14 +24,13 @@ import kotlin.concurrent.thread
  */
 class SystemBackend private constructor(private val context: Context, private val connected: Service) : Backend {
     override val name = "PlaitOS backup service"
-    override val archiveDir: String get() = ROOT.path
 
     private val service: Service? = connected
 
     override fun unavailableReason(): String? = when {
         service == null -> "The PlaitOS backup service is not running"
         !Environment.isExternalStorageManager() ->
-            "Allow \"All files access\" for Plait Backup (Settings > Apps > Special app access)"
+            "Allow \"All files access\" for Backup (Settings > Apps > Special app access)"
         else -> null
     }
 
@@ -62,6 +62,11 @@ class SystemBackend private constructor(private val context: Context, private va
                 sums[name] = hash
                 return true
             }
+            // Files that stay readable without the passphrase (the app's name and icon): hashed in the manifest like the rest
+            fun savePlain(name: String, bytes: ByteArray) {
+                File(fresh, name).writeBytes(bytes)
+                sums[name] = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            }
             // Small files the root backend always writes (even empty): encrypted straight from memory
             fun saveBytes(name: String, bytes: ByteArray) {
                 File(fresh, name + ArchiveCrypto.SUFFIX).outputStream().use { ArchiveCrypto.encrypt(key, bytes.inputStream(), it) }
@@ -71,7 +76,9 @@ class SystemBackend private constructor(private val context: Context, private va
                 if (part == Part.APK) {
                     save(part.fileName) { o -> svc.stream(o) { pfd -> svc.backupApks(grant, pkg, userId, pfd) } }
                 } else {
-                    save(part.fileName) { o -> svc.stream(o) { pfd -> svc.backupPart(grant, pkg, userId, part.code, pfd) } }
+                    val saved = save(part.fileName) { o -> svc.stream(o) { pfd -> svc.backupPart(grant, pkg, userId, part.code, pfd) } }
+                    // Every installed app has its private folders: none means something is wrong, not "no data" (as the root backend)
+                    if (!saved && (part == Part.USER || part == Part.USER_DE)) return false.also { log("Failed ($pkg): no ${part.label.lowercase()} came back") }
                 }
             }
             // Runtime permissions and app-ops, in the files the root backend writes
@@ -79,6 +86,13 @@ class SystemBackend private constructor(private val context: Context, private va
             saveBytes("permissions.txt", state.substringBefore("---\n").toByteArray())
             saveBytes("appops.txt", state.substringAfter("---\n", "").toByteArray())
             saveBytes("package.txt", "$pkg\n".toByteArray())
+            // The name and icon, plain, so the Restore list can show them where the app is not installed
+            val (labelBytes, iconBytes) = AppMeta.collect(context, pkg)
+            labelBytes?.let { savePlain(AppMeta.LABEL, it) }
+            iconBytes?.let { savePlain(AppMeta.ICON, it) }
+            // Who installed it (Play Store, F-Droid, ...), so a restore can record the same installer
+            val installer = runCatching { context.packageManager.getInstallSourceInfo(pkg).installingPackageName }.getOrNull()
+            saveBytes(InstallerSetting.FILE, (installer ?: "").toByteArray())
 
             val manifest = ArchiveCheck.manifest(pkg, userId, System.currentTimeMillis(), sums).toByteArray()
             for ((name, bytes) in listOf(
@@ -137,41 +151,80 @@ class SystemBackend private constructor(private val context: Context, private va
 
     override fun restoreApp(
         grant: String, pkg: String, userId: Int, parts: Set<Part>, trustForeign: Boolean, log: (String) -> Unit,
+    ): Boolean = restoreApp(grant, pkg, userId, parts, trustForeign, log, retried = false)
+
+    private fun restoreApp(
+        grant: String, pkg: String, userId: Int, parts: Set<Part>, trustForeign: Boolean, log: (String) -> Unit, retried: Boolean,
     ): Boolean {
         if (!Layout.isSafePackage(pkg)) return false.also { log("Refused: bad package name $pkg") }
         if (pkg in ArchiveCheck.BLOCKED) return false.also { log("Refused: $pkg is never restored (it guards backups)") }
         val svc = service ?: return false.also { log("The PlaitOS backup service is not running") }
         val src = appDir(pkg, userId)
-        // App-private staging: nothing in shared storage can change between the checks and the restore
+        // App-private staging for the small files (manifest, APK, permissions): nothing in shared storage can change
+        // between the checks and their use. The data parts are the big ones and are not copied aside: each is
+        // decrypted and hashed as it streams into the service, which extracts it into a staging dir of its own and
+        // only swaps it in (after the whole archive has been checked) once everything has arrived intact.
         val stage = File(context.noBackupFilesDir, "stage/$pkg")
         stage.deleteRecursively()
         if (!stage.mkdirs()) return false.also { log("Failed ($pkg): could not stage the archive") }
+        val staged = ArrayList<Int>() // data parts the service holds staged, to be finished either way
+        var finished = false
         try {
             val files = src.listFiles()?.filter { it.isFile && it.name.matches(SAFE_NAME) }
                 ?: return false.also { log("Failed ($pkg): no archive") }
+            fun plain(f: File) = f.name.removeSuffix(ArchiveCrypto.SUFFIX)
+            val dataFileNames = Part.entries.filter { it != Part.APK }.map { it.fileName }.toSet()
+            val dataParts = (parts - Part.APK).filter { p -> files.any { plain(it) == p.fileName } }
+            val streamed = dataParts.map { it.fileName }.toSet()
+            val sums = HashMap<String, String>() // plaintext SHA-256 of every file but the manifest's
+
+            // 1. The small files into the staging dir; data files nobody asked to restore are only hashed (the
+            //    manifest lists every file, so each has to be checked)
             for (f in files) {
-                val name = f.name.removeSuffix(ArchiveCrypto.SUFFIX)
-                try {
-                    f.inputStream().use { input ->
-                        File(stage, name).outputStream().use { out ->
-                            if (f.name.endsWith(ArchiveCrypto.SUFFIX)) {
-                                ArchiveCrypto.decrypt(input, out) { salt, it -> KeyRing.keyFor(context, salt, it) }
-                            } else {
-                                input.copyTo(out)
-                            }
-                        }
-                    }
+                val name = plain(f)
+                if (name in streamed) continue
+                val keep = name in ArchiveCheck.MANIFEST_FILES || name !in dataFileNames
+                val hash = try {
+                    if (keep) File(stage, name).outputStream().buffered(BUF).use { decryptTo(f, it) }
+                    else decryptTo(f, object : OutputStream() {
+                        override fun write(b: Int) {}
+                        override fun write(b: ByteArray, off: Int, len: Int) {}
+                    })
                 } catch (e: Exception) {
-                    return false.also { log("Refused ($pkg): ${f.name} could not be decrypted (wrong passphrase, or the file was changed)") }
+                    // A tag mismatch with a typed older passphrase: the keyboard may have altered it (see PassphraseVariants)
+                    val variant = if (!retried && f.name.endsWith(ArchiveCrypto.SUFFIX) && e is javax.crypto.AEADBadTagException) KeyRing.recoverTyped(f) else null
+                    if (variant != null) {
+                        log("The typed passphrase did not open the archive, but it does $variant: using that")
+                        return restoreApp(grant, pkg, userId, parts, trustForeign, log, retried = true)
+                    }
+                    return false.also { log("Refused ($pkg): ${f.name} could not be decrypted: ${ArchiveCrypto.describe(e)}") }
                 }
+                if (name !in ArchiveCheck.MANIFEST_FILES) sums[name] = hash
             }
-            verifyArchive(pkg, stage, trustForeign)?.let { return false.also { _ -> log("Refused ($pkg): $it") } }
+
+            // 2. Signature, trust and everything already hashed; the data parts count as what the manifest says
+            //    until they have streamed (checked again below, before anything is swapped in)
+            val declared = ArchiveCheck.parse(File(stage, ArchiveCheck.MANIFEST).takeIf { it.isFile }?.readText().orEmpty())
+                ?.files?.filterKeys { it in streamed }.orEmpty()
+            verifyStaged(pkg, stage, trustForeign) { sums + declared }?.let { return false.also { _ -> log("Refused ($pkg): $it") } }
             log("Restoring $pkg (${parts.joinToString { it.label }})")
 
             fun installed() = runCatching { context.packageManager.getPackageInfo(pkg, 0) }.getOrNull() != null
             File(stage, Part.APK.fileName).takeIf { Part.APK in parts && it.isFile }?.let { apk ->
+                val recorded = InstallerSetting.parseRecorded(File(stage, InstallerSetting.FILE).takeIf { it.isFile }?.readText())
+                val installer = InstallerSetting.installerFor(InstallerSetting.choice, recorded)
                 try {
-                    svc.fromFile(apk) { pfd -> svc.installApks(grant, pkg, userId, pfd) }
+                    if (installer == null) {
+                        svc.fromFile(apk) { pfd -> svc.installApks(grant, pkg, userId, pfd) }
+                    } else {
+                        try {
+                            svc.fromFile(apk) { pfd -> svc.installApksAs(grant, pkg, userId, pfd, installer) }
+                            log("Recorded $pkg as installed by $installer")
+                        } catch (e: ServiceTooOld) {
+                            log("This ROM's backup service cannot record an installer: $pkg was installed without one")
+                            svc.fromFile(apk) { pfd -> svc.installApks(grant, pkg, userId, pfd) }
+                        }
+                    }
                 } catch (e: Exception) {
                     // Only a refused downgrade (a newer version is installed) keeps the installed app; any other
                     // failure stops the restore, so newer data never lands in an older app
@@ -180,9 +233,34 @@ class SystemBackend private constructor(private val context: Context, private va
                 }
             }
             if (!installed()) return false.also { log("Failed ($pkg): $pkg is not installed") }
-            for (part in parts - Part.APK) {
-                val f = File(stage, part.fileName).takeIf { it.isFile } ?: continue
-                svc.fromFile(f) { pfd -> svc.restorePart(grant, pkg, userId, part.code, pfd) }
+
+            // 3. The data parts. A ROM with the two-step restore takes them as a stream; an older one gets them
+            //    from staged files, as before
+            val twoStep = dataParts.isEmpty() || runCatching { svc.restoreFinish(grant, pkg, userId, IntArray(0), false) }
+                .map { true }.getOrElse { if (it is ServiceTooOld) false else throw it }
+            if (twoStep) {
+                for (part in dataParts) {
+                    val f = files.first { plain(it) == part.fileName }
+                    staged += part.code
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    svc.fromDecrypted(f, digest, { out, input -> decryptStream(f, input, out) }) { pfd ->
+                        svc.restorePartStage(grant, pkg, userId, part.code, pfd)
+                    }
+                    sums[part.fileName] = digest.digest().joinToString("") { "%02x".format(it) }
+                }
+                // Everything is hashed now: the same checks with the real numbers, before anything is swapped in
+                verifyStaged(pkg, stage, trustForeign) { sums }?.let { return false.also { _ -> log("Refused ($pkg): $it") } }
+                if (staged.isNotEmpty()) svc.restoreFinish(grant, pkg, userId, staged.toIntArray(), true)
+                finished = true
+            } else {
+                for (part in dataParts) {
+                    val f = files.first { plain(it) == part.fileName }
+                    sums[part.fileName] = File(stage, part.fileName).outputStream().buffered(BUF).use { decryptTo(f, it) }
+                }
+                verifyStaged(pkg, stage, trustForeign) { sums }?.let { return false.also { _ -> log("Refused ($pkg): $it") } }
+                for (part in dataParts) {
+                    svc.fromFile(File(stage, part.fileName)) { pfd -> svc.restorePart(grant, pkg, userId, part.code, pfd) }
+                }
             }
             val perms = File(stage, "permissions.txt").takeIf { it.isFile }?.readLines()
                 ?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
@@ -202,8 +280,141 @@ class SystemBackend private constructor(private val context: Context, private va
         } catch (e: Exception) {
             return false.also { log("Failed ($pkg): ${e.message}") }
         } finally {
+            // Whatever the service still holds staged is thrown away (it never touched the app's data); this
+            // must not throw, and a service that is gone has nothing left to discard
+            if (staged.isNotEmpty() && !finished) runCatching { svc.restoreFinish(grant, pkg, userId, staged.toIntArray(), false) }
             stage.deleteRecursively()
         }
+    }
+
+    /** Decrypts [f] (or copies it, for an archive made without encryption) into [sink]; the plaintext SHA-256 (hex). */
+    private fun decryptTo(f: File, sink: OutputStream): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        f.inputStream().buffered(BUF).use { input -> decryptStream(f, input, java.security.DigestOutputStream(sink, digest)) }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun decryptStream(f: File, input: InputStream, out: OutputStream) {
+        if (f.name.endsWith(ArchiveCrypto.SUFFIX)) {
+            ArchiveCrypto.decrypt(input, out) { salt, it -> KeyRing.keyFor(context, salt, it) }
+        } else {
+            input.copyTo(out, BUF)
+        }
+    }
+
+    /** As [verifyArchive], for files that are staged but whose hashes [sums] gives (some were hashed as they streamed). */
+    private fun verifyStaged(pkg: String, dir: File, trustForeign: Boolean, sums: () -> Map<String, String>): String? {
+        fun text(name: String) = File(dir, name).takeIf { it.isFile }?.readText().orEmpty()
+        return ArchiveCheck.verify(pkg, text(ArchiveCheck.MANIFEST), text(ArchiveCheck.SIGNATURE).trim(),
+            text(ArchiveCheck.KEY).trim(), ArchiveSigner.publicKeyB64(), trustForeign,
+            sums = sums, verifySignature = ArchiveSigner::verify)
+    }
+
+    // ---- phone data: call log, messages, contacts ----
+
+    override val supportsPersonal = true
+
+    private fun personalDir(kind: Personal, userId: Int) = File(ROOT, "personal/${kind.dirName}/user_$userId")
+
+    override fun backupPersonal(grant: String, kind: Personal, userId: Int, log: (String) -> Unit): Boolean {
+        val svc = service ?: return false.also { log("The PlaitOS backup service is not running") }
+        val key = KeyRing.currentKey(context)
+            ?: return false.also { log("Refused: set an encryption passphrase in Settings first") }
+        log("Backing up ${kind.label}")
+        val dest = personalDir(kind, userId)
+        val fresh = File(dest.path + ".new")
+        try {
+            fresh.deleteRecursively()
+            if (!fresh.mkdirs()) return false.also { log("Failed (${kind.label}): no archive dir") }
+            val (count, attachments) = PersonalArchive.write(fresh, key, kind, userId, svc.store(grant, userId))
+            swapIn(fresh, dest)?.let { return false.also { _ -> log("Failed (${kind.label}): $it") } }
+            log("${kind.label}: $count saved" + if (attachments > 0) ", $attachments attachments" else "")
+            return true
+        } catch (e: Exception) {
+            return false.also { log("Failed (${kind.label}): ${e.message}") }
+        } finally {
+            fresh.deleteRecursively()
+        }
+    }
+
+    override fun importPersonal(kind: Personal, userId: Int, produce: ((String, () -> java.io.InputStream) -> Unit) -> ByteArray, log: (String) -> Unit): Boolean {
+        val key = KeyRing.currentKey(context)
+            ?: return false.also { log("Refused: set an encryption passphrase in Settings first") }
+        val dest = personalDir(kind, userId)
+        val fresh = File(dest.path + ".new")
+        try {
+            fresh.deleteRecursively()
+            if (!fresh.mkdirs()) return false.also { log("Failed (${kind.label}): no archive dir") }
+            val (count, attachments) = PersonalArchive.writeFrom(fresh, key, kind, userId, produce)
+            if (count == 0) return false.also { log("${kind.label}: the file has none, nothing imported") }
+            swapIn(fresh, dest)?.let { return false.also { _ -> log("Failed (${kind.label}): $it") } }
+            log("${kind.label}: $count imported" + if (attachments > 0) ", $attachments attachments" else "")
+            return true
+        } catch (e: Exception) {
+            return false.also { log("Failed (${kind.label}): ${e.message}") }
+        } finally {
+            fresh.deleteRecursively()
+        }
+    }
+
+    override fun restorePersonal(grant: String, kind: Personal, userId: Int, trustForeign: Boolean, log: (String) -> Unit): Boolean {
+        val svc = service ?: return false.also { log("The PlaitOS backup service is not running") }
+        val stage = File(context.noBackupFilesDir, "stage/${kind.dirName}")
+        try {
+            stageArchive(personalDir(kind, userId), stage)?.let { return false.also { _ -> log("Refused (${kind.label}): $it") } }
+            verifyArchive(kind.target, stage, trustForeign)?.let { return false.also { _ -> log("Refused (${kind.label}): $it") } }
+            val json = File(stage, kind.fileName).takeIf { it.isFile }?.readBytes()
+                ?: return false.also { log("Failed (${kind.label}): the archive has no ${kind.fileName}") }
+            log("Restoring ${kind.label}")
+            val r = PersonalImport(svc.store(grant, userId), log).import(kind, json) { name ->
+                File(stage, name).takeIf { it.isFile && name.matches(SAFE_NAME) }?.inputStream()
+            }
+            log("${kind.label}: ${r.added} added, ${r.skipped} skipped (already there or not restorable)" +
+                if (r.failed > 0) ", ${r.failed} failed" else "")
+            return r.failed == 0
+        } catch (e: Exception) {
+            return false.also { log("Failed (${kind.label}): ${e.message}") }
+        } finally {
+            stage.deleteRecursively()
+        }
+    }
+
+    /** Puts [fresh] in place of [dest], keeping the old archive if that fails; null on success, else why not. */
+    private fun swapIn(fresh: File, dest: File): String? {
+        val old = File(dest.path + ".old")
+        old.deleteRecursively()
+        dest.parentFile?.mkdirs()
+        if (dest.exists() && !dest.renameTo(old)) return "could not move the old archive aside"
+        if (!fresh.renameTo(dest)) {
+            if (old.exists()) old.renameTo(dest)
+            return "could not move the archive in place"
+        }
+        old.deleteRecursively()
+        return null
+    }
+
+    /** Decrypts the archive in [src] into app-private [stage]; null on success, else why not. */
+    private fun stageArchive(src: File, stage: File): String? {
+        stage.deleteRecursively()
+        if (!stage.mkdirs()) return "could not stage the archive"
+        val files = src.listFiles()?.filter { it.isFile && it.name.matches(SAFE_NAME) } ?: return "no archive"
+        for (f in files) {
+            val name = f.name.removeSuffix(ArchiveCrypto.SUFFIX)
+            try {
+                f.inputStream().use { input ->
+                    File(stage, name).outputStream().use { out ->
+                        if (f.name.endsWith(ArchiveCrypto.SUFFIX)) {
+                            ArchiveCrypto.decrypt(input, out) { salt, it -> KeyRing.keyFor(context, salt, it) }
+                        } else {
+                            input.copyTo(out)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                return "${f.name} could not be decrypted: ${ArchiveCrypto.describe(e)}"
+            }
+        }
+        return null
     }
 
     /** Null if the staged archive may be restored, else why not: as [DevRootBackend], signature then file hashes. */
@@ -245,9 +456,22 @@ class SystemBackend private constructor(private val context: Context, private va
                 val parts = Part.entries.filter { p -> p.fileName in names || p.fileName + ArchiveCrypto.SUFFIX in names }.toSet()
                 val size = userDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
                 if (parts.isEmpty() || !Layout.isSafePackage(pkgDir.name)) null
-                else ArchiveApp(pkgDir.name, user, parts, size)
+                else {
+                    val label = AppMeta.parseLabel(
+                        File(userDir, AppMeta.LABEL).takeIf { it.isFile && it.length() <= AppMeta.MAX_LABEL_BYTES }?.readText())
+                    val icon = File(userDir, AppMeta.ICON).takeIf { it.isFile && it.length() <= AppMeta.MAX_ICON_BYTES }
+                        ?.readBytes()?.takeIf(AppMeta::looksLikeIcon)
+                    ArchiveApp(pkgDir.name, user, parts, size, label, icon)
+                }
             }
-        }.sortedBy { it.packageName }
+        }.sortedBy { it.packageName } + Personal.entries.flatMap { kind ->
+            File(ROOT, "personal/${kind.dirName}").listFiles().orEmpty().filter { it.isDirectory && it.name.startsWith("user_") }
+                .mapNotNull { userDir ->
+                    val user = userDir.name.removePrefix("user_").toIntOrNull() ?: return@mapNotNull null
+                    if (userDir.list().orEmpty().none { it.startsWith(kind.fileName) }) return@mapNotNull null
+                    ArchiveApp(kind.target, user, emptySet(), userDir.walkTopDown().filter { it.isFile }.sumOf { it.length() })
+                }
+        }
     }
 
     private val Part.code: Int
@@ -264,6 +488,9 @@ class SystemBackend private constructor(private val context: Context, private va
      * A hand-written proxy for com.android.internal.plait.IPlaitBackup (the framework's copy is hidden from apps).
      * Transaction codes follow the method order in the .aidl; keep them in step.
      */
+    /** The service does not know the call (an older ROM): an unknown code makes transact return false, which is not success. */
+    private class ServiceTooOld : RuntimeException("the backup service does not have this call")
+
     private class Service(private val binder: IBinder) {
         fun backupPart(grant: String, pkg: String, userId: Int, part: Int, out: ParcelFileDescriptor): Boolean =
             call(TX_BACKUP_PART, { it.writeString(grant); it.writeString(pkg); it.writeInt(userId); it.writeInt(part); fd(it, out) }) {
@@ -279,14 +506,129 @@ class SystemBackend private constructor(private val context: Context, private va
         fun installApks(grant: String, pkg: String, userId: Int, source: ParcelFileDescriptor) =
             call(TX_INSTALL_APKS, { it.writeString(grant); it.writeString(pkg); it.writeInt(userId); fd(it, source) }) {}
 
+        /** As [installApks], recording [installer] (a package name) as the app's installer. Only newer ROMs have it. */
+        fun installApksAs(grant: String, pkg: String, userId: Int, source: ParcelFileDescriptor, installer: String) =
+            call(TX_INSTALL_APKS_AS, {
+                it.writeString(grant); it.writeString(pkg); it.writeInt(userId); fd(it, source); it.writeString(installer)
+            }) {}
+
         fun restorePart(grant: String, pkg: String, userId: Int, part: Int, source: ParcelFileDescriptor) =
             call(TX_RESTORE_PART, { it.writeString(grant); it.writeString(pkg); it.writeInt(userId); it.writeInt(part); fd(it, source) }) {}
+
+        /** The first step of a two-step restore (newer ROMs only): extracts into a staging dir, the app's data untouched. */
+        fun restorePartStage(grant: String, pkg: String, userId: Int, part: Int, source: ParcelFileDescriptor) =
+            call(TX_RESTORE_PART_STAGE, { it.writeString(grant); it.writeString(pkg); it.writeInt(userId); it.writeInt(part); fd(it, source) }) {}
+
+        /** The second step: swaps the staged [parts] in (commit) or throws them away. */
+        fun restoreFinish(grant: String, pkg: String, userId: Int, parts: IntArray, commit: Boolean) =
+            call(TX_RESTORE_FINISH, {
+                it.writeString(grant); it.writeString(pkg); it.writeInt(userId); it.writeIntArray(parts); it.writeInt(if (commit) 1 else 0)
+            }) {}
+
+        /**
+         * Runs a service call that reads a pipe, which [feed] fills (decrypting [file] into it, hashing as it goes
+         * into [digest]). A failure of the feed (a wrong passphrase, a changed file) is the error, not the service's
+         * complaint about the short stream it then got.
+         */
+        fun fromDecrypted(
+            file: File, digest: MessageDigest, feed: (OutputStream, InputStream) -> Unit, call: (ParcelFileDescriptor) -> Any?,
+        ) {
+            val pipe = ParcelFileDescriptor.createPipe()
+            runCatching { android.system.Os.fcntlInt(pipe[0].fileDescriptor, F_SETPIPE_SZ, 1 shl 20) }
+            var error: Throwable? = null
+            val feeder = thread(name = "PlaitBackupFeed") {
+                try {
+                    ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).buffered(BUF).use { raw ->
+                        val out = java.security.DigestOutputStream(raw, digest)
+                        file.inputStream().buffered(BUF).use { feed(out, it) }
+                    }
+                } catch (t: Throwable) {
+                    if (error == null) error = t
+                }
+            }
+            var callError: Throwable? = null
+            try {
+                call(pipe[0])
+            } catch (t: Throwable) {
+                callError = t
+            } finally {
+                pipe[0].close()
+                feeder.join()
+            }
+            val e = error
+            val stoppedReading = e is java.io.IOException && e.message?.contains("EPIPE") == true
+            if (e != null && !stoppedReading) throw IllegalStateException("${file.name} could not be decrypted: ${ArchiveCrypto.describe(e)}", e)
+            callError?.let { throw it }
+        }
 
         fun restoreState(grant: String, pkg: String, userId: Int, perms: Array<String>, ops: Array<String>, modes: Array<String>) =
             call(TX_RESTORE_STATE, {
                 it.writeString(grant); it.writeString(pkg); it.writeInt(userId)
                 it.writeStringArray(perms); it.writeStringArray(ops); it.writeStringArray(modes)
             }) {}
+
+        fun personalQuery(grant: String, userId: Int, uri: String, projection: Array<String>?, selection: String?,
+                          args: Array<String>?, sort: String?, out: ParcelFileDescriptor) =
+            call(TX_PERSONAL_QUERY, {
+                it.writeString(grant); it.writeInt(userId); it.writeString(uri); it.writeStringArray(projection)
+                it.writeString(selection); it.writeStringArray(args); it.writeString(sort); fd(it, out)
+            }) {}
+
+        fun personalInsert(grant: String, userId: Int, uri: String, values: ContentValues): String? =
+            call(TX_PERSONAL_INSERT, {
+                it.writeString(grant); it.writeInt(userId); it.writeString(uri); it.writeInt(1); values.writeToParcel(it, 0)
+            }) { it.readString() }
+
+        fun personalDelete(grant: String, userId: Int, uri: String): Int =
+            call(TX_PERSONAL_DELETE, { it.writeString(grant); it.writeInt(userId); it.writeString(uri) }) { it.readInt() }
+
+        fun personalOpenFile(grant: String, userId: Int, uri: String, mode: String): ParcelFileDescriptor =
+            call(TX_PERSONAL_OPEN_FILE, { it.writeString(grant); it.writeInt(userId); it.writeString(uri); it.writeString(mode) }) {
+                if (it.readInt() != 0) ParcelFileDescriptor.CREATOR.createFromParcel(it) else error("no file for $uri")
+            }
+
+        /** The providers behind call log, messages and contacts, through the service, for one grant. */
+        fun store(grant: String, userId: Int): PersonalStore = object : PersonalStore {
+            override fun query(uri: String, projection: Array<String>?, selection: String?, args: Array<String>?, sort: String?): Rows {
+                val text = java.io.ByteArrayOutputStream()
+                stream(text) { pfd -> personalQuery(grant, userId, uri, projection, selection, args, sort, pfd) }
+                val lines = text.toString(Charsets.UTF_8.name()).lineSequence().filter { it.isNotEmpty() }.toList()
+                val columns = lines.firstOrNull()?.let { head ->
+                    val a = org.json.JSONObject(head).getJSONArray("columns")
+                    (0 until a.length()).map { a.getString(it) }
+                } ?: return Rows(emptyList(), emptyList())
+                val rows = lines.drop(1).map { line ->
+                    val a = org.json.JSONArray(line)
+                    (0 until a.length()).map { i ->
+                        when (val v = a.get(i)) {
+                            org.json.JSONObject.NULL -> null
+                            is org.json.JSONObject -> java.util.Base64.getDecoder().decode(v.getString("blob"))
+                            is Int -> v.toLong()
+                            else -> v
+                        }
+                    }
+                }
+                return Rows(columns, rows)
+            }
+
+            override fun insert(uri: String, values: Map<String, Any?>) = personalInsert(grant, userId, uri, ContentValues().apply {
+                for ((k, v) in values) {
+                    when (v) {
+                        null -> putNull(k)
+                        is Long -> put(k, v)
+                        is Int -> put(k, v)
+                        is Double -> put(k, v)
+                        is ByteArray -> put(k, v)
+                        else -> put(k, v.toString())
+                    }
+                }
+            })
+            override fun delete(uri: String) = personalDelete(grant, userId, uri)
+            override fun read(uri: String): InputStream =
+                ParcelFileDescriptor.AutoCloseInputStream(personalOpenFile(grant, userId, uri, "r"))
+            override fun write(uri: String): OutputStream =
+                ParcelFileDescriptor.AutoCloseOutputStream(personalOpenFile(grant, userId, uri, "w"))
+        }
 
         /** Runs a service call that writes into a pipe, copying what it writes to [out]. */
         fun stream(out: OutputStream, call: (ParcelFileDescriptor) -> Any?) {
@@ -346,7 +688,7 @@ class SystemBackend private constructor(private val context: Context, private va
             try {
                 data.writeInterfaceToken(DESCRIPTOR)
                 write(data)
-                binder.transact(code, data, reply, 0)
+                if (!binder.transact(code, data, reply, 0)) throw ServiceTooOld()
                 reply.readException()
                 return read(reply)
             } finally {
@@ -363,6 +705,13 @@ class SystemBackend private constructor(private val context: Context, private va
             const val TX_INSTALL_APKS = IBinder.FIRST_CALL_TRANSACTION + 3
             const val TX_RESTORE_PART = IBinder.FIRST_CALL_TRANSACTION + 4
             const val TX_RESTORE_STATE = IBinder.FIRST_CALL_TRANSACTION + 5
+            const val TX_PERSONAL_QUERY = IBinder.FIRST_CALL_TRANSACTION + 6
+            const val TX_PERSONAL_INSERT = IBinder.FIRST_CALL_TRANSACTION + 7
+            const val TX_PERSONAL_DELETE = IBinder.FIRST_CALL_TRANSACTION + 8
+            const val TX_PERSONAL_OPEN_FILE = IBinder.FIRST_CALL_TRANSACTION + 9
+            const val TX_INSTALL_APKS_AS = IBinder.FIRST_CALL_TRANSACTION + 10
+            const val TX_RESTORE_PART_STAGE = IBinder.FIRST_CALL_TRANSACTION + 11
+            const val TX_RESTORE_FINISH = IBinder.FIRST_CALL_TRANSACTION + 12
 
             /** ServiceManager is hidden but allowed for apps (unsupported app usage); checkService doesn't wait. */
             fun connect(): Service? = runCatching {
@@ -374,12 +723,15 @@ class SystemBackend private constructor(private val context: Context, private va
     }
 
     companion object {
-        /** The app's view of the same folder the root backend writes ([Layout.ROOT] is /data/media/0/...). */
-        private val ROOT = File(Environment.getExternalStorageDirectory(), "PlaitBackup")
+        /** The folder chosen in Settings, as this app sees it ([Layout.ROOT] is the same folder as root sees it). */
+        private val ROOT: File get() = File(BackupFolder.userPath)
 
         /** The backend on PlaitOS (the service exists), else null. */
         fun create(context: Context): SystemBackend? = Service.connect()?.let { SystemBackend(context, it) }
 
+        /** Copy and pipe buffers: the defaults (8 KiB, 64 KiB) make a multi-GB restore mostly system calls. */
+        private const val BUF = 1 shl 20
+        private const val F_SETPIPE_SZ = 1031
         private val APPOPS_LINE = Regex("^([A-Z_0-9]+): ([a-z]+)")
         private val SAFE_NAME = Regex("[A-Za-z0-9._-]+")
     }

@@ -17,6 +17,11 @@ final class DeviceApps implements Classifier.Apps {
     }
 
     @Override
+    public int userId() {
+        return userId;
+    }
+
+    @Override
     public boolean installedBy(String pkg, String installer) {
         try {
             IBinder binder = android.os.ServiceManager.getService("package");

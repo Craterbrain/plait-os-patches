@@ -1,0 +1,78 @@
+From 8ac1a7b357a30f89bef6d5d9359bdc43bd3099d6 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 17:24:08 -0600
+Subject: [PATCH] PlaitOS: restored apps are installed as the store that
+ installed them
+
+When a store is named, plait_backup creates the install session as that store
+(PackageInstaller built with the store as installer package): for a caller that
+is not root or shell Android keeps that name as the one that started the
+install, so the app shows installed from the store, with package source store
+and update ownership requested. Root and adb installs are pinned to the shell,
+which is why this is done in system_server.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../server/plait/PlaitBackupService.java      | 32 ++++++++++++++++---
+ 1 file changed, 28 insertions(+), 4 deletions(-)
+
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index 646f9b661..0a73a608e 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -456,6 +456,26 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }
+     }
+ 
++    /**
++     * The installer to create sessions with. With a store named, sessions are created as that store: for a caller that is
++     * not root or shell (system_server is neither), Android keeps the installer name it is given as the package that
++     * started the install, so the app shows "installed from" the store and not from "android". Root and adb installs
++     * are pinned to the shell, which is why only the system can do this.
++     */
++    private PackageInstaller installerFor(String installerName, int userId) {
++        if (installerName == null) {
++            return mContext.createContextAsUser(UserHandle.of(userId), 0).getPackageManager().getPackageInstaller();
++        }
++        try {
++            return new PackageInstaller(
++                    android.content.pm.IPackageManager.Stub.asInterface(ServiceManager.getService("package"))
++                            .getPackageInstaller(),
++                    installerName, /* installerAttributionTag= */ null, userId);
++        } catch (android.os.RemoteException e) {
++            throw new IllegalStateException("no package installer: " + e.getMessage());
++        }
++    }
++
+     private void install(Call call, ParcelFileDescriptor source, String installerName) {
+         // installd decompresses into a pipe, this thread reads the tar and writes each APK into a session
+         ParcelFileDescriptor[] pipe;
+@@ -479,8 +499,7 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }, "PlaitBackupUnzstd");
+         unpack.start();
+ 
+-        PackageInstaller installer = mContext.createContextAsUser(UserHandle.of(call.userId), 0)
+-                .getPackageManager().getPackageInstaller();
++        PackageInstaller installer = installerFor(installerName, call.userId);
+         PackageInstaller.SessionParams params =
+                 new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+         // The APKs must really be this package; installing over an existing install is fine
+@@ -489,8 +508,13 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         // Installed from a file, as a sideload would be: Android's restricted settings (accessibility, notification
+         // access, ...) apply to the app as they would to any app the user installed from a file
+         params.setPackageSource(PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE);
+-        // The installer of record (system_server may name one other than itself); the initiator stays "android"
+-        if (installerName != null) params.installerPackageName = installerName;
++        if (installerName != null) {
++            // Looks like the store's own install: installer and initiator are the store (see installerFor), the store is
++            // the update owner where Android enforces that, and the package source is "store". Only known stores get here.
++            params.installerPackageName = installerName;
++            params.setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE);
++            params.installFlags |= PackageManager.INSTALL_REQUEST_UPDATE_OWNERSHIP;
++        }
+         params.installFlags |= PackageManager.INSTALL_REPLACE_EXISTING;
+         int sessionId = -1;
+         try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(readEnd)) {
+-- 
+2.56.0
+

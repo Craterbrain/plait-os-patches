@@ -14,6 +14,7 @@ The apps built into the ROM, as staged into `vendor/plait` (the ROM build import
 |---|---|
 | Angel Launcher | `apps/angel-launcher` (submodule, [Craterbrain/angel-launcher](https://github.com/Craterbrain/angel-launcher)) |
 | Loudness Boost | `apps/loudness-boost` |
+| Plait Design (the shared look: theme, components, icons; the apps build against it) | `apps/plait-design` |
 | Plait Backup | `apps/plait-backup` (ROM build: `./gradlew assembleRelease -PplaitRom=true`, no root fallback) |
 | Plait Broker, Plait Shield, Plait Scan | `apps/plait-broker` (modules `broker`, `shield`, `scanner`) |
 

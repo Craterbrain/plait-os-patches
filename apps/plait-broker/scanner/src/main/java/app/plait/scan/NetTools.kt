@@ -1,5 +1,7 @@
 package app.plait.scan
 
+import app.plait.design.PlaitTonalButton
+import app.plait.design.PlaitFilledButton
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -10,9 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -106,7 +106,7 @@ fun PingTool(pad: PaddingValues) {
                 ChipRow(listOf(4, 10, 50, 0), count, { if (it == 0) "∞" else "$it" }) { count = it }
                 Text("Interval (seconds)", style = MaterialTheme.typography.labelMedium)
                 ChipRow(listOf("0.2", "1", "2"), interval, { it }) { interval = it }
-                if (running) OutlinedButton(onClick = { job?.cancel() }) { Text("Stop") } else Button(onClick = { start() }, enabled = host.isNotBlank()) { Text("Ping") }
+                if (running) PlaitTonalButton(onClick = { job?.cancel() }) { Text("Stop") } else PlaitFilledButton(onClick = { start() }, enabled = host.isNotBlank()) { Text("Ping") }
             }
         }
         item {
@@ -210,7 +210,7 @@ fun TraceTool(pad: PaddingValues) {
             InfoCard {
                 ToolField("Host or IP", host, { host = it })
                 Row { TextButton(onClick = { host = "1.1.1.1" }) { Text("1.1.1.1") }; TextButton(onClick = { host = "google.com" }) { Text("google.com") } }
-                if (running) OutlinedButton(onClick = { job?.cancel() }) { Text("Stop") } else Button(onClick = { start() }, enabled = host.isNotBlank()) { Text("Trace") }
+                if (running) PlaitTonalButton(onClick = { job?.cancel() }) { Text("Stop") } else PlaitFilledButton(onClick = { start() }, enabled = host.isNotBlank()) { Text("Trace") }
                 if (status.isNotEmpty()) Text(status, style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -267,7 +267,7 @@ fun MtuTool(pad: PaddingValues) {
             InfoCard {
                 ToolField("Host or IP", host, { host = it })
                 ChipRow(listOf(false, true), v6, { if (it) "IPv6" else "IPv4" }) { v6 = it }
-                if (running) OutlinedButton(onClick = { job?.cancel() }) { Text("Stop") } else Button(onClick = { start() }, enabled = host.isNotBlank()) { Text("Find path MTU") }
+                if (running) PlaitTonalButton(onClick = { job?.cancel() }) { Text("Stop") } else PlaitFilledButton(onClick = { start() }, enabled = host.isNotBlank()) { Text("Find path MTU") }
                 if (step.isNotEmpty()) Text(step, style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -341,8 +341,8 @@ fun WolTool(pad: PaddingValues) {
                 ToolField("MAC address", mac, { mac = it }, placeholder = "aa:bb:cc:dd:ee:ff")
                 ToolField("Name (to save it)", name, { name = it }, keyboard = androidx.compose.ui.text.input.KeyboardType.Text)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { wake(mac) }, enabled = mac.isNotBlank()) { Text("Wake") }
-                    OutlinedButton(onClick = {
+                    PlaitFilledButton(onClick = { wake(mac) }, enabled = mac.isNotBlank()) { Text("Wake") }
+                    PlaitTonalButton(onClick = {
                         val b = Wol.parseMac(mac)
                         if (b == null) status = "That is not a MAC address" else {
                             saved = saved.filter { it.second != Wol.format(b) } + ((name.ifBlank { Wol.format(b) }) to Wol.format(b))
@@ -360,7 +360,7 @@ fun WolTool(pad: PaddingValues) {
                 InfoCard {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         androidx.compose.foundation.layout.Column(Modifier.weight(1f)) { Text(n, style = MaterialTheme.typography.titleSmall); Mono(m) }
-                        Button(onClick = { wake(m) }) { Text("Wake") }
+                        PlaitFilledButton(onClick = { wake(m) }) { Text("Wake") }
                         TextButton(onClick = { saved = saved.filter { it.second != m }; WolStore.save(ctx, saved) }) { Text("Delete") }
                     }
                 }
@@ -376,7 +376,7 @@ fun WolTool(pad: PaddingValues) {
                             Text(h.identity?.name?.takeIf { it.isNotBlank() } ?: h.name?.substringBefore('.') ?: h.vendor?.takeUnless { h.randomized } ?: h.ip, style = MaterialTheme.typography.titleSmall)
                             Mono("${h.ip}  ${h.mac}")
                         }
-                        Button(onClick = { wake(h.mac!!) }) { Text("Wake") }
+                        PlaitFilledButton(onClick = { wake(h.mac!!) }) { Text("Wake") }
                     }
                 }
             }

@@ -59,10 +59,10 @@ public class ClassifierTest {
 
     @Test
     public void actingOnItselfIsNormal() {
-        tier(Tier.NORMAL, "pm", "grant", ME, "android.permission.WRITE_SECURE_SETTINGS");
+        tier(Tier.NORMAL, "pm", "revoke", ME, "android.permission.CAMERA");
         tier(Tier.NORMAL, "pm", "disable-user", "--user", "0", ME);
         tier(Tier.NORMAL, "cmd", "package", "clear", ME);
-        tier(Tier.NORMAL, "appops", "set", ME, "SYSTEM_ALERT_WINDOW", "allow");
+        tier(Tier.NORMAL, "appops", "set", ME, "SYSTEM_ALERT_WINDOW", "ignore");
         tier(Tier.NORMAL, "appops", "set", "10100", "RUN_IN_BACKGROUND", "ignore");
         tier(Tier.NORMAL, "am", "force-stop", ME);
         tier(Tier.NORMAL, "am", "start", "-n", ME + "/.Main");
@@ -149,6 +149,78 @@ public class ClassifierTest {
     public void toyboxAppletsAreClassifiedAsThemselves() {
         gated(Gate.INPUT, "toybox", "input", "tap", "1", "1");
         scoped(Scope.FILES, "com.other", "toybox", "ls", "/sdcard/Android/data/com.other");
+    }
+
+    @Test
+    public void givingItselfMoreIsAsked() {
+        Classifier.Decision d = of("pm", "grant", ME, "android.permission.WRITE_SECURE_SETTINGS");
+        assertEquals(Tier.ASK, d.tier);
+        assertEquals("grant itself android.permission.WRITE_SECURE_SETTINGS", d.key);
+        tier(Tier.ASK, "pm", "grant", "--all-permissions", ME);
+        tier(Tier.ASK, "cmd", "package", "grant", ME, "android.permission.CAMERA");
+        tier(Tier.ASK, "appops", "set", ME, "SYSTEM_ALERT_WINDOW", "allow");
+        tier(Tier.ASK, "appops", "set", "--uid", "10100", "MANAGE_EXTERNAL_STORAGE", "allow");
+        tier(Tier.ASK, "appops", "reset", ME);
+        gated(Gate.SCREEN, "appops", "set", ME, "PROJECT_MEDIA", "allow");
+        gated(Gate.SECURITY, "appops", "set", ME, "ACCESS_RESTRICTED_SETTINGS", "allow");
+        tier(Tier.NEVER, "appops", "set", "--mystery", ME, "CAMERA", "allow");
+    }
+
+    @Test
+    public void optionsAreReadTheWayTheToolsReadThem() {
+        // cmd -w only waits for the service
+        gated(Gate.INPUT, "cmd", "-w", "input", "tap", "1", "1");
+        scoped(Scope.PERMISSIONS, "com.other", "cmd", "-w", "package", "grant", "com.other", "android.permission.CAMERA");
+        gated(Gate.SECURITY, "cmd", "-w", "settings", "put", "secure", "enabled_accessibility_services", "com.other/.A");
+        tier(Tier.NEVER, "cmd", "-x", "package", "list");
+        // the last -n / --uri wins in am and content
+        tier(Tier.NEVER, "am", "start", "-n", ME + "/.Main", "-n", "com.other/.Evil");
+        tier(Tier.NEVER, "am", "start", "-n", ME + "/.Main", "intent:#Intent;component=com.other/.Evil;end");
+        tier(Tier.NEVER, "content", "query", "--uri", "content://com.example.me.data/x", "--uri", "content://com.other.files/x");
+        // values of options are not the target
+        scoped(Scope.UNINSTALL, "com.other", "pm", "uninstall", "--versionCode", ME, "com.other");
+        scoped(Scope.FREEZE, "com.other", "pm", "suspend", "--dialogMessage", ME, "com.other");
+        scoped(Scope.FREEZE, "com.other", "pm", "suspend", ME, "com.other");
+        tier(Tier.NEVER, "pm", "clear", "--mystery", ME);
+        tier(Tier.NEVER, "am", "force-stop", ME, "com.other");
+        // other users and profiles
+        tier(Tier.NEVER, "pm", "clear", "--user", "10", ME);
+        tier(Tier.NEVER, "am", "start", "--user", "all", "-n", ME + "/.Main");
+        tier(Tier.NORMAL, "am", "start", "--user", "current", "-n", ME + "/.Main");
+    }
+
+    @Test
+    public void sharedStorageIsFoundEveryWayItCanBeNamed() {
+        scoped(Scope.FILES, "com.other", "dd", "if=/sdcard/Android/data/com.other/files/x");
+        scoped(Scope.FILES, "com.other", "tar", "--directory=/sdcard/Android/data/com.other");
+        scoped(Scope.FILES, "com.other", "tar", "-C/sdcard/Android/obb/com.other");
+        assertEquals("com.other", Classifier.command(Arrays.asList("cat", "Android/data/com.other/f"), "/sdcard", ME, APPS).target);
+        assertEquals("com.other", Classifier.command(Arrays.asList("ls"), "/sdcard/Android/data/com.other", ME, APPS).target);
+        scoped(Scope.FILES, "com.other", "cat", "/sdcard/ANDROID/DATA/com.other/f");
+        scoped(Scope.FILES, "com.other", "ls", "/mnt/androidwritable/0/emulated/0/Android/data/com.other");
+        tier(Tier.NORMAL, "ls", "/sdcard/android/data/" + ME);
+    }
+
+    @Test
+    public void theBrokersOwnFilesAreOffLimits() {
+        tier(Tier.NEVER, "cp", "/sdcard/p.json", "/data/user_de/0/com.android.shell/plait-broker.json.bak");
+        tier(Tier.NEVER, "dd", "of=/data/plait/hosts");
+        tier(Tier.NEVER, "tee", "/data/plait/../plait/hosts");
+        tier(Tier.NEVER, "rm", "/data/local/tmp/plait/su.sock");
+        tier(Tier.NEVER, "ln", "-s", "/data/plait", "/data/local/tmp/x");
+        tier(Tier.NEVER, "cat", "/proc/1/root/data/plait/hosts");
+        assertEquals(Tier.NEVER, Classifier.command(Arrays.asList("tee", "hosts"), "/data/plait", ME, APPS).tier);
+        tier(Tier.NORMAL, "cat", "/data/local/tmp/other");
+    }
+
+    @Test
+    public void unknownServicesAreUnlisted() {
+        Classifier.Decision d = of("cmd", "clipboard", "get");
+        assertEquals(Tier.NORMAL, d.tier);
+        assertEquals(true, d.unlisted);
+        assertEquals("cmd clipboard", d.askInstead().key);
+        assertEquals(false, of("cmd", "wifi", "status").unlisted);
+        gated(Gate.SECURITY, "cmd", "sensor_privacy", "disable", "0", "camera");
     }
 
     @Test

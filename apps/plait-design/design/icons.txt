@@ -1,0 +1,218 @@
+# local_name = material_symbols_name [, fill] [, mirror]   (Material Symbols Rounded, weight 400, 24 dp)
+#   fill   also makes ps_<name>_fill (the filled form, for a selected state)
+#   mirror flips it in right-to-left layouts (arrows, chevrons, lists)
+# Add a line, run tools/icons.py, use PlaitIcon.<Name>. Names are at https://fonts.google.com/icons (Material Symbols).
+# common
+search = search
+settings = settings, fill
+close = close
+check = check
+add = add
+remove = remove
+more = more_horiz
+more_vert = more_vert
+back = arrow_back, mirror
+forward = arrow_forward, mirror
+chevron_right = chevron_right, mirror
+expand_more = expand_more
+info = info
+warning = warning
+error = error
+help = help
+delete = delete
+edit = edit
+share = share
+refresh = refresh
+download = download
+upload = upload
+copy = content_copy
+menu = menu
+# apps and content
+call = call, fill
+message = chat, fill
+sms = sms
+mail = mail
+browser = public
+camera = photo_camera
+image = image
+music = music_note
+map = location_on
+calendar = calendar_month
+folder = folder
+files = folder_open
+notes = sticky_note_2
+clock = schedule
+timer = timer
+alarm = alarm
+voicemail = voicemail
+contacts = contacts
+people = group
+person = person
+home = home, fill
+star = star, fill
+favorite = favorite
+check_circle = check_circle
+mms = mms
+hourglass = hourglass_empty
+filter = filter_list
+expand_less = expand_less
+apps = apps
+android = android
+list = list_alt, mirror
+# security
+shield = shield
+lock = lock
+lock_open = lock_open
+key = key
+visibility = visibility
+visibility_off = visibility_off
+fingerprint = fingerprint
+# backup and storage
+backup = backup
+archive = inventory_2
+restore = settings_backup_restore
+history = history
+cloud = cloud
+cloud_off = cloud_off
+storage = storage
+# network
+wifi = wifi
+bluetooth = bluetooth
+signal = signal_cellular_alt
+router = router
+tv = tv
+server = dns
+lan = lan
+tools = build
+language = language
+# display and system
+brightness = brightness_medium
+grid = grid_view
+palette = palette
+dark = dark_mode
+light = light_mode
+text_fields = text_fields
+widgets = widgets
+tune = tune
+notifications = notifications
+vibration = vibration
+flashlight = flashlight_on
+power = power_settings_new
+restart = restart_alt
+spark = auto_awesome
+# battery and sound
+battery = battery_full
+charging = battery_charging_full
+battery_alert = battery_alert
+swap = swap_vert
+speed = speed
+volume = volume_up
+mic = mic
+equalizer = equalizer
+headphones = headphones
+# calls
+dialpad = dialpad
+call_received = call_received
+call_made = call_made
+call_missed = call_missed
+# weather
+sunny = sunny
+partly_cloudy = partly_cloudy_day
+rainy = rainy
+thunderstorm = thunderstorm
+water_drop = water_drop
+# app coverage: actions and navigation
+arrow_drop_down = arrow_drop_down
+keyboard_arrow_down = keyboard_arrow_down
+keyboard_arrow_up = keyboard_arrow_up
+keyboard_arrow_right = keyboard_arrow_right, mirror
+grid_on = grid_on
+# app coverage: content and launcher
+aspect_ratio = aspect_ratio
+brightness_auto = brightness_auto
+category = category
+colorize = colorize
+crop = crop
+drag_handle = drag_handle
+games = sports_esports
+location_searching = location_searching
+my_location = my_location
+shopping = shopping_bag
+social = groups
+timelapse = timelapse
+# app coverage: security and calls
+block = block
+security = security
+backspace = backspace
+call_end = call_end
+call_merge = call_merge
+emergency = emergency
+fiber_manual_record = fiber_manual_record, fill
+forward_10 = forward_10
+mic_off = mic_off
+pause = pause
+person_add = person_add
+play = play_arrow
+record_voice_over = record_voice_over
+replay_10 = replay_10
+sim_card = sim_card
+swap_calls = swap_calls
+volume_down = volume_down
+wifi_calling_3 = wifi_calling_3
+# app coverage: devices, network and tools
+bolt = bolt
+calculate = calculate
+cast = cast
+desktop_windows = desktop_windows
+device_unknown = device_unknown
+devices = devices
+directions_car = directions_car
+fitness_center = fitness_center
+hub = hub
+keyboard = keyboard
+laptop = laptop_mac
+lightbulb = lightbulb
+medical_services = medical_services
+memory = memory
+mouse = mouse
+network_ping = network_ping
+phone_android = phone_android
+phone_disabled = phone_disabled
+phone_iphone = phone_iphone
+print = print
+route = route
+sensors = sensors
+settings_remote = settings_remote
+smartphone = smartphone
+speaker = speaker
+straighten = straighten
+tablet_android = tablet_android
+videocam = videocam
+videogame_asset = videogame_asset
+watch = watch
+# app coverage: recents
+pin = keep
+splitscreen = splitscreen
+# app coverage: weather
+clear_night = clear_night
+fog = foggy
+partly_cloudy_night = partly_cloudy_night
+snow = weather_snowy
+temperature = thermostat
+wind = air
+
+# app coverage: Broker, Shield and Scan (device kinds, tools)
+tablet = tablet_android
+esports = sports_esports
+remote = settings_remote
+desktop = desktop_windows
+gamepad = videogame_asset
+ruler = straighten
+iphone = phone_iphone
+ping = network_ping
+medical = medical_services
+fitness = fitness_center
+car = directions_car
+
+# Dialer
+record = radio_button_checked

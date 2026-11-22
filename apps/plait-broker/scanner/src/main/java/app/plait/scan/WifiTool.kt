@@ -1,5 +1,12 @@
 package app.plait.scan
 
+import app.plait.design.PlaitSwitch
+import app.plait.design.PlaitFilterChip
+import app.plait.design.Tone
+import app.plait.design.PlaitTonalButton
+import app.plait.design.PlaitFilledButton
+import app.plait.design.PlaitCard
+import app.plait.design.NoticeCard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -15,15 +22,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -89,11 +90,11 @@ fun WifiTool(pad: PaddingValues) {
     LazyColumn(Modifier.padding(pad).fillMaxWidth(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (broker != Broker.State.READY) {
             item {
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                NoticeCard(Tone.Danger, Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("The Wi-Fi scanner needs Plait Broker", style = MaterialTheme.typography.titleSmall)
+                        Text("The Wi-Fi scanner needs Broker", style = MaterialTheme.typography.titleSmall)
                         Text("Android limits how often apps may scan and hides the results without location access. The broker reads the same table without either (cmd wifi list-scan-results).")
-                        if (broker == Broker.State.NO_ACCESS) Button(onClick = { Broker.requestAccess() }) { Text("Request access") }
+                        if (broker == Broker.State.NO_ACCESS) PlaitFilledButton(onClick = { Broker.requestAccess() }) { Text("Request access") }
                     }
                 }
             }
@@ -102,15 +103,15 @@ fun WifiTool(pad: PaddingValues) {
         item {
             InfoCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = { reload++ }, enabled = !scanning) { Text("Scan") }
+                    PlaitTonalButton(onClick = { reload++ }, enabled = !scanning) { Text("Scan") }
                     if (scanning) CircularProgressIndicator(Modifier.width(24.dp).height(24.dp))
                     Text(if (aps.isEmpty()) "" else "${aps.size} access points", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                     Text("Live", style = MaterialTheme.typography.bodySmall)
-                    Switch(checked = live, onCheckedChange = { live = it })
+                    PlaitSwitch(live, { live = it })
                 }
                 error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    if (it.contains("not allowed")) Text("Open Plait Broker, choose Plait Scan, and switch on the cmd wifi commands (or remove and add the app again so it asks for what it declares).", style = MaterialTheme.typography.bodySmall)
+                    if (it.contains("not allowed")) Text("Open Broker, choose Scan, and switch on the cmd wifi commands (or remove and add the app again so it asks for what it declares).", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -129,7 +130,7 @@ fun WifiTool(pad: PaddingValues) {
             item {
                 InfoCard("Channels") {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        bands.forEach { b -> FilterChip(selected = b == shownBand, onClick = { band = b }, label = { Text(b) }) }
+                        bands.forEach { b -> PlaitFilterChip(b, b == shownBand, { band = b }) }
                     }
                     ChannelChart(inBand, shownBand, link)
                     Text("Bars show the strongest signal on each channel; the number under a bar is how many access points share it. Channels with few, weak neighbours are the best choice for your router.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -167,7 +168,7 @@ private fun ChannelChart(aps: List<WifiAp>, band: String, link: WifiLink?) {
 
 @Composable
 private fun ApRow(ap: WifiAp, connected: Boolean, vendor: String?) {
-    Card(Modifier.fillMaxWidth(), colors = if (connected) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else CardDefaults.cardColors()) {
+    PlaitCard(Modifier.fillMaxWidth(), color = if (connected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (ap.hidden) "(hidden network)" else ap.ssid, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))

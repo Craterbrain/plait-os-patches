@@ -1,0 +1,242 @@
+From 5d3e9288ace575d25a739ab4fe4d38f26740622c Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 22:39:31 -0600
+Subject: [PATCH 18/18] PlaitOS: settings for volume wake, home double-tap,
+ headset player, clock and charging limit
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ res/values/plait_arrays.xml                   | 14 +++++++++++
+ res/values/plait_strings.xml                  | 14 +++++++++++
+ res/xml/button_navigation_settings.xml        |  7 ++++++
+ res/xml/plait_buttons.xml                     | 12 ++++++++++
+ res/xml/plait_misc.xml                        | 23 +++++++++++++++++++
+ res/xml/plait_status_bar.xml                  | 13 +++++++++++
+ .../settings/plait/PlaitControllers.kt        |  7 ++++++
+ .../android/settings/plait/PlaitSettings.kt   |  8 +++++++
+ 8 files changed, 98 insertions(+)
+
+diff --git a/res/values/plait_arrays.xml b/res/values/plait_arrays.xml
+index 49ea95d..8ccf7ec 100644
+--- a/res/values/plait_arrays.xml
++++ b/res/values/plait_arrays.xml
+@@ -127,6 +127,20 @@
+         <item>2</item><item>1</item><item>0</item>
+     </string-array>
+ 
++    <string-array name="plait_clock_am_pm_entries">
++        <item>Normal</item><item>Small</item><item>Hidden</item>
++    </string-array>
++    <string-array name="plait_clock_am_pm_values" translatable="false">
++        <item>0</item><item>1</item><item>2</item>
++    </string-array>
++
++    <string-array name="plait_charge_limit_entries" translatable="false">
++        <item>60%</item><item>70%</item><item>75%</item><item>80%</item><item>85%</item><item>90%</item><item>95%</item>
++    </string-array>
++    <string-array name="plait_charge_limit_values" translatable="false">
++        <item>60</item><item>70</item><item>75</item><item>80</item><item>85</item><item>90</item><item>95</item>
++    </string-array>
++
+     <!-- Battery -->
+     <string-array name="plait_battery_style_entries">
+         <item>@string/plait_default_entry</item><item>Circle</item><item>Dotted circle</item><item>Text only</item>
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+index de87fd6..039d7dc 100644
+--- a/res/values/plait_strings.xml
++++ b/res/values/plait_strings.xml
+@@ -29,6 +29,7 @@
+ 
+     <!-- 3-button navigation -->
+     <string name="plait_home_long_press_title">Long-press home</string>
++    <string name="plait_home_double_tap_title">Double-tap home</string>
+     <string name="plait_back_long_press_title">Long-press back</string>
+     <string name="plait_recents_long_press_title">Long-press recents</string>
+ 
+@@ -64,6 +65,9 @@
+     <!-- Status bar tab -->
+     <string name="plait_clock_category">Clock</string>
+     <string name="plait_clock_position_title">Clock position</string>
++    <string name="plait_clock_am_pm_title">AM/PM indicator</string>
++    <string name="plait_clock_auto_hide_title">Hide clock on the home screen</string>
++    <string name="plait_clock_auto_hide_summary">The launcher usually shows its own clock</string>
+     <string name="plait_clock_seconds_title">Show seconds</string>
+     <string name="plait_battery_category">Battery</string>
+     <string name="plait_battery_style_title">Battery style</string>
+@@ -99,11 +103,21 @@
+     <!-- Buttons tab -->
+     <string name="plait_volume_music_title">Skip tracks with volume keys</string>
+     <string name="plait_volume_music_summary">With the screen off, press and hold volume up or down to skip forward or back</string>
++    <string name="plait_volume_wake_title">Wake with volume keys</string>
++    <string name="plait_volume_wake_summary">Pressing a volume key turns the screen on. Turns off skipping tracks with the screen off</string>
++    <string name="plait_headset_player_title">Open music player on headset</string>
++    <string name="plait_headset_player_summary">Starts your music app when wired or Bluetooth audio headphones connect</string>
+     <string name="plait_answer_call_category">Answer calls</string>
+     <string name="plait_volume_answer_title">With a volume key</string>
+     <string name="plait_home_answer_title">With the home button</string>
+ 
+     <!-- Misc tab -->
++    <string name="plait_charging_category">Charging</string>
++    <string name="plait_charge_limit_title">Limit charging</string>
++    <string name="plait_charge_limit_summary">Stops charging at the level below and starts again 5% under it, which is easier on the battery. The charger can run over the limit by 1 to 3%</string>
++    <string name="plait_charge_limit_level_title">Charging limit</string>
++    <string name="plait_charge_limit_alarm_title">Full before my alarm</string>
++    <string name="plait_charge_limit_alarm_summary">From nine hours before your next alarm, charges slowly so the battery reaches 100% when it rings, then returns to the limit</string>
+     <string name="plait_downgrade_title">Allow app downgrades</string>
+     <string name="plait_downgrade_summary">Lets an older version of an app install over a newer one. Turns itself off after one downgrade, after an hour, or at restart</string>
+     <string name="plait_tuner_title">System UI Tuner</string>
+diff --git a/res/xml/button_navigation_settings.xml b/res/xml/button_navigation_settings.xml
+index fab6254..434dc40 100644
+--- a/res/xml/button_navigation_settings.xml
++++ b/res/xml/button_navigation_settings.xml
+@@ -55,6 +55,13 @@
+             android:entries="@array/plait_key_action_entries"
+             android:entryValues="@array/plait_key_action_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_home_double_tap_action"
++            android:icon="@drawable/ic_plait_sysbar_home"
++            android:title="@string/plait_home_double_tap_title"
++            android:entries="@array/plait_key_action_entries"
++            android:entryValues="@array/plait_key_action_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
+         <ListPreference
+             android:key="plait_back_long_press_action"
+             android:icon="@drawable/ic_plait_sysbar_back"
+diff --git a/res/xml/plait_buttons.xml b/res/xml/plait_buttons.xml
+index 9f91ae6..ae03d5f 100644
+--- a/res/xml/plait_buttons.xml
++++ b/res/xml/plait_buttons.xml
+@@ -11,6 +11,18 @@
+         android:title="@string/plait_volume_music_title"
+         android:summary="@string/plait_volume_music_summary"
+         settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    <SwitchPreferenceCompat
++        android:key="plait_volume_wake_screen"
++        android:icon="@drawable/ic_plait_music"
++        android:title="@string/plait_volume_wake_title"
++        android:summary="@string/plait_volume_wake_summary"
++        settings:controller="com.android.settings.plait.PlaitSwitchController" />
++    <SwitchPreferenceCompat
++        android:key="plait_headset_connect_player"
++        android:icon="@drawable/ic_plait_music"
++        android:title="@string/plait_headset_player_title"
++        android:summary="@string/plait_headset_player_summary"
++        settings:controller="com.android.settings.plait.PlaitSwitchController" />
+     <PreferenceCategory android:key="plait_answer_call_category" android:title="@string/plait_answer_call_category">
+         <SwitchPreferenceCompat
+             android:key="plait_volume_answer_call"
+diff --git a/res/xml/plait_misc.xml b/res/xml/plait_misc.xml
+index f9a4cd7..acca63c 100644
+--- a/res/xml/plait_misc.xml
++++ b/res/xml/plait_misc.xml
+@@ -11,6 +11,29 @@
+         android:title="@string/plait_downgrade_title"
+         android:summary="@string/plait_downgrade_summary"
+         settings:controller="com.android.settings.plait.PlaitPrimaryUserSwitchController" />
++    <PreferenceCategory android:key="plait_charging_category" android:title="@string/plait_charging_category">
++        <SwitchPreferenceCompat
++            android:key="plait_charge_limit_enabled"
++            android:icon="@drawable/ic_plait_download"
++            android:title="@string/plait_charge_limit_title"
++            android:summary="@string/plait_charge_limit_summary"
++            settings:controller="com.android.settings.plait.PlaitPrimaryUserSwitchController" />
++        <ListPreference
++            android:key="plait_charge_limit"
++            android:icon="@drawable/ic_plait_timer"
++            android:title="@string/plait_charge_limit_level_title"
++            android:entries="@array/plait_charge_limit_entries"
++            android:entryValues="@array/plait_charge_limit_values"
++            android:dependency="plait_charge_limit_enabled"
++            settings:controller="com.android.settings.plait.PlaitPrimaryUserListController" />
++        <SwitchPreferenceCompat
++            android:key="plait_charge_limit_by_alarm"
++            android:icon="@drawable/ic_plait_timer"
++            android:title="@string/plait_charge_limit_alarm_title"
++            android:summary="@string/plait_charge_limit_alarm_summary"
++            android:dependency="plait_charge_limit_enabled"
++            settings:controller="com.android.settings.plait.PlaitPrimaryUserSwitchController" />
++    </PreferenceCategory>
+     <Preference
+         android:key="plait_system_ui_tuner"
+         android:icon="@drawable/ic_plait_controls_icon"
+diff --git a/res/xml/plait_status_bar.xml b/res/xml/plait_status_bar.xml
+index 6dae6b9..c3a8e90 100644
+--- a/res/xml/plait_status_bar.xml
++++ b/res/xml/plait_status_bar.xml
+@@ -14,6 +14,19 @@
+             android:entries="@array/plait_clock_position_entries"
+             android:entryValues="@array/plait_clock_position_values"
+             settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_status_bar_am_pm"
++            android:icon="@drawable/ic_plait_clock"
++            android:title="@string/plait_clock_am_pm_title"
++            android:entries="@array/plait_clock_am_pm_entries"
++            android:entryValues="@array/plait_clock_am_pm_values"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <SwitchPreferenceCompat
++            android:key="plait_status_bar_clock_auto_hide"
++            android:icon="@drawable/ic_plait_clock"
++            android:title="@string/plait_clock_auto_hide_title"
++            android:summary="@string/plait_clock_auto_hide_summary"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
+         <SwitchPreferenceCompat
+             android:key="clock_seconds"
+             android:icon="@drawable/ic_plait_timer"
+diff --git a/src/com/android/settings/plait/PlaitControllers.kt b/src/com/android/settings/plait/PlaitControllers.kt
+index abf65b4..6195c1f 100644
+--- a/src/com/android/settings/plait/PlaitControllers.kt
++++ b/src/com/android/settings/plait/PlaitControllers.kt
+@@ -78,6 +78,13 @@ class PlaitPrimaryUserSwitchController(context: Context, key: String) :
+         if (UserHandle.myUserId() == UserHandle.USER_SYSTEM) AVAILABLE else DISABLED_FOR_USER
+ }
+ 
++/** Lists only the main user may change (they act on the whole device). */
++class PlaitPrimaryUserListController(context: Context, key: String) :
++    PlaitListController(context, key) {
++    override fun getAvailabilityStatus() =
++        if (UserHandle.myUserId() == UserHandle.USER_SYSTEM) AVAILABLE else DISABLED_FOR_USER
++}
++
+ /**
+  * Peek Display needs the stock "Wake screen for notifications" pulse, so turning it on turns
+  * that on too (turning Peek Display off leaves the stock switch as it is).
+diff --git a/src/com/android/settings/plait/PlaitSettings.kt b/src/com/android/settings/plait/PlaitSettings.kt
+index 2a15b22..20a9de4 100644
+--- a/src/com/android/settings/plait/PlaitSettings.kt
++++ b/src/com/android/settings/plait/PlaitSettings.kt
+@@ -37,8 +37,11 @@ object PlaitSettings {
+             "plait_torch_long_press_power_timeout" to Key(SYSTEM, 0),
+             "plait_volbtn_music_controls" to Key(SYSTEM, 0),
+             "plait_volume_answer_call" to Key(SYSTEM, 0),
++            "plait_volume_wake_screen" to Key(SYSTEM, 0),
++            "plait_headset_connect_player" to Key(SYSTEM, 0),
+             "plait_home_answer_call" to Key(SECURE, 0),
+             "plait_home_long_press_action" to Key(SYSTEM, 0),
++            "plait_home_double_tap_action" to Key(SYSTEM, 0),
+             "plait_back_long_press_action" to Key(SYSTEM, 0),
+             "plait_recents_long_press_action" to Key(SYSTEM, 0),
+             // Slim Recents (Launcher3, see SlimSettings there)
+@@ -53,6 +56,8 @@ object PlaitSettings {
+             // Status bar
+             "plait_double_tap_to_sleep" to Key(SYSTEM, 0),
+             "plait_status_bar_clock" to Key(SYSTEM, 2),
++            "plait_status_bar_am_pm" to Key(SYSTEM, 2),
++            "plait_status_bar_clock_auto_hide" to Key(SYSTEM, 0),
+             "plait_status_bar_battery_style" to Key(SYSTEM, 0),
+             "plait_status_bar_battery_percent" to Key(SYSTEM, -1),
+             "plait_status_bar_brightness_control" to Key(SYSTEM, 0),
+@@ -91,6 +96,9 @@ object PlaitSettings {
+             "plait_smart_pixel_filter_enabled" to Key(SECURE, 0),
+             "plait_smart_pixel_filter_percent" to Key(SECURE, 25),
+             // Misc
++            "plait_charge_limit_enabled" to Key(SYSTEM, 0),
++            "plait_charge_limit" to Key(SYSTEM, 80),
++            "plait_charge_limit_by_alarm" to Key(SYSTEM, 0),
+             "plait_pm_downgrade_allowed" to Key(GLOBAL, 0),
+             // Settings style (PlaitIconStyler)
+             "plait_settings_icon_style" to Key(SYSTEM, 1), // PlaitIconStyler.DEFAULT_STYLE
+-- 
+2.56.0
+

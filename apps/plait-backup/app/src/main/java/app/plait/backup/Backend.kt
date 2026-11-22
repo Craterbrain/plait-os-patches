@@ -11,7 +11,11 @@ enum class Part(val fileName: String, val label: String) {
 }
 
 /** One app's backup on disk: `<root>/apps/<pkg>/user_<id>/`. */
-data class ArchiveApp(val packageName: String, val userId: Int, val parts: Set<Part>, val sizeBytes: Long)
+data class ArchiveApp(
+    val packageName: String, val userId: Int, val parts: Set<Part>, val sizeBytes: Long,
+    /** The app's name and icon (PNG) as saved with the archive (see [AppMeta]); null for archives made before 0.21. */
+    val label: String? = null, val iconPng: ByteArray? = null,
+)
 
 /**
  * What Plait Backup needs from the system. On PlaitOS this is the `plait_backup` service in system_server
@@ -22,7 +26,7 @@ interface Backend {
     val name: String
 
     /** Where this backend keeps archives, as shown to the user. */
-    val archiveDir: String get() = Layout.ROOT
+    val archiveDir: String get() = BackupFolder.userPath
 
     /** True for a backend that runs commands through `su` (the dev backend on the rooted phone). */
     val needsRoot: Boolean get() = false
@@ -38,13 +42,33 @@ interface Backend {
      */
     fun restoreApp(grant: String, pkg: String, userId: Int, parts: Set<Part>, trustForeign: Boolean, log: (String) -> Unit): Boolean
 
+    /** Archives of apps, and of phone data ([Personal]: packageName is its target, no parts). */
     fun listArchives(): List<ArchiveApp>
+
+    /** Whether call log, messages and contacts can be backed up and restored ([Personal]). */
+    val supportsPersonal: Boolean get() = false
+
+    fun backupPersonal(grant: String, kind: Personal, userId: Int, log: (String) -> Unit): Boolean =
+        false.also { log("${kind.label}: needs PlaitOS's backup service") }
+
+    /**
+     * Writes one kind of phone data from another app's export as this app's own archive (replacing the one there), so
+     * the Restore list offers it. [produce] returns the records' JSON and hands over each attachment (see
+     * [PersonalArchive.writeFrom]). Nothing is read from the phone, so no grant.
+     */
+    fun importPersonal(kind: Personal, userId: Int, produce: ((String, () -> java.io.InputStream) -> Unit) -> ByteArray, log: (String) -> Unit): Boolean =
+        false.also { log("${kind.label}: this backend cannot import") }
+
+    fun restorePersonal(grant: String, kind: Personal, userId: Int, trustForeign: Boolean, log: (String) -> Unit): Boolean =
+        false.also { log("${kind.label}: needs PlaitOS's backup service") }
 }
 
 /** Where archives live. A DataBackup-style tree, so archives can move between the two apps later. */
 object Layout {
-    const val ROOT = "/data/media/0/PlaitBackup"
+    /** The archive folder as root sees it ([BackupFolder] holds the user's choice). */
+    val ROOT: String get() = BackupFolder.rootView
     fun appDir(pkg: String, userId: Int) = "$ROOT/apps/$pkg/user_$userId"
+    fun personalDir(kind: Personal, userId: Int) = "$ROOT/personal/${kind.dirName}/user_$userId"
 
     /** Package names are the only untrusted strings that reach a shell; only Android's own charset gets through. */
     fun isSafePackage(pkg: String) = pkg.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+"))

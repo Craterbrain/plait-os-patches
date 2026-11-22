@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The screen draws its own colors (MainActivity); the theme only supplies the system's controls -->
+    <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar" />
+</resources>

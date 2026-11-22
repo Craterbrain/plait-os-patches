@@ -1,0 +1,56 @@
+From cf753742b377abce2b51178e5fa0fec796a0995d Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 17:56:14 -0600
+Subject: [PATCH] PlaitOS: install from file accepts the installed build's own
+ date
+
+Every PlaitOS build has one fixed build date, so a rebuild is never newer than the installed one; only an older
+date is refused now.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ res/values/strings.xml                     | 2 +-
+ src/app/seamlessupdate/client/Service.java | 7 ++++---
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/res/values/strings.xml b/res/values/strings.xml
+index 33c2093..64ddf02 100644
+--- a/res/values/strings.xml
++++ b/res/values/strings.xml
+@@ -49,7 +49,7 @@
+     <string name="check_for_updates_title">Check for updates</string>
+     <string name="check_for_updates_summary">Tap to check for updates</string>
+     <string name="install_from_file_title">Install update from file</string>
+-    <string name="install_from_file_summary">Pick an update zip (husky-ota_update-….zip) signed with your PlaitOS keys. It is checked like a downloaded update and must be newer than this build</string>
++    <string name="install_from_file_summary">Pick an update zip (husky-ota_update-….zip) signed with your PlaitOS keys. It is checked like a downloaded update and must not be older than this build</string>
+     <string name="notification_settings_title">Notification settings</string>
+     <string name="notification_settings_summary">Modify notification channel settings</string>
+     <string name="use_security_preview_channel_title">Receive security preview releases</string>
+diff --git a/src/app/seamlessupdate/client/Service.java b/src/app/seamlessupdate/client/Service.java
+index 2dc55d4..01c6e87 100644
+--- a/src/app/seamlessupdate/client/Service.java
++++ b/src/app/seamlessupdate/client/Service.java
+@@ -49,7 +49,7 @@ public class Service extends IntentService {
+     static final String INTENT_EXTRA_IS_USER_INITIATED = "is_user_initiated";
+     // PlaitOS: the intent's data is an update zip picked by the user instead of one to download. The build
+     // date and incremental then come from the zip, which is checked the same way (signature, device, A/B,
+-    // source build) and must be newer than the installed build.
++    // source build) and must not be older than the installed build.
+     private static final long LOCAL_FILE = -1;
+     private static final int CONNECT_TIMEOUT = 30000;
+     private static final int READ_TIMEOUT = 30000;
+@@ -199,8 +199,9 @@ public class Service extends IntentService {
+                 }
+             }
+             if (targetBuildDate == LOCAL_FILE) {
+-                if (timestamp <= SystemProperties.getLong("ro.build.date.utc", 0)) {
+-                    throw new GeneralSecurityException("update is not newer than the installed build");
++                // Older is refused; the same date is allowed, since every PlaitOS build carries one fixed build date
++                if (timestamp < SystemProperties.getLong("ro.build.date.utc", 0)) {
++                    throw new GeneralSecurityException("update is older than the installed build");
+                 }
+             } else {
+                 if (timestamp != targetBuildDate) {
+-- 
+2.56.0
+

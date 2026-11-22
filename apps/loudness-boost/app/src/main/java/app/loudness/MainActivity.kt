@@ -1,95 +1,110 @@
 package app.loudness
 
 import android.app.Activity
+import android.content.res.ColorStateList
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
-import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
-import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 
 /**
- * A master processing switch, a Gain section (switch, slider, reset) and an EQ section (switch,
- * preset picker, 15-band tuner). Every change is saved and applied live; controls whose switch is
- * off are dimmed.
+ * One screen of cards: a master processing switch, Boost (switch, big readout, slider) and Equalizer (switch, preset
+ * chips, a draggable 15-band curve). Every change is saved and applied live; a card whose switch is off is dimmed.
  */
 class MainActivity : Activity() {
 
     private lateinit var settings: Boost.Settings
+    private lateinit var colors: Palette
+    private lateinit var masterCard: LinearLayout
+    private lateinit var masterSubtitle: TextView
+    private lateinit var gainCard: LinearLayout
     private lateinit var gainValue: TextView
     private lateinit var gainSlider: SeekBar
-    private lateinit var presetPicker: Spinner
-    private lateinit var gainControls: LinearLayout
-    private lateinit var eqControls: LinearLayout
-    private lateinit var sections: LinearLayout
-    private val bandSliders = mutableListOf<SeekBar>()
-    private val bandLabels = mutableListOf<TextView>()
+    private lateinit var eqCard: LinearLayout
+    private lateinit var eqSubtitle: TextView
+    private lateinit var chips: LinearLayout
+    private lateinit var eqView: EqView
     private val presetNames = Boost.PRESETS.keys.toList() + Boost.CUSTOM
-    private var updatingUi = false
 
     private val density get() = resources.displayMetrics.density
     private fun px(dp: Int) = (dp * density).toInt()
     private val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
     private val match = ViewGroup.LayoutParams.MATCH_PARENT
+    private val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = Boost.load(this)
+        colors = Palette(this)
+        window.decorView.setBackgroundColor(colors.background)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(TextView(this).apply {
-            text = "Loudness"
-            textSize = 30f
-            typeface = Typeface.DEFAULT_BOLD
-        })
-        root.addView(switchRow("Audio processing", settings.processing, 20f) { update(processing = it) }, LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(16) })
+        root.addView(text("Boost & EQ", 32f, colors.text, medium), LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(12) })
+        root.addView(text("Louder, clearer sound for every app", 15f, colors.textSecondary), LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(4); bottomMargin = px(20) })
 
-        sections = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(sections)
+        // ---- Master ----
+        masterCard = card()
+        masterSubtitle = text("", 14f, colors.textSecondary)
+        masterCard.addView(headerRow(R.drawable.ps_power, "Audio processing", masterSubtitle, settings.processing) { update(processing = it) })
+        root.addView(masterCard, cardParams())
 
-        // ---- Gain ----
-        sections.addView(header("Gain", settings.gainOn) { update(gainOn = it) })
-        gainControls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        gainValue = TextView(this).apply { textSize = 26f; gravity = Gravity.CENTER }
-        gainControls.addView(gainValue, LinearLayout.LayoutParams(match, wrap))
+        // ---- Boost ----
+        gainCard = card()
+        gainCard.addView(headerRow(R.drawable.ps_volume, "Boost", text("Extra volume, held below clipping by a limiter", 14f, colors.textSecondary), settings.gainOn) { update(gainOn = it) })
+        gainValue = text("", 48f, colors.accent, medium).apply { gravity = Gravity.CENTER }
+        gainCard.addView(gainValue, LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(12) })
         gainSlider = SeekBar(this).apply {
-            max = (Boost.MAX_GAIN_DB * 2).toInt()
-            setOnSeekBarChangeListener(listener { update(gainDb = it / 2f) })
+            max = (Boost.MAX_GAIN_DB * 2).toInt() // 0.5 dB steps
+            progressTintList = ColorStateList.valueOf(colors.accent)
+            thumbTintList = ColorStateList.valueOf(colors.accent)
+            progressBackgroundTintList = ColorStateList.valueOf(colors.outlineStrong)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) { if (fromUser) update(gainDb = progress / 2f) }
+                override fun onStartTrackingTouch(bar: SeekBar) {}
+                override fun onStopTrackingTouch(bar: SeekBar) {}
+            })
         }
-        gainControls.addView(gainSlider, LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(8) })
-        gainControls.addView(Button(this).apply {
-            text = "Reset to 0 dB"
+        gainCard.addView(gainSlider, LinearLayout.LayoutParams(match, px(40)).apply { topMargin = px(4) })
+        val scale = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        scale.addView(text("0 dB", 13f, colors.textSecondary), LinearLayout.LayoutParams(0, wrap, 1f))
+        scale.addView(text("Reset", 14f, colors.accent, medium).apply {
+            setPadding(px(16), px(8), px(16), px(8))
             setOnClickListener { update(gainDb = 0f); refresh() }
-        }, LinearLayout.LayoutParams(wrap, wrap).apply { gravity = Gravity.END; topMargin = px(4) })
-        sections.addView(gainControls)
+        })
+        scale.addView(text("${Boost.MAX_GAIN_DB.toInt()} dB", 13f, colors.textSecondary).apply { gravity = Gravity.END }, LinearLayout.LayoutParams(0, wrap, 1f))
+        gainCard.addView(scale, LinearLayout.LayoutParams(match, wrap).apply { leftMargin = px(16); rightMargin = px(16) })
+        root.addView(gainCard, cardParams())
 
-        // ---- EQ ----
-        sections.addView(header("EQ", settings.eqOn) { update(eqOn = it) })
-        eqControls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        presetPicker = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, presetNames)
-            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
-                    if (updatingUi) return
-                    val bands = Boost.PRESETS[presetNames[pos]] ?: return // "Custom" keeps the bands
-                    update(bands = bands.copyOf(), preset = presetNames[pos])
-                    refresh()
-                }
-                override fun onNothingSelected(parent: AdapterView<*>?) {}
+        // ---- Equalizer ----
+        eqCard = card()
+        eqSubtitle = text("", 14f, colors.textSecondary)
+        eqCard.addView(headerRow(R.drawable.ps_equalizer, "Equalizer", eqSubtitle, settings.eqOn) { update(eqOn = it) })
+        chips = LinearLayout(this)
+        // The chip row runs to the card's edges, so chips scroll out under its rounded side instead of being cut off
+        eqCard.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            clipToPadding = false
+            setPadding(px(20), 0, px(12), 0)
+            addView(chips)
+        }, LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(14); leftMargin = -px(20); rightMargin = -px(20) })
+        eqView = EqView(this, colors).apply {
+            onBandChanged = { i, db ->
+                val wasCustom = settings.preset == Boost.CUSTOM
+                update(bands = settings.bands.copyOf().also { it[i] = db }, preset = Boost.CUSTOM)
+                if (!wasCustom) showChips()
             }
         }
-        eqControls.addView(presetPicker, LinearLayout.LayoutParams(match, wrap).apply { bottomMargin = px(8) })
-        for (i in Boost.CENTERS.indices) eqControls.addView(bandRow(i), LinearLayout.LayoutParams(match, px(44)))
-        sections.addView(eqControls)
+        eqCard.addView(eqView, LinearLayout.LayoutParams(match, px(250)).apply { topMargin = px(12) })
+        root.addView(eqCard, cardParams())
 
         val scroll = ScrollView(this).apply {
             addView(root)
@@ -97,7 +112,7 @@ class MainActivity : Activity() {
             // Android 15+ draws edge to edge: keep content clear of the status and navigation bars
             setOnApplyWindowInsetsListener { v, insets ->
                 val bars = insets.getInsets(WindowInsets.Type.systemBars())
-                v.setPadding(px(20) + bars.left, px(16) + bars.top, px(20) + bars.right, px(16) + bars.bottom)
+                v.setPadding(px(16) + bars.left, px(16) + bars.top, px(16) + bars.right, px(16) + bars.bottom)
                 insets
             }
         }
@@ -105,44 +120,74 @@ class MainActivity : Activity() {
         refresh()
     }
 
-    private fun switchRow(label: String, checked: Boolean, size: Float, onChange: (Boolean) -> Unit) =
-        Switch(this).apply {
-            text = label
-            textSize = size
+    // ---- building blocks ----
+
+    private fun text(value: String, size: Float, color: Int, face: Typeface? = null) = TextView(this).apply {
+        text = value
+        textSize = size
+        setTextColor(color)
+        if (face != null) typeface = face
+    }
+
+    private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = px(radiusDp).toFloat()
+    }
+
+    private fun card() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = rounded(colors.card, 14)
+        setPadding(px(20), px(18), px(20), px(18))
+    }
+
+    private fun cardParams() = LinearLayout.LayoutParams(match, wrap).apply { bottomMargin = px(12) }
+
+    /** A card's title and subtitle beside its switch; tapping anywhere on the row flips the switch. */
+    private fun headerRow(icon: Int, title: String, subtitle: TextView, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout {
+        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        row.addView(android.widget.ImageView(this).apply {
+            setImageResource(icon)
+            imageTintList = ColorStateList.valueOf(colors.accent)
+            setPadding(px(9), px(9), px(9), px(9))
+            background = rounded(colors.accentTint, 12)
+        }, LinearLayout.LayoutParams(px(40), px(40)).apply { rightMargin = px(14) })
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(text(title, 20f, colors.text, medium))
+        texts.addView(subtitle, LinearLayout.LayoutParams(wrap, wrap).apply { topMargin = px(2) })
+        row.addView(texts, LinearLayout.LayoutParams(0, wrap, 1f))
+        val switch = Switch(this).apply {
             isChecked = checked
+            val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+            thumbTintList = ColorStateList(states, intArrayOf(colors.onAccent, colors.outlineStrong or 0xFF000000.toInt()))
+            trackTintList = ColorStateList(states, intArrayOf(colors.accent, colors.chip))
             setOnCheckedChangeListener { _, on -> onChange(on) }
         }
-
-    private fun header(label: String, checked: Boolean, onChange: (Boolean) -> Unit) =
-        switchRow(label, checked, 20f, onChange).apply {
-            typeface = Typeface.DEFAULT_BOLD
-            layoutParams = LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(28); bottomMargin = px(8) }
-        }
-
-    private fun bandRow(i: Int) = LinearLayout(this).apply {
-        gravity = Gravity.CENTER_VERTICAL
-        addView(TextView(this@MainActivity).apply { text = hz(Boost.CENTERS[i]) }, LinearLayout.LayoutParams(px(44), wrap))
-        val slider = SeekBar(this@MainActivity).apply {
-            max = (Boost.BAND_RANGE_DB * 4).toInt() // -12..+12 dB in 0.5 dB steps
-            setOnSeekBarChangeListener(listener { progress ->
-                val bands = settings.bands.copyOf().also { it[i] = progress / 2f - Boost.BAND_RANGE_DB }
-                update(bands = bands, preset = Boost.CUSTOM)
-                showBand(i)
-                selectPreset(Boost.CUSTOM)
-            })
-        }
-        addView(slider, LinearLayout.LayoutParams(0, wrap, 1f))
-        val value = TextView(this@MainActivity).apply { gravity = Gravity.END }
-        addView(value, LinearLayout.LayoutParams(px(44), wrap))
-        bandSliders += slider
-        bandLabels += value
+        row.addView(switch, LinearLayout.LayoutParams(wrap, wrap).apply { leftMargin = px(12) })
+        row.setOnClickListener { switch.toggle() }
+        return row
     }
 
-    private fun listener(onUser: (Int) -> Unit) = object : SeekBar.OnSeekBarChangeListener {
-        override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) { if (fromUser) onUser(progress) }
-        override fun onStartTrackingTouch(bar: SeekBar) {}
-        override fun onStopTrackingTouch(bar: SeekBar) {}
+    private fun showChips() {
+        chips.removeAllViews()
+        for (name in presetNames) {
+            val selected = name == settings.preset
+            // "Custom" only appears once the curve has been changed by hand
+            if (name == Boost.CUSTOM && !selected) continue
+            chips.addView(text(name, 14f, if (selected) colors.accent else colors.textSecondary, medium).apply {
+                background = rounded(if (selected) colors.accentTint else 0, 18)
+                setPadding(px(16), px(9), px(16), px(9))
+                isEnabled = settings.processing && settings.eqOn
+                setOnClickListener {
+                    val bands = Boost.PRESETS[name] ?: return@setOnClickListener
+                    update(bands = bands.copyOf(), preset = name)
+                    refresh()
+                }
+            }, LinearLayout.LayoutParams(wrap, wrap).apply { rightMargin = px(8) })
+        }
+        eqSubtitle.text = if (settings.preset == Boost.CUSTOM) "Custom curve · drag a point to tune it" else "${settings.preset} · drag a point to tune it"
     }
+
+    // ---- state ----
 
     private fun update(
         processing: Boolean = settings.processing,
@@ -159,45 +204,33 @@ class MainActivity : Activity() {
         showEnabled()
     }
 
-    /** Pushes the current settings into every control without triggering their listeners. */
+    /** Pushes the current settings into every control. */
     private fun refresh() {
-        updatingUi = true
         gainValue.text = "+%.1f dB".format(settings.gainDb)
         gainSlider.progress = (settings.gainDb * 2).toInt()
-        for (i in bandSliders.indices) {
-            bandSliders[i].progress = ((settings.bands[i] + Boost.BAND_RANGE_DB) * 2).toInt()
-            showBand(i)
-        }
-        selectPreset(settings.preset)
-        updatingUi = false
+        eqView.bands = settings.bands
+        showChips()
         showEnabled()
     }
 
     private fun showEnabled() {
-        sections.alpha = if (settings.processing) 1f else 0.4f
-        setEnabledDeep(gainControls, settings.processing && settings.gainOn)
-        setEnabledDeep(eqControls, settings.processing && settings.eqOn)
+        val on = settings.processing
+        masterSubtitle.text = if (on) "On · every app's sound goes through it" else "Off · sound plays untouched"
+        masterCard.background = rounded(if (on) colors.accentSoft else colors.card, 14)
+        setCardEnabled(gainCard, on && settings.gainOn, on)
+        setCardEnabled(eqCard, on && settings.eqOn, on)
+        for (i in 0 until chips.childCount) chips.getChildAt(i).isEnabled = on && settings.eqOn
     }
 
-    private fun setEnabledDeep(group: ViewGroup, enabled: Boolean) {
-        group.alpha = if (enabled) 1f else 0.4f
-        for (i in 0 until group.childCount) {
-            val child = group.getChildAt(i)
-            child.isEnabled = enabled
-            if (child is ViewGroup && child !is Spinner) setEnabledDeep(child, enabled).also { child.alpha = 1f }
-        }
+    /** Dims a card whose feature is off; its switch stays usable while processing is on. */
+    private fun setCardEnabled(card: LinearLayout, enabled: Boolean, switchUsable: Boolean) {
+        card.alpha = if (enabled) 1f else 0.5f
+        for (i in 1 until card.childCount) setEnabledDeep(card.getChildAt(i), enabled)
+        setEnabledDeep(card.getChildAt(0), switchUsable)
     }
 
-    private fun selectPreset(name: String) {
-        val wasUpdating = updatingUi
-        updatingUi = true
-        presetPicker.setSelection(presetNames.indexOf(name).coerceAtLeast(0), false)
-        updatingUi = wasUpdating
+    private fun setEnabledDeep(view: View, enabled: Boolean) {
+        view.isEnabled = enabled
+        if (view is ViewGroup) for (i in 0 until view.childCount) setEnabledDeep(view.getChildAt(i), enabled)
     }
-
-    private fun showBand(i: Int) {
-        bandLabels[i].text = "%+.1f".format(settings.bands[i])
-    }
-
-    private fun hz(f: Float) = if (f >= 1000f) "%.1fk".format(f / 1000f).replace(".0k", "k") else "${f.toInt()}"
 }

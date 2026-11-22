@@ -1,0 +1,25 @@
+From 8dc24f56ca0f165d9af8aa2953657648633f9a72 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 09:55:10 -0600
+Subject: [PATCH] PlaitOS: no GrapheneOS Info app (app.grapheneos.info)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ target/product/handheld_product.mk | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/target/product/handheld_product.mk b/target/product/handheld_product.mk
+index 2a4602d..5578085 100644
+--- a/target/product/handheld_product.mk
++++ b/target/product/handheld_product.mk
+@@ -30,7 +30,6 @@ PRODUCT_PACKAGES += \
+     DeskClock \
+     ExactCalculator \
+     Gallery2 \
+-    InfoApp \
+     LatinIME \
+     Music \
+     PdfViewerGOS \
+-- 
+2.56.0
+

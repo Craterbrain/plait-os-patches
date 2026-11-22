@@ -71,11 +71,40 @@ object ArchiveCrypto {
         output.flush()
     }
 
+    /** True if [key] opens the first chunk of an encrypted file (enough to tell a right passphrase from a wrong one). */
+    fun opensFirstChunk(input: InputStream, key: Key): Boolean = try {
+        val din = DataInputStream(input)
+        val header = ByteArray(HEADER).also { din.readFully(it) }
+        val word = din.readInt()
+        val len = word and LAST.inv()
+        if (len > CHUNK) false else {
+            val ct = ByteArray(len + 16).also { din.readFully(it) }
+            cipher(Cipher.DECRYPT_MODE, key, header, 0, word and LAST != 0).doFinal(ct)
+            true
+        }
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Why a decrypt failed, in words a person can act on (a wrong passphrase and a missing one are different fixes). */
+    fun describe(e: Throwable): String = when {
+        e is KeyRing.KeystoreProblem -> e.message ?: "the key stored on this phone could not be opened"
+        e is IllegalStateException && e.message?.startsWith("no key") == true ->
+            "this backup was made with a different passphrase than the one set on this phone: type its passphrase under " +
+                "\"Passphrase for older backups\" on the setup screen"
+        e is javax.crypto.AEADBadTagException || e is javax.crypto.BadPaddingException ->
+            "the passphrase does not match this file, or the file was changed (if you typed one for older backups, check it and try again)"
+        e is IllegalArgumentException && e.message?.startsWith("not a Backup") == true -> "this is not an encrypted Plait Backup file"
+        e is IllegalStateException && (e.message?.contains("cut short") == true || e.message?.contains("after the last") == true ||
+            e.message?.contains("bad chunk") == true) -> "the file is damaged (${e.message})"
+        else -> "${e.javaClass.simpleName}: ${e.message}"
+    }
+
     /** Decrypts with [keyFor] (salt and iterations to key, or null if unknown); throws on any tampering. */
     fun decrypt(input: InputStream, output: OutputStream, keyFor: (ByteArray, Int) -> Key?) {
         val din = DataInputStream(input)
         val header = ByteArray(HEADER).also { din.readFully(it) }
-        val (salt, iterations) = readParams(header) ?: throw IllegalArgumentException("not a Plait Backup encrypted file")
+        val (salt, iterations) = readParams(header) ?: throw IllegalArgumentException("not a Backup encrypted file")
         val key = keyFor(salt, iterations) ?: throw IllegalStateException("no key for this file's passphrase")
         var index = 0L
         while (true) {

@@ -79,18 +79,37 @@ final class Classifier {
         final String target;  // SCOPED: target package
         final String key;     // ASK: what the answer is remembered for; SCOPED: "<scope> <package>"; GATED: gate id
         final String reason;  // ASK, GATED: what it does (dialog text); NEVER: why
+        /**
+         * NORMAL, but nothing the broker knows to be a plain device function (an unknown {@code cmd} service or Binder
+         * interface): a permissive app is asked about it ([key], [reason]) instead of being allowed silently.
+         */
+        final boolean unlisted;
 
         private Decision(Tier tier, Scope scope, Gate gate, String target, String key, String reason) {
+            this(tier, scope, gate, target, key, reason, false);
+        }
+
+        private Decision(Tier tier, Scope scope, Gate gate, String target, String key, String reason, boolean unlisted) {
             this.tier = tier;
             this.scope = scope;
             this.gate = gate;
             this.target = target;
             this.key = key;
             this.reason = reason;
+            this.unlisted = unlisted;
         }
 
         static Decision normal() {
             return new Decision(Tier.NORMAL, null, null, null, null, null);
+        }
+
+        static Decision unlisted(String key, String reason) {
+            return new Decision(Tier.NORMAL, null, null, null, key, reason, true);
+        }
+
+        /** What a permissive app is asked before an unlisted call (see [unlisted]). */
+        Decision askInstead() {
+            return ask(key, reason);
         }
 
         static Decision ask(String key, String reason) {
@@ -132,6 +151,11 @@ final class Classifier {
 
         /** The package that owns the content provider [authority], or null. */
         String providerOwner(String authority);
+
+        /** The user the calling app runs as. */
+        default int userId() {
+            return 0;
+        }
     }
 
     /** Would hide what really runs, or run code as (or inside) something else. */
@@ -176,23 +200,111 @@ final class Classifier {
             "http_proxy", "global_http_proxy_", "private_dns_", "bluetooth_name", "mock_location",
             "location_providers_allowed", "notification_listener", "screensaver_components", "default_sms_",
             "managed_provisioning", "secure_frp", "doze_");
-    /** An app's own shared-storage directories, under any of the paths that lead there. */
+    /**
+     * An app's own shared-storage directories, under any of the paths that lead there. Case-insensitive: shared
+     * storage is (Android/DATA/x is Android/data/x).
+     */
     private static final Pattern APP_STORAGE = Pattern.compile(
-            "^(?:/sdcard|/storage/emulated/\\d+|/storage/self/primary|/mnt/user/\\d+/emulated/\\d+|/data/media/\\d+)"
-                    + "/Android/(?:data|obb|media)/([^/]+)");
+            "^(?:/sdcard|/storage/emulated/\\d+|/storage/self/primary"
+                    + "|/mnt/(?:user|pass_through|installer|androidwritable)/\\d+/emulated/\\d+|/data/media/\\d+)"
+                    + "/Android/(?:data|obb|media)/([^/]+)", Pattern.CASE_INSENSITIVE);
+    /**
+     * The broker's own state, which the shell user (so any command the broker runs) could otherwise rewrite: its policy,
+     * the system-write overlay, the DNS blocklist and the su socket. Also the views of other processes' file systems.
+     */
+    private static final Pattern PROTECTED_PATH = Pattern.compile(
+            "^(?:/data/user(?:_de)?/\\d+/com\\.android\\.shell|/data/data/com\\.android\\.shell|/data/plait"
+                    + "|/data/local/tmp/plait|/proc/[^/]+/(?:root|cwd|fd|map_files))(?:/.*)?$",
+            Pattern.CASE_INSENSITIVE);
+    /** {@code cmd} services that are plain device functions; any other service is unlisted (asked in permissive mode). */
+    private static final Set<String> DEVICE_CMDS = new HashSet<>(Arrays.asList(
+            "wifi", "connectivity", "power", "battery", "display", "uimode", "thermalservice", "deviceidle", "netpolicy",
+            "bluetooth_manager", "vibrator_manager", "audio", "window", "batteryproperties"));
+    /** Permissions that are not runtime permissions but let an app change or read far more than its own data. */
+    private static final Set<String> POWERFUL_PERMISSIONS = new HashSet<>(Arrays.asList(
+            "android.permission.WRITE_SECURE_SETTINGS", "android.permission.READ_LOGS", "android.permission.DUMP",
+            "android.permission.PACKAGE_USAGE_STATS", "android.permission.WRITE_SETTINGS",
+            "android.permission.SYSTEM_ALERT_WINDOW", "android.permission.CHANGE_CONFIGURATION",
+            "android.permission.SET_DEBUG_APP", "android.permission.INTERACT_ACROSS_USERS"));
+    /** App-ops an app may never loosen for itself through the broker: they guard the screen and Android's own protections. */
+    private static final Set<String> SELF_OPS_GATED = new HashSet<>(Arrays.asList(
+            "PROJECT_MEDIA", "ACCESS_RESTRICTED_SETTINGS", "SYSTEM_EXEMPT_FROM_ACTIVITY_BG_START_RESTRICTION"));
+    /** App-op modes that give an app more than it has (by name or number). */
+    private static final Set<String> LOOSE_MODES = new HashSet<>(Arrays.asList(
+            "allow", "allowed", "default", "foreground", "0", "3", "4"));
+
+    /** Options of the pm subcommands that act on one app, and how many values each takes (PackageManagerShellCommand). */
+    private static final java.util.Map<String, java.util.Map<String, Integer>> PM_OPTIONS = new java.util.HashMap<>();
+
+    private static void pmOptions(String subs, Object... optionArity) {
+        java.util.Map<String, Integer> m = new java.util.HashMap<>();
+        m.put("--user", 1);
+        for (int i = 0; i < optionArity.length; i += 2) m.put((String) optionArity[i], (Integer) optionArity[i + 1]);
+        for (String s : subs.split(" ")) PM_OPTIONS.put(s, m);
+    }
+
+    static {
+        pmOptions("grant revoke", "--all-permissions", 0);
+        pmOptions("enable disable disable-user disable-until-used default-state hide unhide unsuspend");
+        pmOptions("suspend", "--dialogMessage", 1, "--info", 1, "--aed", 2, "--ael", 2, "--aes", 2, "--led", 2,
+                "--lel", 2, "--les", 2);
+        pmOptions("install-existing", "--ephemeral", 0, "--full", 0, "--instant", 0, "--restrict-permissions", 0,
+                "--wait", 0);
+        pmOptions("clear", "--cache-only", 0);
+        pmOptions("uninstall", "-k", 0, "--versionCode", 1);
+    }
+    /** pm subcommands that take several packages. */
+    private static final Set<String> PM_MANY = new HashSet<>(Arrays.asList("suspend", "unsuspend"));
 
     private Classifier() {
     }
 
     static Decision command(List<String> argv, String caller, Apps apps) {
-        // Another app's files in shared storage: whatever the tool, it acts on that app
-        for (String a : argv.subList(1, argv.size())) {
-            String target = storageOwner(a);
-            if (target != null && !target.equals(caller)) return Decision.scoped(Scope.FILES, target);
+        return command(argv, null, caller, apps);
+    }
+
+    /** [cwd] is the directory the command runs in (relative paths are read against it), or null for the daemon's. */
+    static Decision command(List<String> argv, String cwd, String caller, Apps apps) {
+        String base = cwd != null && cwd.startsWith("/") ? cwd : "/";
+        if (cwd != null && !cwd.startsWith("/")) return Decision.never("a relative working directory");
+        // The working directory and every argument that can be a path (also "if=PATH", "--file=PATH", "-fPATH")
+        List<String> paths = new ArrayList<>();
+        paths.add(base);
+        for (String a : argv.subList(1, argv.size())) paths.addAll(pathsIn(a, base));
+        for (String p : paths) {
+            if (isProtected(p)) return Decision.never("the broker's own files and other processes' views are off limits");
         }
+        // Another app's files in shared storage: whatever the tool, it acts on that app
+        for (String p : paths) {
+            String target = storageOwner(p);
+            if (target != null && !target.equalsIgnoreCase(caller)) return Decision.scoped(Scope.FILES, target);
+        }
+        // Other users and profiles (work profile, private space): the shell may act on them, the app may not
+        for (int i = 1; i < argv.size(); i++) {
+            String a = argv.get(i);
+            String user = a.equals("--user") && i + 1 < argv.size() ? argv.get(i + 1)
+                    : a.startsWith("--user=") ? a.substring(7) : null;
+            if (user != null && !user.equals("current") && !user.equals("cur")
+                    && !user.equals(String.valueOf(apps.userId()))) {
+                return Decision.never("acting in another user or profile (--user " + user + ")");
+            }
+        }
+        return classify(argv, caller, apps);
+    }
+
+    private static Decision classify(List<String> argv, String caller, Apps apps) {
         String tool = argv.get(0).substring(argv.get(0).lastIndexOf('/') + 1);
-        if (tool.equals("toybox") && argv.size() > 1) return command(argv.subList(1, argv.size()), caller, apps);
+        if (tool.equals("toybox") && argv.size() > 1) return classify(argv.subList(1, argv.size()), caller, apps);
         if (tool.equals("cmd") && argv.size() > 1) {
+            // cmd's only options come before the service: -w (wait for it) changes nothing, -l lists services
+            if (argv.get(1).equals("-w")) {
+                if (argv.size() < 3) return Decision.never("cmd -w without a service");
+                List<String> unwrapped = new ArrayList<>(argv);
+                unwrapped.remove(1);
+                return classify(unwrapped, caller, apps);
+            }
+            if (argv.get(1).equals("-l")) return Decision.normal();
+            if (argv.get(1).startsWith("-")) return Decision.never("cmd " + argv.get(1));
             List<String> rest = argv.subList(2, argv.size());
             switch (argv.get(1)) {
                 case "package": return pm(rest, caller, apps);
@@ -209,7 +321,15 @@ final class Classifier {
                 case "backup": return Decision.gated(Gate.BACKUP, "cmd backup");
                 case "user": return Decision.gated(Gate.USERS, "cmd user");
                 case "jobscheduler": return Decision.gated(Gate.SYSTEM, "cmd jobscheduler (runs other apps' jobs)");
-                default: return Decision.normal(); // device services: wifi, connectivity, power, statusbar, ...
+                case "sensor_privacy": return Decision.gated(Gate.SECURITY, "cmd sensor_privacy (camera and microphone switches)");
+                case "companiondevice": return Decision.gated(Gate.ROLES, "cmd companiondevice (companion app access)");
+                case "appwidget": return Decision.gated(Gate.ROLES, "cmd appwidget (widget binding for any app)");
+                case "media_session": return Decision.gated(Gate.INPUT, "cmd media_session (sends media keys)");
+                case "device_config": return Decision.gated(Gate.SYSTEM, "cmd device_config (system feature flags)");
+                default:
+                    if (DEVICE_CMDS.contains(argv.get(1))) return Decision.normal();
+                    return Decision.unlisted("cmd " + argv.get(1), "use the system service \"" + argv.get(1)
+                            + "\", which the broker does not know to be a plain device function");
             }
         }
         switch (tool) {
@@ -262,19 +382,70 @@ final class Classifier {
         }
         if (sub.equals("set-home-activity")) return Decision.gated(Gate.ROLES, "pm set-home-activity");
         if (sub.equals("create-user") || sub.equals("remove-user")) return Decision.gated(Gate.USERS, "pm " + sub);
-        if (ops.isEmpty()) return Decision.gated(Gate.SYSTEM, "pm " + sub);
-        String target = ops.get(0).contains("/") ? ops.get(0).substring(0, ops.get(0).indexOf('/')) : ops.get(0);
         Scope scope = sub.equals("grant") || sub.equals("revoke") ? Scope.PERMISSIONS
                 : PM_FREEZE.contains(sub) ? Scope.FREEZE
                 : sub.equals("clear") ? Scope.CLEAR
                 : sub.equals("uninstall") ? Scope.UNINSTALL
                 : null;
         if (scope == null) return Decision.gated(Gate.SYSTEM, "pm " + sub);
-        if (target.equals(caller)) return Decision.normal();
-        if (scope == Scope.UNINSTALL && apps.installedBy(target, caller)) {
-            return Decision.ask("uninstall " + target, "uninstall " + target + ", which it installed");
+        // Read the arguments the way pm does: an option's values are never mistaken for the target
+        java.util.Map<String, Integer> known = PM_OPTIONS.get(sub);
+        if (known == null) return Decision.gated(Gate.SYSTEM, "pm " + sub);
+        ops = new ArrayList<>();
+        for (int i = 1; i < args.size(); i++) {
+            String a = args.get(i);
+            if (a.startsWith("-")) {
+                Integer arity = known.get(a);
+                if (arity == null) return Decision.never("pm " + sub + " " + a + " is not an option the broker knows");
+                i += arity;
+            } else {
+                ops.add(a);
+            }
         }
-        return Decision.scoped(scope, target);
+        if (ops.isEmpty()) return Decision.gated(Gate.SYSTEM, "pm " + sub);
+        List<String> targets = new ArrayList<>();
+        for (String op : PM_MANY.contains(sub) ? ops : ops.subList(0, 1)) {
+            targets.add(op.contains("/") ? op.substring(0, op.indexOf('/')) : op);
+        }
+        String other = null;
+        for (String t : targets) {
+            if (!t.equals(caller)) {
+                if (other != null && !other.equals(t)) return Decision.never("pm " + sub + " of several other apps at once");
+                other = t;
+            }
+        }
+        if (other == null) {
+            if (sub.equals("grant")) return selfGrant(ops.size() > 1 ? ops.get(1) : null, args.contains("--all-permissions"));
+            return Decision.normal();
+        }
+        if (scope == Scope.UNINSTALL && apps.installedBy(other, caller)) {
+            return Decision.ask("uninstall " + other, "uninstall " + other + ", which it installed");
+        }
+        return Decision.scoped(scope, other);
+    }
+
+    /** An app granting a permission to itself: asked once per permission, with what it really means. */
+    static Decision selfGrant(String permission, boolean all) {
+        if (all || permission == null) {
+            return Decision.ask("grant itself all permissions", "grant itself every permission it requests, without Android's own questions");
+        }
+        String name = permission.substring(permission.lastIndexOf('.') + 1);
+        if (POWERFUL_PERMISSIONS.contains(permission)) {
+            return Decision.ask("grant itself " + permission, "grant itself " + name + " for good. This is not a normal "
+                    + "app permission: it lets the app change or read far more than its own data, without the broker");
+        }
+        return Decision.ask("grant itself " + permission, "grant itself " + name + " without Android's own question");
+    }
+
+    /** An app setting one of its own app-ops; null if it only takes something away. */
+    static Decision selfAppOp(String op, String mode) {
+        String name = op == null ? "" : op.toUpperCase(java.util.Locale.ROOT);
+        if (name.startsWith("ANDROID:")) name = name.substring(8);
+        if (mode != null && !LOOSE_MODES.contains(mode.toLowerCase(java.util.Locale.ROOT))) return null;
+        if (SELF_OPS_GATED.contains(name)) {
+            return Decision.gated(name.equals("PROJECT_MEDIA") ? Gate.SCREEN : Gate.SECURITY, "allow itself " + name);
+        }
+        return Decision.ask("app-op itself " + name, "allow itself " + name + " without Android's own question");
     }
 
     // ---------------------------------------------------------------- appops / cmd appops
@@ -284,17 +455,23 @@ final class Classifier {
         String sub = args.get(0);
         if (sub.equals("get") || sub.equals("query-op")) return Decision.normal();
         if (!sub.equals("set") && !sub.equals("reset")) return Decision.gated(Gate.SYSTEM, "appops " + sub);
-        boolean byUid = args.contains("--uid");
+        for (String a : args.subList(1, args.size())) {
+            if (a.startsWith("-") && !a.equals("--user") && !a.equals("--uid")) {
+                return Decision.never("appops " + sub + " " + a + " is not an option the broker knows");
+            }
+        }
         List<String> ops = operands(args.subList(1, args.size()), "--user");
         if (ops.isEmpty()) return Decision.gated(Gate.SYSTEM, "appops " + sub + " for every app");
         String target = ops.get(0);
         if (target.matches("\\d+")) {
             target = apps.packageOfUid(Integer.parseInt(target));
             if (target == null) return Decision.never("appops for a uid that is not one app");
-        } else if (byUid && ops.get(0).matches("\\d+")) {
-            return Decision.never("appops for a uid");
         }
-        return target.equals(caller) ? Decision.normal() : Decision.scoped(Scope.PERMISSIONS, target);
+        if (!target.equals(caller)) return Decision.scoped(Scope.PERMISSIONS, target);
+        // Its own app-ops: taking something away is normal, giving itself more is asked (or gated)
+        if (sub.equals("reset")) return Decision.ask("app-op itself reset", "reset its app-ops, undoing what you denied it");
+        Decision d = selfAppOp(ops.size() > 1 ? ops.get(1) : null, ops.size() > 2 ? ops.get(2) : null);
+        return d != null ? d : Decision.normal();
     }
 
     // ---------------------------------------------------------------- am / cmd activity
@@ -305,11 +482,24 @@ final class Classifier {
         if (AM_READ.contains(sub)) return Decision.normal();
         List<String> ops = operands(args.subList(1, args.size()), "--user");
         if (AM_STOP.contains(sub)) {
+            for (String a : args.subList(1, args.size())) {
+                if (a.startsWith("-") && !a.equals("--user")) return Decision.never("am " + sub + " " + a + " is not an option the broker knows");
+            }
             if (ops.isEmpty()) return Decision.never("am " + sub + " of nothing");
+            if (ops.size() > 1) return Decision.never("am " + sub + " of more than one app");
             return ops.get(0).equals(caller) ? Decision.normal() : Decision.scoped(Scope.STOP, ops.get(0));
         }
         if (AM_START.contains(sub)) {
+            // am keeps the last -n, and an intent URI argument can name its own component: only one, and no URIs
             int n = args.indexOf("-n");
+            if (n != args.lastIndexOf("-n")) return Decision.never("am " + sub + " with more than one -n");
+            for (String a : args) {
+                String l = a.toLowerCase(java.util.Locale.ROOT);
+                if (l.startsWith("intent:") || l.startsWith("android-app:") || l.contains("#intent;") || l.contains(";component=")
+                        || a.equals("--selector")) {
+                    return Decision.never("am " + sub + " with an intent URI or selector (it can name another component)");
+                }
+            }
             String component = n >= 0 && n + 1 < args.size() ? args.get(n + 1) : null;
             if (component == null || !component.contains("/")) {
                 return Decision.never("am " + sub + " without an explicit component would be sent with the shell's identity");
@@ -383,6 +573,8 @@ final class Classifier {
 
     private static Decision content(List<String> args, String caller, Apps apps) {
         int u = args.indexOf("--uri");
+        // content keeps the last --uri: only one
+        if (u != args.lastIndexOf("--uri")) return Decision.never("content with more than one --uri");
         String uri = u >= 0 && u + 1 < args.size() ? args.get(u + 1) : null;
         if (uri == null || !uri.startsWith("content://")) return Decision.never("content without a content:// uri");
         String authority = uri.substring("content://".length()).split("[/?]", 2)[0];
@@ -397,9 +589,52 @@ final class Classifier {
     /** The package whose shared-storage directory [path] is in, or null. */
     static String storageOwner(String path) {
         if (!path.startsWith("/")) return null;
-        String normalized = java.nio.file.Paths.get(path).normalize().toString();
-        Matcher m = APP_STORAGE.matcher(normalized);
-        return m.find() ? m.group(1) : null;
+        Matcher m = APP_STORAGE.matcher(normalize(path));
+        if (m.find()) return m.group(1);
+        try {
+            m = APP_STORAGE.matcher(new java.io.File(path).getCanonicalPath());
+            return m.find() ? m.group(1) : null;
+        } catch (java.io.IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** [path] (absolute) is the broker's own state or a view of another process's files. */
+    static boolean isProtected(String path) {
+        if (PROTECTED_PATH.matcher(normalize(path)).matches()) return true;
+        // On the phone, also where symbolic links lead (a link the app made earlier, /sdcard -> /storage/...)
+        try {
+            String canonical = new java.io.File(path).getCanonicalPath();
+            return PROTECTED_PATH.matcher(canonical).matches();
+        } catch (java.io.IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * The absolute paths an argument may name: itself, the value of {@code key=value} and {@code --opt=value}, and what
+     * follows a short option ({@code -f/path}); relative ones are read against [base].
+     */
+    static List<String> pathsIn(String arg, String base) {
+        List<String> candidates = new ArrayList<>();
+        candidates.add(arg);
+        int eq = arg.indexOf('=');
+        if (eq >= 0) candidates.add(arg.substring(eq + 1));
+        if (arg.startsWith("-") && arg.indexOf('/') > 0) candidates.add(arg.substring(arg.indexOf('/')));
+        List<String> out = new ArrayList<>();
+        for (String c : candidates) {
+            if (c.isEmpty() || c.startsWith("-")) continue;
+            out.add(c.startsWith("/") ? c : base.endsWith("/") ? base + c : base + "/" + c);
+        }
+        return out;
+    }
+
+    private static String normalize(String path) {
+        try {
+            return java.nio.file.Paths.get(path).normalize().toString();
+        } catch (RuntimeException e) {
+            return path;
+        }
     }
 
     /** Non-option arguments, skipping the values of the given options (e.g. "--user 0"). */

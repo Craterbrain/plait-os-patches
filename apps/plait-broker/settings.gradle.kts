@@ -17,3 +17,8 @@ plugins {
 }
 rootProject.name = "plait-broker"
 include(":broker", ":testclient", ":shield", ":scanner")
+
+// The shared look (../plait-design): theme, tonal components and the generated icon set
+includeBuild("../plait-design") {
+    dependencySubstitution { substitute(module("app.plait:design")).using(project(":design")) }
+}

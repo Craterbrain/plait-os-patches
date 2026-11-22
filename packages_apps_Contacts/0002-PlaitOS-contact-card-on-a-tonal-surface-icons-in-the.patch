@@ -1,0 +1,98 @@
+From 60a505dbfbfff91c2ca87bf016bcb8b83ecd0431 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 21:35:10 -0600
+Subject: [PATCH] PlaitOS: contact card on a tonal surface; icons in the accent
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ AndroidManifest.xml                               |  2 +-
+ res/values/styles.xml                             |  3 +++
+ .../quickcontact/ExpandingEntryCardView.java      | 15 +++++++++++----
+ 3 files changed, 15 insertions(+), 5 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 6123e82..ea5e55f 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -16,7 +16,7 @@
+ 
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+           package="com.android.contacts"
+-          android:versionCode="10736"
++          android:versionCode="10739"
+           android:versionName="1.7.34">
+ 
+     <uses-sdk
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index db5e27f..60af0d9 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -248,6 +248,9 @@
+     <style name="ExpandingEntryCardStyle">
+         <item name="android:elevation">@dimen/expanding_entry_card_elevation</item>
+         <item name="android:background">@color/expanding_entry_card_background_color</item>
++        <!-- PlaitOS: CardView draws its own background (a fixed grey in dark mode) unless told this one -->
++        <item name="cardBackgroundColor">@color/expanding_entry_card_background_color</item>
++        <item name="cardElevation">0dp</item>
+         <item name="android:layout_marginBottom">@dimen/expanding_entry_card_marginBottom</item>
+         <item name="android:layout_marginEnd">@dimen/expanding_entry_card_marginStartEnd</item>
+         <item name="android:layout_marginStart">@dimen/expanding_entry_card_marginStartEnd</item>
+diff --git a/src/com/android/contacts/quickcontact/ExpandingEntryCardView.java b/src/com/android/contacts/quickcontact/ExpandingEntryCardView.java
+index d124ebc..fbf4a31 100644
+--- a/src/com/android/contacts/quickcontact/ExpandingEntryCardView.java
++++ b/src/com/android/contacts/quickcontact/ExpandingEntryCardView.java
+@@ -296,6 +296,10 @@ public class ExpandingEntryCardView extends CardView {
+         super(context, attrs);
+         LayoutInflater inflater = LayoutInflater.from(context);
+         View expandingEntryCardView = inflater.inflate(R.layout.expanding_entry_card_view, this);
++        // PlaitOS: a tonal surface, no shadow (CardView would otherwise draw its fixed dark grey and an elevation shadow)
++        setCardBackgroundColor(context.getColor(R.color.expanding_entry_card_background_color));
++        setCardElevation(0);
++        setMaxCardElevation(0);
+         mEntriesViewGroup = (LinearLayout)
+                 expandingEntryCardView.findViewById(R.id.content_area_linear_layout);
+         mTitleTextView = (TextView) expandingEntryCardView.findViewById(R.id.title);
+@@ -591,6 +595,9 @@ public class ExpandingEntryCardView extends CardView {
+      */
+     public void applyColor() {
+         if (mThemeColor != 0 && mThemeColorFilter != null) {
++            // PlaitOS: icons use the app accent as well; the contact-derived colour is too dark for a dark card
++            final ColorFilter accentFilter = new android.graphics.PorterDuffColorFilter(
++                    getContext().getColor(R.color.primary_color), android.graphics.PorterDuff.Mode.SRC_ATOP);
+             // Title
+             if (mTitleTextView != null) {
+                 // PlaitOS: the section title uses the app's accent: a colour taken from the contact's photo can be unreadable on the card
+@@ -605,18 +612,18 @@ public class ExpandingEntryCardView extends CardView {
+                             Drawable icon = entry.getIcon();
+                             if (icon != null) {
+                                 icon.mutate();
+-                                icon.setColorFilter(mThemeColorFilter);
++                                icon.setColorFilter(accentFilter);
+                             }
+                         }
+                         Drawable alternateIcon = entry.getAlternateIcon();
+                         if (alternateIcon != null) {
+                             alternateIcon.mutate();
+-                            alternateIcon.setColorFilter(mThemeColorFilter);
++                            alternateIcon.setColorFilter(accentFilter);
+                         }
+                         Drawable thirdIcon = entry.getThirdIcon();
+                         if (thirdIcon != null && entry.shouldApplyThirdIconColor()) {
+                             thirdIcon.mutate();
+-                            thirdIcon.setColorFilter(mThemeColorFilter);
++                            thirdIcon.setColorFilter(accentFilter);
+                         }
+                     }
+                 }
+@@ -624,7 +631,7 @@ public class ExpandingEntryCardView extends CardView {
+ 
+             // Expand/Collapse
+             mExpandCollapseTextView.setTextColor(getContext().getColor(R.color.primary_color));
+-            mExpandCollapseArrow.setColorFilter(mThemeColorFilter);
++            mExpandCollapseArrow.setColorFilter(accentFilter);
+         }
+     }
+ 
+-- 
+2.56.0
+

@@ -1,5 +1,7 @@
 package app.plait.backup
 
+import app.plait.design.PlaitIcon
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,11 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.HourglassEmpty
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -76,19 +73,19 @@ fun ProcessingScreen(vm: BackupViewModel, onDone: () -> Unit) {
                     )
                     Box(Modifier.size(126.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer), Alignment.Center) {
                         val icon = when {
-                            vm.running -> Icons.Default.HourglassEmpty
-                            failed > 0 -> Icons.Default.Error
-                            else -> Icons.Default.CheckCircle
+                            vm.running -> PlaitIcon.Hourglass
+                            failed > 0 -> PlaitIcon.Error
+                            else -> PlaitIcon.CheckCircle
                         }
-                        Icon(icon, null, Modifier.size(72.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Icon(painterResource(icon), null, Modifier.size(72.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
                     }
                 }
                 Spacer(Modifier.height(20.dp))
-                Text(vm.phase, style = MaterialTheme.typography.headlineMedium)
+                Text(vm.phase, style = MaterialTheme.typography.headlineSmall)
                 Text(vm.phaseDetail, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (vm.log.isNotEmpty()) TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide log" else "Show log") }
             }
-            Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = MaterialTheme.colorScheme.surfaceContainerLowest,
+            Surface(shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.padding(horizontal = 24.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (showLog) items(vm.log) { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -98,10 +95,10 @@ fun ProcessingScreen(vm: BackupViewModel, onDone: () -> Unit) {
                             Spacer(Modifier.width(20.dp))
                             Text(item.label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                             when (item.state) {
-                                ItemState.WAITING -> Icon(Icons.Default.Schedule, "Waiting", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                ItemState.WAITING -> Icon(painterResource(PlaitIcon.Clock), "Waiting", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 ItemState.RUNNING -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 3.dp)
-                                ItemState.DONE -> Icon(Icons.Default.CheckCircle, "Done", tint = MaterialTheme.colorScheme.primary)
-                                ItemState.FAILED -> Icon(Icons.Default.Error, "Failed", tint = MaterialTheme.colorScheme.error)
+                                ItemState.DONE -> Icon(painterResource(PlaitIcon.CheckCircle), "Done", tint = MaterialTheme.colorScheme.primary)
+                                ItemState.FAILED -> Icon(painterResource(PlaitIcon.Error), "Failed", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }

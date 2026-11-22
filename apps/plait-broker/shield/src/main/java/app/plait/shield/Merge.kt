@@ -60,7 +60,7 @@ object Merge {
 
     fun write(names: Set<String>, lists: List<Blocklist>, out: OutputStream) {
         val w = out.bufferedWriter(Charsets.UTF_8)
-        w.write("# Plait Shield: ${lists.joinToString { it.name }}\n")
+        w.write("# Shield: ${lists.joinToString { it.name }}\n")
         for (n in names) {
             w.write("0.0.0.0 ")
             w.write(n)

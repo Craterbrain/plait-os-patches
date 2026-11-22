@@ -1,5 +1,7 @@
 package app.plait.broker
 
+import app.plait.design.PlaitSwitch
+import app.plait.design.PlaitFilledButton
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -19,9 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.font.FontFamily
@@ -140,7 +140,7 @@ class ConfirmActivity : ComponentActivity() {
                 title = { Text("Allow $label?") },
                 text = {
                     Text(
-                        "$pkg\n\n$label declares ${declared.size} things it will use through Plait Broker. View them, switch off " +
+                        "$pkg\n\n$label declares ${declared.size} things it will use through Broker. View them, switch off " +
                             "any you do not want, then authorize. Anything else it tries is refused and listed for you."
                     )
                 },
@@ -172,7 +172,7 @@ class ConfirmActivity : ComponentActivity() {
                 }
                 itemsIndexed(declared) { i, d ->
                     val on = i !in off
-                    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
                         Row(
                             Modifier.fillMaxWidth().clickable { off = if (on) off + i else off - i }
                                 .padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
@@ -187,7 +187,7 @@ class ConfirmActivity : ComponentActivity() {
                                 )
                             }
                             Spacer(Modifier.width(12.dp))
-                            Switch(checked = on, onCheckedChange = { off = if (it) off - i else off + i })
+                            PlaitSwitch(on, { off = if (it) off - i else off + i })
                         }
                     }
                 }
@@ -195,11 +195,11 @@ class ConfirmActivity : ComponentActivity() {
                     val chosen = declared.filterIndexed { i, _ -> i !in off }
                     Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "${chosen.size} of ${declared.size} switched on. You can change these later on $label's page in Plait Broker.",
+                            "${chosen.size} of ${declared.size} switched on. You can change these later on $label's page in Broker.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.size(12.dp))
-                        Button(onClick = { onAuthorize(chosen) }, modifier = Modifier.fillMaxWidth()) { Text("Authorize") }
+                        PlaitFilledButton(onClick = { onAuthorize(chosen) }, modifier = Modifier.fillMaxWidth()) { Text("Authorize") }
                         TextButton(onClick = onDeny) { Text("Deny") }
                     }
                 }

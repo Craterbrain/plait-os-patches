@@ -1,5 +1,7 @@
 package app.plait.scan
 
+import app.plait.design.PlaitCard
+import app.plait.design.PlaitIcon
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -16,21 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.NetworkPing
-import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Route
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Straighten
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,23 +31,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
-enum class Tool(val title: String, val blurb: String, val icon: ImageVector) {
-    SPEED("Speed test", "Opens fast.com", Icons.Filled.Speed),
-    PING("Ping", "Round-trip time and loss", Icons.Filled.NetworkPing),
-    TRACE("Traceroute", "Every hop to a host", Icons.Filled.Route),
-    WIFI("Wi-Fi scanner", "Nearby networks and channels", Icons.Filled.Wifi),
-    WOL("Wake on LAN", "Turn a PC or NAS on", Icons.Filled.PowerSettingsNew),
-    PMTU("Path MTU", "Largest packet that fits", Icons.Filled.Straighten),
-    SUBNET("Subnet calculator", "IPv4 and IPv6 CIDR", Icons.Filled.Calculate),
-    DNS("DNS lookup", "Any record, any server", Icons.Filled.Dns),
-    TLS("Certificate inspector", "TLS chain and findings", Icons.Filled.Lock),
-    WHOIS("WHOIS and location", "Who owns it, where it is", Icons.Filled.Public),
-    IPERF("iPerf", "Throughput to an iperf3 server", Icons.Filled.Bolt),
-    CONNECTIONS("Connections", "Which app talks to what", Icons.Filled.Hub),
+enum class Tool(val title: String, val blurb: String, val icon: Int) {
+    SPEED("Speed test", "Opens fast.com", PlaitIcon.Speed),
+    PING("Ping", "Round-trip time and loss", PlaitIcon.Ping),
+    TRACE("Traceroute", "Every hop to a host", PlaitIcon.Route),
+    WIFI("Wi-Fi scanner", "Nearby networks and channels", PlaitIcon.Wifi),
+    WOL("Wake on LAN", "Turn a PC or NAS on", PlaitIcon.Power),
+    PMTU("Path MTU", "Largest packet that fits", PlaitIcon.Ruler),
+    SUBNET("Subnet calculator", "IPv4 and IPv6 CIDR", PlaitIcon.Calculate),
+    DNS("DNS lookup", "Any record, any server", PlaitIcon.Server),
+    TLS("Certificate inspector", "TLS chain and findings", PlaitIcon.Lock),
+    WHOIS("WHOIS and location", "Who owns it, where it is", PlaitIcon.Browser),
+    IPERF("iPerf", "Throughput to an iperf3 server", PlaitIcon.Bolt),
+    CONNECTIONS("Connections", "Which app talks to what", PlaitIcon.Hub),
 }
 
 /** An address handed from one tool to the next (a connection opened in WHOIS, the certificate inspector, ping...). */
@@ -79,7 +65,7 @@ fun ToolsPage() {
         topBar = {
             TopAppBar(
                 title = { Text(tool?.title ?: "Network tools") },
-                navigationIcon = { if (tool != null) IconButton(onClick = { tool = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = { if (tool != null) IconButton(onClick = { tool = null }) { PlaitIcon(PlaitIcon.Back, "Back") } },
             )
         },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
@@ -92,14 +78,14 @@ fun ToolsPage() {
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(Tool.entries.toList()) { t ->
-                    Card(Modifier.fillMaxWidth().height(136.dp).clickable {
+                    PlaitCard(Modifier.fillMaxWidth().height(136.dp).clickable {
                         if (t == Tool.SPEED) {
                             try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://fast.com"))) }
                             catch (e: Exception) { Toast.makeText(ctx, "No browser to open fast.com", Toast.LENGTH_SHORT).show() }
                         } else tool = t
                     }) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(t.icon, t.title, Modifier.size(28.dp), tint = MaterialTheme.colorScheme.primary)
+                            PlaitIcon(t.icon, t.title, Modifier.size(28.dp), tint = MaterialTheme.colorScheme.primary)
                             Text(t.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(t.blurb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }

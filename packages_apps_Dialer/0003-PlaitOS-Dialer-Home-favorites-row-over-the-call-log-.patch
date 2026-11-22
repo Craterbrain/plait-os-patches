@@ -1,0 +1,1002 @@
+From 50e15dee411b93ec3eb6ea0d91cba87e1bff6ab2 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 21:11:23 -0600
+Subject: [PATCH] PlaitOS: Dialer Home (favorites row over the call log) and
+ Recordings tab
+
+Home is the first tab and the default: a row of starred contacts above the call log. The old Favorites slot is Recordings, which
+lists the call recorder's MediaStore files (Recordings/CallRecordings) with play/pause, share and delete. Tab order Home,
+Recordings, Contacts, Voicemail; the last-tab preference has a new key.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../main/impl/FavoritesStripFragment.java     | 164 +++++++++
+ .../dialer/main/impl/OldMainActivityPeer.java |  51 ++-
+ .../dialer/main/impl/RecordingsFragment.java  | 310 ++++++++++++++++++
+ .../main/impl/bottomnav/BottomNavBar.java     |   5 +-
+ .../res/layout/bottom_nav_bar_layout.xml      |   4 +-
+ .../main/impl/res/drawable/plait_ic_home.xml  |  13 +
+ .../impl/res/drawable/plait_ic_more_vert.xml  |  13 +
+ .../main/impl/res/drawable/plait_ic_pause.xml |  13 +
+ .../main/impl/res/drawable/plait_ic_play.xml  |  13 +
+ .../impl/res/drawable/plait_ic_record.xml     |  13 +
+ .../main/impl/res/layout/main_activity.xml    |  20 +-
+ .../impl/res/layout/plait_favorite_chip.xml   |  31 ++
+ .../impl/res/layout/plait_favorites_strip.xml |  26 ++
+ .../impl/res/layout/plait_recording_row.xml   |  52 +++
+ .../res/layout/plait_recordings_fragment.xml  |  40 +++
+ .../main/impl/res/values/strings_plait.xml    |  11 +
+ 16 files changed, 755 insertions(+), 24 deletions(-)
+ create mode 100644 java/com/android/dialer/main/impl/FavoritesStripFragment.java
+ create mode 100644 java/com/android/dialer/main/impl/RecordingsFragment.java
+ create mode 100644 java/com/android/dialer/main/impl/res/drawable/plait_ic_home.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/drawable/plait_ic_more_vert.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/drawable/plait_ic_pause.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/drawable/plait_ic_play.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/drawable/plait_ic_record.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/layout/plait_favorite_chip.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/layout/plait_favorites_strip.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/layout/plait_recording_row.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/layout/plait_recordings_fragment.xml
+ create mode 100644 java/com/android/dialer/main/impl/res/values/strings_plait.xml
+
+diff --git a/java/com/android/dialer/main/impl/FavoritesStripFragment.java b/java/com/android/dialer/main/impl/FavoritesStripFragment.java
+new file mode 100644
+index 0000000..30a3114
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/FavoritesStripFragment.java
+@@ -0,0 +1,164 @@
++/*
++ * Copyright (C) 2026 PlaitOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License
++ */
++
++package com.android.dialer.main.impl;
++
++import android.os.Bundle;
++import android.provider.ContactsContract.Contacts;
++import android.support.annotation.Nullable;
++import android.support.v4.app.Fragment;
++import android.support.v7.widget.LinearLayoutManager;
++import android.support.v7.widget.RecyclerView;
++import android.view.LayoutInflater;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.QuickContactBadge;
++import android.widget.TextView;
++import com.android.dialer.callintent.CallInitiationType;
++import com.android.dialer.callintent.CallIntentBuilder;
++import com.android.dialer.common.LogUtil;
++import com.android.dialer.common.concurrent.DialerExecutorComponent;
++import com.android.dialer.common.concurrent.SupportUiListener;
++import com.android.dialer.glidephotomanager.GlidePhotoManagerComponent;
++import com.android.dialer.glidephotomanager.PhotoInfo;
++import com.android.dialer.precall.PreCall;
++import com.android.dialer.speeddial.database.SpeedDialEntry.Channel;
++import com.android.dialer.speeddial.loader.SpeedDialUiItem;
++import com.android.dialer.speeddial.loader.UiItemLoaderComponent;
++import com.android.dialer.util.PermissionsUtil;
++import com.google.common.collect.ImmutableList;
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * PlaitOS: the favorites row at the top of the Home tab. It only reads the starred contacts through the same loader the
++ * Favorites tab used and places a call on tap; editing favorites stays in Contacts.
++ */
++public class FavoritesStripFragment extends Fragment {
++
++  private SupportUiListener<ImmutableList<SpeedDialUiItem>> loaderListener;
++  private final StripAdapter adapter = new StripAdapter();
++  private View root;
++
++  @Nullable
++  @Override
++  public View onCreateView(
++      LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
++    root = inflater.inflate(R.layout.plait_favorites_strip, container, false);
++    RecyclerView list = root.findViewById(R.id.plait_favorites_list);
++    list.setLayoutManager(new LinearLayoutManager(getContext(), LinearLayoutManager.HORIZONTAL, false));
++    list.setAdapter(adapter);
++    loaderListener =
++        DialerExecutorComponent.get(getContext())
++            .createUiListener(getChildFragmentManager(), "plait_favorites_strip_loader");
++    root.setVisibility(View.GONE);
++    return root;
++  }
++
++  @Override
++  public void onResume() {
++    super.onResume();
++    load();
++  }
++
++  private void load() {
++    if (getContext() == null) {
++      return;
++    }
++    if (!PermissionsUtil.hasContactsReadPermissions(getContext())) {
++      root.setVisibility(View.GONE);
++      return;
++    }
++    loaderListener.listen(
++        getContext(),
++        UiItemLoaderComponent.get(getContext()).speedDialUiItemMutator().loadSpeedDialUiItems(),
++        this::onLoaded,
++        // A favorites row that fails to load must never take the phone app down
++        throwable -> LogUtil.e("FavoritesStripFragment.load", "failed", throwable));
++  }
++
++  private void onLoaded(ImmutableList<SpeedDialUiItem> items) {
++    List<SpeedDialUiItem> starred = new ArrayList<>();
++    for (SpeedDialUiItem item : items) {
++      if (item.isStarred()) {
++        starred.add(item);
++      }
++    }
++    adapter.items = starred;
++    adapter.notifyDataSetChanged();
++    root.setVisibility(starred.isEmpty() ? View.GONE : View.VISIBLE);
++  }
++
++  private void call(SpeedDialUiItem item) {
++    Channel channel = item.defaultChannel();
++    if (channel == null) {
++      channel = item.getDefaultVoiceChannel();
++    }
++    if (channel == null || getActivity() == null) {
++      return;
++    }
++    PreCall.start(
++        getActivity(),
++        new CallIntentBuilder(channel.number(), CallInitiationType.Type.SPEED_DIAL)
++            .setAllowAssistedDial(true)
++            .setIsVideoCall(channel.isVideoTechnology())
++            .setIsDuoCall(channel.technology() == Channel.DUO));
++  }
++
++  private final class StripAdapter extends RecyclerView.Adapter<ChipHolder> {
++    List<SpeedDialUiItem> items = new ArrayList<>();
++
++    @Override
++    public ChipHolder onCreateViewHolder(ViewGroup parent, int viewType) {
++      return new ChipHolder(
++          LayoutInflater.from(parent.getContext()).inflate(R.layout.plait_favorite_chip, parent, false));
++    }
++
++    @Override
++    public void onBindViewHolder(ChipHolder holder, int position) {
++      SpeedDialUiItem item = items.get(position);
++      holder.name.setText(item.name());
++      holder.itemView.setOnClickListener(v -> call(item));
++      GlidePhotoManagerComponent.get(holder.itemView.getContext())
++          .glidePhotoManager()
++          .loadQuickContactBadge(
++              holder.photo,
++              PhotoInfo.newBuilder()
++                  .setPhotoId(item.photoId())
++                  .setPhotoUri(item.photoUri())
++                  .setName(item.name())
++                  .setLookupUri(Contacts.getLookupUri(item.contactId(), item.lookupKey()).toString())
++                  .build());
++    }
++
++    @Override
++    public int getItemCount() {
++      return items.size();
++    }
++  }
++
++  private static final class ChipHolder extends RecyclerView.ViewHolder {
++    final QuickContactBadge photo;
++    final TextView name;
++
++    ChipHolder(View view) {
++      super(view);
++      photo = view.findViewById(R.id.plait_favorite_photo);
++      name = view.findViewById(R.id.plait_favorite_name);
++      photo.setClickable(false);
++    }
++  }
++}
+diff --git a/java/com/android/dialer/main/impl/OldMainActivityPeer.java b/java/com/android/dialer/main/impl/OldMainActivityPeer.java
+index 24367dc..4747871 100644
+--- a/java/com/android/dialer/main/impl/OldMainActivityPeer.java
++++ b/java/com/android/dialer/main/impl/OldMainActivityPeer.java
+@@ -144,7 +144,8 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+ 
+   private static final String KEY_SAVED_LANGUAGE_CODE = "saved_language_code";
+   private static final String KEY_CURRENT_TAB = "current_tab";
+-  private static final String KEY_LAST_TAB = "last_tab";
++  // PlaitOS: a new key, since the tabs were rearranged (Home first, Recordings where Favorites was)
++  private static final String KEY_LAST_TAB = "plait_last_tab";
+ 
+   /** Action and extra to let the activity know which tab to open up to. */
+   private static final String ACTION_SHOW_TAB = "ACTION_SHOW_TAB";
+@@ -1300,6 +1301,8 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+       implements OnBottomNavTabSelectedListener {
+ 
+     private static final String SPEED_DIAL_TAG = "speed_dial";
++    private static final String RECORDINGS_TAG = "plait_recordings";
++    private static final String FAVORITES_STRIP_TAG = "plait_favorites_strip";
+     private static final String CALL_LOG_TAG = "call_log";
+     private static final String CONTACTS_TAG = "contacts";
+     private static final String VOICEMAIL_TAG = "voicemail";
+@@ -1334,18 +1337,12 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+       Logger.get(activity).logScreenView(ScreenEvent.Type.MAIN_SPEED_DIAL, activity);
+       selectedTab = TabIndex.SPEED_DIAL;
+ 
+-      if (ConfigProviderComponent.get(activity)
+-          .getConfigProvider()
+-          .getBoolean("enable_new_favorites_tab", true)) {
+-        android.support.v4.app.Fragment supportFragment =
+-            supportFragmentManager.findFragmentByTag(SPEED_DIAL_TAG);
+-        showSupportFragment(
+-            supportFragment == null ? SpeedDialFragment.newInstance() : supportFragment,
+-            SPEED_DIAL_TAG);
+-      } else {
+-        Fragment fragment = fragmentManager.findFragmentByTag(SPEED_DIAL_TAG);
+-        showFragment(fragment == null ? new OldSpeedDialFragment() : fragment, SPEED_DIAL_TAG);
+-      }
++      // PlaitOS: this slot is the Recordings tab now; the favorites live on Home
++      setFavoritesStripShown(false);
++      android.support.v4.app.Fragment supportFragment =
++          supportFragmentManager.findFragmentByTag(RECORDINGS_TAG);
++      showSupportFragment(
++          supportFragment == null ? new RecordingsFragment() : supportFragment, RECORDINGS_TAG);
+       fab.show();
+     }
+ 
+@@ -1357,6 +1354,7 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+       }
+       Logger.get(activity).logScreenView(ScreenEvent.Type.MAIN_CALL_LOG, activity);
+       selectedTab = TabIndex.CALL_LOG;
++      setFavoritesStripShown(true);
+ 
+       if (CallLogConfigComponent.get(activity).callLogConfig().isNewCallLogFragmentEnabled()) {
+         android.support.v4.app.Fragment supportFragment =
+@@ -1371,6 +1369,23 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+       showPromotionBottomSheet(activity, bottomSheet);
+     }
+ 
++    /** PlaitOS: the favorites row sits above the call log on Home and is hidden on every other tab. */
++    private void setFavoritesStripShown(boolean shown) {
++      View container = activity.findViewById(R.id.plait_favorites_strip_container);
++      if (container == null) {
++        return;
++      }
++      container.setVisibility(shown ? View.VISIBLE : View.GONE);
++      if (shown
++          && supportFragmentManager.findFragmentByTag(FAVORITES_STRIP_TAG) == null
++          && !supportFragmentManager.isStateSaved()) {
++        supportFragmentManager
++            .beginTransaction()
++            .add(R.id.plait_favorites_strip_container, new FavoritesStripFragment(), FAVORITES_STRIP_TAG)
++            .commitAllowingStateLoss();
++      }
++    }
++
+     private static void showPromotionBottomSheet(Context context, View view) {
+       BottomSheetBehavior<View> bottomSheetBehavior = BottomSheetBehavior.from(view);
+       Optional<Promotion> promotionOptional =
+@@ -1480,6 +1495,7 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+       if (selectedTab == TabIndex.CONTACTS) {
+         return;
+       }
++      setFavoritesStripShown(false);
+       Logger.get(activity).logScreenView(ScreenEvent.Type.MAIN_CONTACTS, activity);
+       selectedTab = TabIndex.CONTACTS;
+       Fragment fragment = fragmentManager.findFragmentByTag(CONTACTS_TAG);
+@@ -1495,6 +1511,7 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+       if (selectedTab == TabIndex.VOICEMAIL) {
+         return;
+       }
++      setFavoritesStripShown(false);
+       Logger.get(activity).logScreenView(ScreenEvent.Type.MAIN_VOICEMAIL, activity);
+       selectedTab = TabIndex.VOICEMAIL;
+ 
+@@ -1648,16 +1665,16 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+      */
+     @TabIndex
+     int getLastTab() {
+-      @TabIndex int tabIndex = TabIndex.SPEED_DIAL;
++      @TabIndex int tabIndex;
+ 
+       tabIndex =
+           StorageComponent.get(context)
+               .unencryptedSharedPrefs()
+-              .getInt(KEY_LAST_TAB, TabIndex.SPEED_DIAL);
++              .getInt(KEY_LAST_TAB, TabIndex.CALL_LOG);
+ 
+-      // If the voicemail tab cannot be shown, default to showing speed dial
++      // If the voicemail tab cannot be shown, default to showing Home
+       if (tabIndex == TabIndex.VOICEMAIL && !canShowVoicemailTab) {
+-        tabIndex = TabIndex.SPEED_DIAL;
++        tabIndex = TabIndex.CALL_LOG;
+       }
+ 
+       return tabIndex;
+diff --git a/java/com/android/dialer/main/impl/RecordingsFragment.java b/java/com/android/dialer/main/impl/RecordingsFragment.java
+new file mode 100644
+index 0000000..d3177a3
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/RecordingsFragment.java
+@@ -0,0 +1,310 @@
++/*
++ * Copyright (C) 2026 PlaitOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License
++ */
++
++package com.android.dialer.main.impl;
++
++import android.content.ContentResolver;
++import android.content.ContentUris;
++import android.content.Intent;
++import android.database.Cursor;
++import android.media.MediaPlayer;
++import android.net.Uri;
++import android.os.Bundle;
++import android.provider.ContactsContract.PhoneLookup;
++import android.provider.MediaStore;
++import android.support.annotation.Nullable;
++import android.support.v4.app.Fragment;
++import android.support.v7.widget.LinearLayoutManager;
++import android.support.v7.widget.RecyclerView;
++import android.text.format.DateUtils;
++import android.view.LayoutInflater;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.ImageView;
++import android.widget.PopupMenu;
++import android.widget.TextView;
++import com.android.dialer.common.LogUtil;
++import com.android.dialer.util.PermissionsUtil;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++
++/**
++ * PlaitOS: the Recordings tab. The call recorder saves each recording through MediaStore under
++ * Recordings/CallRecordings; an app can always read the files it created itself, so this needs no extra permission.
++ * One row per recording with its caller, when and how long; tap plays or pauses, the overflow shares or deletes.
++ */
++public class RecordingsFragment extends Fragment {
++
++  private static final String RECORDINGS_PATH = "Recordings/CallRecordings/";
++
++  private static final class Recording {
++    long id;
++    String number;
++    String name;
++    long when;
++    long durationMs;
++    Uri uri;
++  }
++
++  private final ExecutorService io = Executors.newSingleThreadExecutor();
++  private final RecordingsAdapter adapter = new RecordingsAdapter();
++  private View empty;
++  private MediaPlayer player;
++  private long playingId = -1;
++
++  @Nullable
++  @Override
++  public View onCreateView(
++      LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
++    View root = inflater.inflate(R.layout.plait_recordings_fragment, container, false);
++    RecyclerView list = root.findViewById(R.id.plait_recordings_list);
++    list.setLayoutManager(new LinearLayoutManager(getContext()));
++    list.setAdapter(adapter);
++    empty = root.findViewById(R.id.plait_recordings_empty);
++    return root;
++  }
++
++  @Override
++  public void onResume() {
++    super.onResume();
++    load();
++  }
++
++  @Override
++  public void onPause() {
++    super.onPause();
++    stopPlayback();
++  }
++
++  @Override
++  public void onDestroy() {
++    super.onDestroy();
++    io.shutdownNow();
++  }
++
++  private void load() {
++    if (getContext() == null) {
++      return;
++    }
++    final android.content.Context context = getContext().getApplicationContext();
++    final boolean contacts = PermissionsUtil.hasContactsReadPermissions(context);
++    io.execute(
++        () -> {
++          List<Recording> found = new ArrayList<>();
++          try (Cursor c =
++              context
++                  .getContentResolver()
++                  .query(
++                      MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
++                      new String[] {
++                        MediaStore.Audio.Media._ID,
++                        MediaStore.Audio.Media.DISPLAY_NAME,
++                        MediaStore.Audio.Media.DATE_TAKEN,
++                        MediaStore.Audio.Media.DATE_ADDED,
++                        MediaStore.Audio.Media.DURATION
++                      },
++                      MediaStore.Audio.Media.RELATIVE_PATH + " LIKE ?",
++                      new String[] {RECORDINGS_PATH + "%"},
++                      MediaStore.Audio.Media.DATE_TAKEN + " DESC")) {
++            while (c != null && c.moveToNext()) {
++              Recording r = new Recording();
++              r.id = c.getLong(0);
++              r.uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, r.id);
++              r.number = numberFromFilename(c.getString(1));
++              long taken = c.getLong(2);
++              r.when = taken > 0 ? taken : c.getLong(3) * 1000;
++              r.durationMs = c.getLong(4);
++              r.name = contacts ? contactName(context.getContentResolver(), r.number) : null;
++              found.add(r);
++            }
++          } catch (RuntimeException e) {
++            // A listing that fails must leave an empty tab, not take the phone app down
++            LogUtil.e("RecordingsFragment.load", "query failed", e);
++          }
++          if (getActivity() != null) {
++            getActivity()
++                .runOnUiThread(
++                    () -> {
++                      adapter.items = found;
++                      adapter.notifyDataSetChanged();
++                      empty.setVisibility(found.isEmpty() ? View.VISIBLE : View.GONE);
++                    });
++          }
++        });
++  }
++
++  /** CallRecord_yyyyMMdd-HHmmss_number.ext -> number (or null). */
++  @Nullable
++  private static String numberFromFilename(@Nullable String displayName) {
++    if (displayName == null) {
++      return null;
++    }
++    String[] parts = displayName.split("_", 3);
++    if (parts.length < 3) {
++      return null;
++    }
++    String number = parts[2];
++    int dot = number.lastIndexOf('.');
++    if (dot > 0) {
++      number = number.substring(0, dot);
++    }
++    return number.equals("unknown") ? null : number;
++  }
++
++  @Nullable
++  private static String contactName(ContentResolver resolver, @Nullable String number) {
++    if (number == null) {
++      return null;
++    }
++    try (Cursor c =
++        resolver.query(
++            Uri.withAppendedPath(PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number)),
++            new String[] {PhoneLookup.DISPLAY_NAME},
++            null,
++            null,
++            null)) {
++      return c != null && c.moveToFirst() ? c.getString(0) : null;
++    } catch (RuntimeException e) {
++      return null;
++    }
++  }
++
++  private void togglePlayback(Recording r) {
++    if (playingId == r.id) {
++      stopPlayback();
++      return;
++    }
++    stopPlayback();
++    try {
++      MediaPlayer p = new MediaPlayer();
++      p.setDataSource(getContext(), r.uri);
++      p.setOnCompletionListener(mp -> stopPlayback());
++      p.prepare();
++      p.start();
++      player = p;
++      playingId = r.id;
++    } catch (java.io.IOException | RuntimeException e) {
++      LogUtil.e("RecordingsFragment.togglePlayback", "cannot play", e);
++      stopPlayback();
++    }
++    adapter.notifyDataSetChanged();
++  }
++
++  private void stopPlayback() {
++    if (player != null) {
++      try {
++        player.release();
++      } catch (RuntimeException ignored) {
++      }
++      player = null;
++    }
++    playingId = -1;
++    adapter.notifyDataSetChanged();
++  }
++
++  private void share(Recording r) {
++    Intent send = new Intent(Intent.ACTION_SEND);
++    send.setType("audio/*");
++    send.putExtra(Intent.EXTRA_STREAM, r.uri);
++    send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++    startActivity(Intent.createChooser(send, null));
++  }
++
++  private void delete(Recording r) {
++    if (playingId == r.id) {
++      stopPlayback();
++    }
++    final android.content.Context context = getContext().getApplicationContext();
++    io.execute(
++        () -> {
++          try {
++            context.getContentResolver().delete(r.uri, null, null);
++          } catch (RuntimeException e) {
++            LogUtil.e("RecordingsFragment.delete", "failed", e);
++          }
++          load();
++        });
++  }
++
++  private final class RecordingsAdapter extends RecyclerView.Adapter<RowHolder> {
++    List<Recording> items = new ArrayList<>();
++
++    @Override
++    public RowHolder onCreateViewHolder(ViewGroup parent, int viewType) {
++      return new RowHolder(
++          LayoutInflater.from(parent.getContext()).inflate(R.layout.plait_recording_row, parent, false));
++    }
++
++    @Override
++    public void onBindViewHolder(RowHolder h, int position) {
++      Recording r = items.get(position);
++      boolean playing = playingId == r.id;
++      h.title.setText(
++          r.name != null
++              ? r.name
++              : r.number != null ? r.number : h.itemView.getContext().getString(R.string.plait_recording_unknown_number));
++      long seconds = Math.max(0, r.durationMs / 1000);
++      h.subtitle.setText(
++          DateUtils.getRelativeTimeSpanString(
++                  r.when, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS, DateUtils.FORMAT_ABBREV_RELATIVE)
++              + " · "
++              + (seconds / 60)
++              + ":"
++              + String.format("%02d", seconds % 60));
++      h.play.setImageResource(
++          playing ? R.drawable.plait_ic_pause : R.drawable.plait_ic_play);
++      h.itemView.setOnClickListener(v -> togglePlayback(r));
++      h.more.setOnClickListener(
++          v -> {
++            PopupMenu menu = new PopupMenu(v.getContext(), v);
++            menu.getMenu().add(0, 1, 0, R.string.plait_recording_share);
++            menu.getMenu().add(0, 2, 1, R.string.plait_recording_delete);
++            menu.setOnMenuItemClickListener(
++                item -> {
++                  if (item.getItemId() == 1) {
++                    share(r);
++                  } else {
++                    delete(r);
++                  }
++                  return true;
++                });
++            menu.show();
++          });
++    }
++
++    @Override
++    public int getItemCount() {
++      return items.size();
++    }
++  }
++
++  private static final class RowHolder extends RecyclerView.ViewHolder {
++    final ImageView play;
++    final TextView title;
++    final TextView subtitle;
++    final View more;
++
++    RowHolder(View view) {
++      super(view);
++      play = view.findViewById(R.id.plait_recording_play);
++      title = view.findViewById(R.id.plait_recording_title);
++      subtitle = view.findViewById(R.id.plait_recording_subtitle);
++      more = view.findViewById(R.id.plait_recording_more);
++    }
++  }
++}
+diff --git a/java/com/android/dialer/main/impl/bottomnav/BottomNavBar.java b/java/com/android/dialer/main/impl/bottomnav/BottomNavBar.java
+index 80aa38b..9fb301a 100644
+--- a/java/com/android/dialer/main/impl/bottomnav/BottomNavBar.java
++++ b/java/com/android/dialer/main/impl/bottomnav/BottomNavBar.java
+@@ -69,8 +69,9 @@ public final class BottomNavBar extends LinearLayout {
+     contacts = findViewById(R.id.contacts_tab);
+     voicemail = findViewById(R.id.voicemail_tab);
+ 
+-    speedDial.setup(R.string.tab_title_speed_dial, R.drawable.quantum_ic_star_vd_theme_24);
+-    callLog.setup(R.string.tab_title_call_history, R.drawable.quantum_ic_access_time_vd_theme_24);
++    // PlaitOS: Home (the call log with the favorites above it) first, then Recordings in the old Favorites slot
++    speedDial.setup(R.string.plait_tab_recordings, R.drawable.plait_ic_record);
++    callLog.setup(R.string.plait_tab_home, R.drawable.plait_ic_home);
+     contacts.setup(R.string.tab_title_contacts, R.drawable.quantum_ic_people_vd_theme_24);
+     voicemail.setup(R.string.tab_title_voicemail, R.drawable.quantum_ic_voicemail_vd_theme_24);
+ 
+diff --git a/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_bar_layout.xml b/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_bar_layout.xml
+index 7c83049..2bc16ca 100644
+--- a/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_bar_layout.xml
++++ b/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_bar_layout.xml
+@@ -23,14 +23,14 @@
+     android:elevation="0dp">
+ 
+   <include
+-      android:id="@+id/speed_dial_tab"
++      android:id="@+id/call_log_tab"
+       android:layout_width="0dp"
+       android:layout_height="wrap_content"
+       android:layout_weight="1"
+       layout="@layout/bottom_nav_item"/>
+ 
+   <include
+-      android:id="@+id/call_log_tab"
++      android:id="@+id/speed_dial_tab"
+       android:layout_width="0dp"
+       android:layout_height="wrap_content"
+       android:layout_weight="1"
+diff --git a/java/com/android/dialer/main/impl/res/drawable/plait_ic_home.xml b/java/com/android/dialer/main/impl/res/drawable/plait_ic_home.xml
+new file mode 100644
+index 0000000..e87e592
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/drawable/plait_ic_home.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M240-200h120v-200q0-17 11.5-28.5T400-440h160q17 0 28.5 11.5T600-400v200h120v-360L480-740 240-560v360Zm-80 0v-360q0-19 8.5-36t23.5-28l240-180q21-16 48-16t48 16l240 180q15 11 23.5 28t8.5 36v360q0 33-23.5 56.5T720-120H560q-17 0-28.5-11.5T520-160v-200h-80v200q0 17-11.5 28.5T400-120H240q-33 0-56.5-23.5T160-200Zm320-270Z" />
++    </group>
++</vector>
+diff --git a/java/com/android/dialer/main/impl/res/drawable/plait_ic_more_vert.xml b/java/com/android/dialer/main/impl/res/drawable/plait_ic_more_vert.xml
+new file mode 100644
+index 0000000..38371cb
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/drawable/plait_ic_more_vert.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M480-160q-33 0-56.5-23.5T400-240q0-33 23.5-56.5T480-320q33 0 56.5 23.5T560-240q0 33-23.5 56.5T480-160Zm0-240q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm0-240q-33 0-56.5-23.5T400-720q0-33 23.5-56.5T480-800q33 0 56.5 23.5T560-720q0 33-23.5 56.5T480-640Z" />
++    </group>
++</vector>
+diff --git a/java/com/android/dialer/main/impl/res/drawable/plait_ic_pause.xml b/java/com/android/dialer/main/impl/res/drawable/plait_ic_pause.xml
+new file mode 100644
+index 0000000..21fd72b
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/drawable/plait_ic_pause.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M600-200q-33 0-56.5-23.5T520-280v-400q0-33 23.5-56.5T600-760h80q33 0 56.5 23.5T760-680v400q0 33-23.5 56.5T680-200h-80Zm-320 0q-33 0-56.5-23.5T200-280v-400q0-33 23.5-56.5T280-760h80q33 0 56.5 23.5T440-680v400q0 33-23.5 56.5T360-200h-80Zm320-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z" />
++    </group>
++</vector>
+diff --git a/java/com/android/dialer/main/impl/res/drawable/plait_ic_play.xml b/java/com/android/dialer/main/impl/res/drawable/plait_ic_play.xml
+new file mode 100644
+index 0000000..1cf1e5d
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/drawable/plait_ic_play.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M320-273v-414q0-17 12-28.5t28-11.5q5 0 10.5 1.5T381-721l326 207q9 6 13.5 15t4.5 19q0 10-4.5 19T707-446L381-239q-5 3-10.5 4.5T360-233q-16 0-28-11.5T320-273Zm80-207Zm0 134 210-134-210-134v268Z" />
++    </group>
++</vector>
+diff --git a/java/com/android/dialer/main/impl/res/drawable/plait_ic_record.xml b/java/com/android/dialer/main/impl/res/drawable/plait_ic_record.xml
+new file mode 100644
+index 0000000..0123d45
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/drawable/plait_ic_record.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M480-280q83 0 141.5-58.5T680-480q0-83-58.5-141.5T480-680q-83 0-141.5 58.5T280-480q0 83 58.5 141.5T480-280Zm0 200q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z" />
++    </group>
++</vector>
+diff --git a/java/com/android/dialer/main/impl/res/layout/main_activity.xml b/java/com/android/dialer/main/impl/res/layout/main_activity.xml
+index 25db637..cdd8802 100644
+--- a/java/com/android/dialer/main/impl/res/layout/main_activity.xml
++++ b/java/com/android/dialer/main/impl/res/layout/main_activity.xml
+@@ -36,10 +36,24 @@
+       android:layout_above="@+id/bottom_nav_bar">
+ 
+     <!-- Holds SpeedDial, Call Log, Contacts, Voicemail and Search fragments -->
+-    <FrameLayout
+-        android:id="@+id/fragment_container"
++    <LinearLayout
+         android:layout_width="match_parent"
+-        android:layout_height="match_parent"/>
++        android:layout_height="match_parent"
++        android:orientation="vertical">
++
++      <!-- PlaitOS: the favorites row, shown on Home only -->
++      <FrameLayout
++          android:id="@+id/plait_favorites_strip_container"
++          android:layout_width="match_parent"
++          android:layout_height="wrap_content"
++          android:visibility="gone"/>
++
++      <FrameLayout
++          android:id="@+id/fragment_container"
++          android:layout_width="match_parent"
++          android:layout_height="0dp"
++          android:layout_weight="1"/>
++    </LinearLayout>
+ 
+     <FrameLayout
+         android:id="@+id/search_fragment_container"
+diff --git a/java/com/android/dialer/main/impl/res/layout/plait_favorite_chip.xml b/java/com/android/dialer/main/impl/res/layout/plait_favorite_chip.xml
+new file mode 100644
+index 0000000..0d4cac7
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/layout/plait_favorite_chip.xml
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="88dp"
++    android:layout_height="wrap_content"
++    android:layout_margin="4dp"
++    android:orientation="vertical"
++    android:gravity="center_horizontal"
++    android:paddingTop="12dp"
++    android:paddingBottom="10dp"
++    android:background="@drawable/plait_card"
++    android:foreground="?android:attr/selectableItemBackground">
++
++  <QuickContactBadge
++      android:id="@+id/plait_favorite_photo"
++      android:layout_width="52dp"
++      android:layout_height="52dp"
++      android:clickable="false"/>
++
++  <TextView
++      android:id="@+id/plait_favorite_name"
++      android:layout_width="match_parent"
++      android:layout_height="wrap_content"
++      android:layout_marginTop="6dp"
++      android:layout_marginStart="4dp"
++      android:layout_marginEnd="4dp"
++      android:gravity="center_horizontal"
++      android:singleLine="true"
++      android:ellipsize="end"
++      android:textSize="13sp"
++      style="@style/Dialer.TextAppearance.Primary"/>
++</LinearLayout>
+diff --git a/java/com/android/dialer/main/impl/res/layout/plait_favorites_strip.xml b/java/com/android/dialer/main/impl/res/layout/plait_favorites_strip.xml
+new file mode 100644
+index 0000000..cfad2dd
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/layout/plait_favorites_strip.xml
+@@ -0,0 +1,26 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the favorites row on the Home tab -->
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical">
++
++  <TextView
++      android:layout_width="wrap_content"
++      android:layout_height="wrap_content"
++      android:layout_marginStart="20dp"
++      android:layout_marginTop="12dp"
++      android:layout_marginBottom="4dp"
++      android:text="@string/plait_favorites"
++      android:textSize="14sp"
++      android:fontFamily="sans-serif-medium"
++      style="@style/Dialer.TextAppearance.Secondary"/>
++
++  <android.support.v7.widget.RecyclerView
++      android:id="@+id/plait_favorites_list"
++      android:layout_width="match_parent"
++      android:layout_height="wrap_content"
++      android:clipToPadding="false"
++      android:paddingStart="12dp"
++      android:paddingEnd="12dp"/>
++</LinearLayout>
+diff --git a/java/com/android/dialer/main/impl/res/layout/plait_recording_row.xml b/java/com/android/dialer/main/impl/res/layout/plait_recording_row.xml
+new file mode 100644
+index 0000000..3d33658
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/layout/plait_recording_row.xml
+@@ -0,0 +1,52 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:layout_marginTop="2dp"
++    android:layout_marginBottom="2dp"
++    android:minHeight="72dp"
++    android:orientation="horizontal"
++    android:gravity="center_vertical"
++    android:paddingStart="16dp"
++    android:paddingEnd="4dp"
++    android:background="@drawable/plait_card"
++    android:foreground="?android:attr/selectableItemBackground">
++
++  <ImageView
++      android:id="@+id/plait_recording_play"
++      android:layout_width="44dp"
++      android:layout_height="44dp"
++      android:background="@drawable/plait_circle_outline"
++      android:scaleType="center"
++      android:tint="?colorIcon"/>
++
++  <LinearLayout
++      android:layout_width="0dp"
++      android:layout_height="wrap_content"
++      android:layout_weight="1"
++      android:layout_marginStart="16dp"
++      android:orientation="vertical">
++    <TextView
++        android:id="@+id/plait_recording_title"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:singleLine="true"
++        android:ellipsize="end"
++        style="@style/Dialer.TextAppearance.Primary"/>
++    <TextView
++        android:id="@+id/plait_recording_subtitle"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        style="@style/Dialer.TextAppearance.Secondary"/>
++  </LinearLayout>
++
++  <ImageView
++      android:id="@+id/plait_recording_more"
++      android:layout_width="48dp"
++      android:layout_height="48dp"
++      android:scaleType="center"
++      android:src="@drawable/plait_ic_more_vert"
++      android:tint="?colorIcon"
++      android:background="?android:attr/selectableItemBackgroundBorderless"
++      android:contentDescription="@string/plait_recording_share"/>
++</LinearLayout>
+diff --git a/java/com/android/dialer/main/impl/res/layout/plait_recordings_fragment.xml b/java/com/android/dialer/main/impl/res/layout/plait_recordings_fragment.xml
+new file mode 100644
+index 0000000..278185a
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/layout/plait_recordings_fragment.xml
+@@ -0,0 +1,40 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the Recordings tab -->
++<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent">
++
++  <android.support.v7.widget.RecyclerView
++      android:id="@+id/plait_recordings_list"
++      android:layout_width="match_parent"
++      android:layout_height="match_parent"
++      android:clipToPadding="false"
++      android:paddingTop="8dp"
++      android:paddingStart="12dp"
++      android:paddingEnd="12dp"
++      android:paddingBottom="96dp"/>
++
++  <LinearLayout
++      android:id="@+id/plait_recordings_empty"
++      android:layout_width="match_parent"
++      android:layout_height="wrap_content"
++      android:layout_gravity="center"
++      android:orientation="vertical"
++      android:gravity="center_horizontal"
++      android:padding="32dp"
++      android:visibility="gone">
++    <TextView
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:text="@string/plait_recordings_empty"
++        android:textSize="18sp"
++        style="@style/Dialer.TextAppearance.Primary"/>
++    <TextView
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="8dp"
++        android:gravity="center_horizontal"
++        android:text="@string/plait_recordings_empty_hint"
++        style="@style/Dialer.TextAppearance.Secondary"/>
++  </LinearLayout>
++</FrameLayout>
+diff --git a/java/com/android/dialer/main/impl/res/values/strings_plait.xml b/java/com/android/dialer/main/impl/res/values/strings_plait.xml
+new file mode 100644
+index 0000000..de3896c
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/res/values/strings_plait.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++  <string name="plait_favorites">Favorites</string>
++  <string name="plait_tab_home">Home</string>
++  <string name="plait_tab_recordings">Recordings</string>
++  <string name="plait_recordings_empty">No call recordings yet</string>
++  <string name="plait_recordings_empty_hint">Recorded calls are saved here. Turn on call recording in Settings.</string>
++  <string name="plait_recording_share">Share</string>
++  <string name="plait_recording_delete">Delete</string>
++  <string name="plait_recording_unknown_number">Unknown number</string>
++</resources>
+-- 
+2.56.0
+

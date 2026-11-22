@@ -1,0 +1,202 @@
+From 2c9d99c4b156e0f9f7f28a3f23b2b6f42663fccc Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 22:39:31 -0600
+Subject: [PATCH 89/91] PlaitOS: volume wake, home double-tap action, music
+ player on headset
+
+Volume keys wake the screen (plait_volume_wake_screen), home gets a double-tap action
+from the same list as the long presses (plait_home_double_tap_action), and a wired or
+Bluetooth headset starts the music player (plait_headset_connect_player). Ported from
+LineageOS's PhoneWindowManager; the headset player has no Lineage code, only its setting.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../server/policy/PhoneWindowManager.java     | 72 ++++++++++++++++++-
+ .../server/policy/PlaitKeyActions.java        |  1 +
+ 2 files changed, 72 insertions(+), 1 deletion(-)
+
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 7a1890184..f21498de7 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -415,6 +415,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     private static final String PLAIT_TORCH_LONG_PRESS_POWER_TIMEOUT = "plait_torch_long_press_power_timeout";
+     private static final String PLAIT_VOLUME_ANSWER_CALL = "plait_volume_answer_call";
+     private static final String PLAIT_HOME_ANSWER_CALL = "plait_home_answer_call";
++    private static final String PLAIT_VOLUME_WAKE_SCREEN = "plait_volume_wake_screen";
++    private static final String PLAIT_HEADSET_CONNECT_PLAYER = "plait_headset_connect_player";
+ 
+     private static final String ACTION_TORCH_OFF =
+             "com.android.server.policy.PhoneWindowManager.ACTION_TORCH_OFF";
+@@ -641,6 +643,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+ 
+     boolean mVolumeAnswerCall;
+ 
++    // Whether the volume keys wake the screen (Settings.System plait_volume_wake_screen)
++    boolean mWakeOnVolumeKeyPress;
++
+     private boolean mPendingKeyguardOccluded;
+ 
+     Intent mHomeIntent;
+@@ -744,6 +749,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     // Navigation bar key actions chosen in Plait Settings (NOTHING = stock behavior)
+     private PlaitKeyActions.Action mHomeLongPressAction = PlaitKeyActions.Action.NOTHING;
+     private PlaitKeyActions.Action mBackLongPressAction = PlaitKeyActions.Action.NOTHING;
++    private PlaitKeyActions.Action mHomeDoubleTapAction = PlaitKeyActions.Action.NOTHING;
+     private PlaitKeyActions.Action mRecentsLongPressAction = PlaitKeyActions.Action.NOTHING;
+ 
+     // Created in systemBooted(); null before that, so volume keys behave normally during boot
+@@ -991,12 +997,18 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             resolver.registerContentObserver(Settings.System.getUriFor(
+                     PLAIT_VOLUME_ANSWER_CALL), false, this,
+                     UserHandle.USER_ALL);
++            resolver.registerContentObserver(Settings.System.getUriFor(
++                    PLAIT_VOLUME_WAKE_SCREEN), false, this,
++                    UserHandle.USER_ALL);
+             resolver.registerContentObserver(Settings.System.getUriFor(
+                     PlaitKeyActions.HOME_LONG_PRESS), false, this,
+                     UserHandle.USER_ALL);
+             resolver.registerContentObserver(Settings.System.getUriFor(
+                     PlaitKeyActions.BACK_LONG_PRESS), false, this,
+                     UserHandle.USER_ALL);
++            resolver.registerContentObserver(Settings.System.getUriFor(
++                    PlaitKeyActions.HOME_DOUBLE_TAP), false, this,
++                    UserHandle.USER_ALL);
+             resolver.registerContentObserver(Settings.System.getUriFor(
+                     PlaitKeyActions.RECENTS_LONG_PRESS), false, this,
+                     UserHandle.USER_ALL);
+@@ -2309,6 +2321,13 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                 }
+ 
+                 // Delay handling home if a double-tap is possible.
++                if (mHomeDoubleTapAction != PlaitKeyActions.Action.NOTHING) {
++                    mHandler.removeCallbacks(mHomeDoubleTapTimeoutRunnable); // just in case
++                    mPendingHomeKeyEvent = event;
++                    mHandler.postDelayed(mHomeDoubleTapTimeoutRunnable,
++                            ViewConfiguration.getDoubleTapTimeout());
++                    return true;
++                }
+                 if (mDoubleTapOnHomeBehavior != DOUBLE_TAP_HOME_NOTHING) {
+                     // For the picture-in-picture menu, only add the delay if a pip is there.
+                     if (mDoubleTapOnHomeBehavior != DOUBLE_TAP_HOME_PIP_MENU
+@@ -2374,6 +2393,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             if (mHomeConsumed) {
+                 return;
+             }
++            if (mHomeDoubleTapAction != PlaitKeyActions.Action.NOTHING) {
++                mHomeConsumed = true;
++                performPlaitKeyAction(mHomeDoubleTapAction, event);
++                return;
++            }
+             switch (mDoubleTapOnHomeBehavior) {
+                 case DOUBLE_TAP_HOME_RECENT_SYSTEM_UI:
+                     if (!isKeyEventForCurrentUser(
+@@ -2734,6 +2758,33 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         filter.addAction(ACTION_TORCH_OFF);
+         mContext.registerReceiver(torchReceiver, filter);
+ 
++        // PlaitOS: start the default music player when a headset connects (plait_headset_connect_player)
++        BroadcastReceiver headsetReceiver = new BroadcastReceiver() {
++            @Override
++            public void onReceive(Context context, Intent intent) {
++                final String action = intent.getAction();
++                final boolean connected = AudioManager.ACTION_HEADSET_PLUG.equals(action)
++                        ? intent.getIntExtra("state", 0) == 1
++                        : intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
++                                == BluetoothProfile.STATE_CONNECTED;
++                if (!connected || Settings.System.getIntForUser(mContext.getContentResolver(),
++                        PLAIT_HEADSET_CONNECT_PLAYER, 0, UserHandle.USER_CURRENT) != 1) {
++                    return;
++                }
++                final Intent player = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN,
++                        Intent.CATEGORY_APP_MUSIC);
++                player.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++                try {
++                    startActivityAsUser(player, UserHandle.CURRENT);
++                } catch (ActivityNotFoundException e) {
++                    Slog.w(TAG, "No music player to start for the headset");
++                }
++            }
++        };
++        filter = new IntentFilter(AudioManager.ACTION_HEADSET_PLUG);
++        filter.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED");
++        mContext.registerReceiverForAllUsers(headsetReceiver, filter, null, mHandler);
++
+         mVibrator = (Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE);
+ 
+         mGlobalKeyManager = new GlobalKeyManager(mContext);
+@@ -3249,10 +3300,14 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                     UserHandle.USER_CURRENT);
+             mVolumeAnswerCall = Settings.System.getIntForUser(resolver,
+                     PLAIT_VOLUME_ANSWER_CALL, 0, UserHandle.USER_CURRENT) == 1;
++            mWakeOnVolumeKeyPress = Settings.System.getIntForUser(resolver,
++                    PLAIT_VOLUME_WAKE_SCREEN, 0, UserHandle.USER_CURRENT) == 1;
+             mHomeLongPressAction = PlaitKeyActions.Action.fromSettings(resolver,
+                     PlaitKeyActions.HOME_LONG_PRESS);
+             mBackLongPressAction = PlaitKeyActions.Action.fromSettings(resolver,
+                     PlaitKeyActions.BACK_LONG_PRESS);
++            mHomeDoubleTapAction = PlaitKeyActions.Action.fromSettings(resolver,
++                    PlaitKeyActions.HOME_DOUBLE_TAP);
+             mRecentsLongPressAction = PlaitKeyActions.Action.fromSettings(resolver,
+                     PlaitKeyActions.RECENTS_LONG_PRESS);
+ 
+@@ -4693,7 +4748,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         final int keyCode = event.getKeyCode();
+         final boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+         boolean isWakeKey = (policyFlags & WindowManagerPolicy.FLAG_WAKE) != 0
+-                || event.isWakeKey();
++                || event.isWakeKey()
++                || (mWakeOnVolumeKeyPress && isVolumeKey(keyCode));
+         boolean isKeyGestureTriggered = (policyFlags & FLAG_KEY_GESTURE_TRIGGERED) != 0;
+ 
+         // There are key events that perform the operation as the current user,
+@@ -4894,6 +4950,10 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+             case KeyEvent.KEYCODE_VOLUME_DOWN:
+             case KeyEvent.KEYCODE_VOLUME_UP:
+             case KeyEvent.KEYCODE_VOLUME_MUTE: {
++                // The key only wakes the screen (and is eaten): no track skip, no volume change
++                if (!interactive && mWakeOnVolumeKeyPress) {
++                    break;
++                }
+                 int gestureType = keyCode == KEYCODE_VOLUME_DOWN
+                         ? KeyGestureEvent.KEY_GESTURE_TYPE_VOLUME_DOWN
+                         : keyCode == KEYCODE_VOLUME_UP
+@@ -5345,6 +5405,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+      * We reserve all power management keys for the system since they require
+      * very careful handling.
+      */
++    private static boolean isVolumeKey(int keyCode) {
++        return keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
++                || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE;
++    }
++
+     private static boolean isValidGlobalKey(int keyCode) {
+         switch (keyCode) {
+             case KeyEvent.KEYCODE_POWER:
+@@ -5365,6 +5430,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+      */
+     private boolean isWakeKeyWhenScreenOff(int keyCode) {
+         switch (keyCode) {
++            case KeyEvent.KEYCODE_VOLUME_UP:
++            case KeyEvent.KEYCODE_VOLUME_DOWN:
++            case KeyEvent.KEYCODE_VOLUME_MUTE:
++                return mWakeOnVolumeKeyPress;
++
+             case KeyEvent.KEYCODE_DPAD_UP:
+             case KeyEvent.KEYCODE_DPAD_DOWN:
+             case KeyEvent.KEYCODE_DPAD_LEFT:
+diff --git a/services/core/java/com/android/server/policy/PlaitKeyActions.java b/services/core/java/com/android/server/policy/PlaitKeyActions.java
+index b89512ac9..97a26b195 100644
+--- a/services/core/java/com/android/server/policy/PlaitKeyActions.java
++++ b/services/core/java/com/android/server/policy/PlaitKeyActions.java
+@@ -38,6 +38,7 @@ final class PlaitKeyActions {
+     /** Settings.System keys (written by Plait Settings); unset or NOTHING keeps the stock behavior. */
+     static final String HOME_LONG_PRESS = "plait_home_long_press_action";
+     static final String BACK_LONG_PRESS = "plait_back_long_press_action";
++    static final String HOME_DOUBLE_TAP = "plait_home_double_tap_action";
+     static final String RECENTS_LONG_PRESS = "plait_recents_long_press_action";
+ 
+     /** Order is the stored value: append only. */
+-- 
+2.56.0
+

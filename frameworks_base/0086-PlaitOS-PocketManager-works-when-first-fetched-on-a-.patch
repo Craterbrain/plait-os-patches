@@ -1,0 +1,40 @@
+From 6538f4594bee58290f84695acb34bde4320cbc44 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 23:26:40 -0600
+Subject: [PATCH] PlaitOS: PocketManager works when first fetched on a thread
+ without a looper
+
+SystemUI's face-auth interactor gets the pocket service on a background thread;
+new Handler() threw there and SystemUI crash-looped at boot.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ core/java/android/pocket/PocketManager.java | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/core/java/android/pocket/PocketManager.java b/core/java/android/pocket/PocketManager.java
+index cad5635d1..e404edf6a 100644
+--- a/core/java/android/pocket/PocketManager.java
++++ b/core/java/android/pocket/PocketManager.java
+@@ -17,6 +17,7 @@ package android.pocket;
+ 
+ import android.content.Context;
+ import android.os.Handler;
++import android.os.Looper;
+ import android.os.PowerManager;
+ import android.os.RemoteException;
+ import android.os.SystemClock;
+@@ -98,7 +99,9 @@ public class PocketManager {
+         }
+         mPowerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
+         mTelecomManager = (TelecomManager) mContext.getSystemService(Context.TELECOM_SERVICE);
+-        mHandler = new Handler();
++        // The main looper: getSystemService may be called on any thread (SystemUI asks from a background thread,
++        // which has no looper, and new Handler() would throw there)
++        mHandler = new Handler(Looper.getMainLooper());
+     }
+ 
+     /**
+-- 
+2.56.0
+

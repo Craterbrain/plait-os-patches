@@ -1,5 +1,11 @@
 package app.plait.scan
 
+import app.plait.design.PlaitSwitch
+import app.plait.design.Tone
+import app.plait.design.PlaitTonalButton
+import app.plait.design.PlaitFilledButton
+import app.plait.design.PlaitCard
+import app.plait.design.NoticeCard
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -17,13 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -142,11 +143,11 @@ fun ConnectionsTool(pad: PaddingValues, open: (Tool, String) -> Unit) {
     LazyColumn(Modifier.padding(pad).fillMaxWidth(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (broker != Broker.State.READY) {
             item {
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                NoticeCard(Tone.Danger, Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Connections need Plait Broker", style = MaterialTheme.typography.titleSmall)
+                        Text("Connections need Broker", style = MaterialTheme.typography.titleSmall)
                         Text("Android hides which app owns each connection. The broker can read it (the kernel's socket tables) and pass it on.")
-                        if (broker == Broker.State.NO_ACCESS) Button(onClick = { Broker.requestAccess() }) { Text("Request access") }
+                        if (broker == Broker.State.NO_ACCESS) PlaitFilledButton(onClick = { Broker.requestAccess() }) { Text("Request access") }
                     }
                 }
             }
@@ -155,19 +156,19 @@ fun ConnectionsTool(pad: PaddingValues, open: (Tool, String) -> Unit) {
         item {
             InfoCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = { reload++ }, enabled = !loading) { Text("Refresh") }
+                    PlaitTonalButton(onClick = { reload++ }, enabled = !loading) { Text("Refresh") }
                     if (loading) CircularProgressIndicator(Modifier.size(22.dp))
                     Text(if (all.isEmpty()) "" else "${shown.size} connections · ${byApp.size} apps", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    Text("Live", style = MaterialTheme.typography.bodySmall); Switch(checked = live, onCheckedChange = { live = it })
+                    Text("Live", style = MaterialTheme.typography.bodySmall); PlaitSwitch(live, { live = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Also show listening and local sockets", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    Switch(checked = showLocal, onCheckedChange = { showLocal = it })
+                    PlaitSwitch(showLocal, { showLocal = it })
                 }
                 error?.let { msg ->
                     Text(msg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     if (msg.contains("not allowed") || msg.contains("refused")) {
-                        Text("The broker has not allowed this yet. Review what Plait Scan declares and allow the connection reads.", style = MaterialTheme.typography.bodySmall)
+                        Text("The broker has not allowed this yet. Review what Scan declares and allow the connection reads.", style = MaterialTheme.typography.bodySmall)
                         BrokerReviewButton { reload++ }
                     }
                 }
@@ -176,7 +177,7 @@ fun ConnectionsTool(pad: PaddingValues, open: (Tool, String) -> Unit) {
         if (all.isNotEmpty() && byApp.isEmpty()) item { Text("No connections to show. Turn on the last switch to include listening sockets.", style = MaterialTheme.typography.bodySmall) }
         byApp.forEach { (uid, conns) ->
             item(key = "app$uid") {
-                Card(Modifier.fillMaxWidth()) {
+                PlaitCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(Modifier.clickable { expanded = if (uid in expanded) expanded - uid else expanded + uid }, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             val icon = apps.icon(uid)

@@ -1,0 +1,98 @@
+From bfea6e18f0d36689cf9c678324d0410a934e48af Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 08:36:28 -0600
+Subject: [PATCH] PlaitOS: server updates off; the page is for installing from
+ a file
+
+GrapheneOS's update server signs with its own keys, so checking it would only offer updates that fail to
+verify. server_updates_enabled=false cancels the periodic job, skips the check and hides its settings.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ res/values/config.xml                          |  4 ++++
+ src/app/seamlessupdate/client/PeriodicJob.java | 10 ++++++++++
+ src/app/seamlessupdate/client/Service.java     |  6 ++++++
+ src/app/seamlessupdate/client/Settings.java    |  8 ++++++++
+ 4 files changed, 28 insertions(+)
+
+diff --git a/res/values/config.xml b/res/values/config.xml
+index b3804bb..9a1814d 100644
+--- a/res/values/config.xml
++++ b/res/values/config.xml
+@@ -1,5 +1,9 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
++    <!-- PlaitOS: off. Its builds are signed with its own keys, which GrapheneOS's updates are not, so checking
++         releases.grapheneos.org would only ever offer updates that fail to verify. Install update from file is
++         how a PlaitOS build is updated. -->
++    <bool name="server_updates_enabled" translatable="false">false</bool>
+     <string name="url" translatable="false">https://releases.grapheneos.org/</string>
+     <string name="channel_default" translatable="false">stable</string>
+     <string name="network_type_default" translatable="false">1</string>
+diff --git a/src/app/seamlessupdate/client/PeriodicJob.java b/src/app/seamlessupdate/client/PeriodicJob.java
+index 1f05016..f7c2db5 100644
+--- a/src/app/seamlessupdate/client/PeriodicJob.java
++++ b/src/app/seamlessupdate/client/PeriodicJob.java
+@@ -23,6 +23,13 @@ public class PeriodicJob extends JobService {
+     private static final String EXTRA_JOB_CHANNEL = "extra_job_channel";
+ 
+     static void schedule(final Context context) {
++        final JobScheduler jobs = context.getSystemService(JobScheduler.class);
++        if (!context.getResources().getBoolean(R.bool.server_updates_enabled)) {
++            // Also clears a job an earlier build registered
++            jobs.cancel(JOB_ID_PERIODIC);
++            jobs.cancel(JOB_ID_RETRY);
++            return;
++        }
+         final String channel = SystemProperties.get("sys.update.channel", Settings.getChannel(context));
+         final int networkType = Settings.getNetworkType(context);
+         final boolean batteryNotLow = Settings.getBatteryNotLow(context);
+@@ -56,6 +63,9 @@ public class PeriodicJob extends JobService {
+     }
+ 
+     static void scheduleRetry(final Context context) {
++        if (!context.getResources().getBoolean(R.bool.server_updates_enabled)) {
++            return;
++        }
+         final JobScheduler scheduler = context.getSystemService(JobScheduler.class);
+         final ComponentName serviceName = new ComponentName(context, PeriodicJob.class);
+         final int result = scheduler.schedule(new JobInfo.Builder(JOB_ID_RETRY, serviceName)
+diff --git a/src/app/seamlessupdate/client/Service.java b/src/app/seamlessupdate/client/Service.java
+index 4055d67..2dc55d4 100644
+--- a/src/app/seamlessupdate/client/Service.java
++++ b/src/app/seamlessupdate/client/Service.java
+@@ -348,6 +348,12 @@ public class Service extends IntentService {
+                 return;
+             }
+ 
++            if (!getResources().getBoolean(R.bool.server_updates_enabled)) {
++                Log.d(TAG, "server updates are off, nothing to check");
++                mUpdating = false;
++                return;
++            }
++
+             if (network == null) {
+                 throw new IOException("Network is unavailable");
+             }
+diff --git a/src/app/seamlessupdate/client/Settings.java b/src/app/seamlessupdate/client/Settings.java
+index 3f138e6..1a5bd50 100644
+--- a/src/app/seamlessupdate/client/Settings.java
++++ b/src/app/seamlessupdate/client/Settings.java
+@@ -177,6 +177,14 @@ public class Settings extends CollapsingToolbarBaseActivity {
+                 return true;
+             });
+ 
++            if (!getResources().getBoolean(R.bool.server_updates_enabled)) {
++                // The server's settings have nothing to act on; only installing from a file is left
++                for (String key : new String[] {KEY_CHECK_FOR_UPDATES, KEY_CHANNEL, KEY_USE_SECURITY_PREVIEW_CHANNEL,
++                        KEY_NETWORK_TYPE, KEY_BATTERY_NOT_LOW, KEY_REQUIRES_CHARGING}) {
++                    requirePreference(key).setVisible(false);
++                }
++            }
++
+             updateAndReturnSecurityPreviewPreference().setOnPreferenceChangeListener((pref, newValue) -> {
+                 // This preference is intentionally marked as persistent=false in XML to avoid
+                 // automatic clobbering of the default value. Handle persistence manually.
+-- 
+2.56.0
+

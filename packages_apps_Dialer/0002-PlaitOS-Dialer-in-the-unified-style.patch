@@ -1,0 +1,481 @@
+From 5674c264cc4bf6feca613f379084fe779472589a Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 21:05:06 -0600
+Subject: [PATCH] PlaitOS: Dialer in the unified style
+
+Colours come from the system's wallpaper tones (the palette files, the theme and accent colours, the in-call background);
+the Favorites tab is the newer round-avatar one; favorites and call rows are tonal cards, the call button a round outline,
+the selected tab a tinted pill. versionCode 2900001 so it installs as an update while iterating.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ AndroidManifest.xml                           |  2 +-
+ .../app/res/layout/call_log_list_item.xml     |  7 ++--
+ .../dialer/app/res/values-night/colors.xml    |  4 +--
+ .../android/dialer/app/res/values/colors.xml  |  4 +--
+ .../lettertile/res/values-night/colors.xml    | 13 +++++++
+ .../dialer/lettertile/res/values/colors.xml   | 24 +++++--------
+ .../dialer/main/impl/OldMainActivityPeer.java |  2 +-
+ .../bottomnav/res/drawable/plait_nav_pill.xml | 16 +++++++++
+ .../res/layout/bottom_nav_bar_layout.xml      |  2 +-
+ .../bottomnav/res/layout/bottom_nav_item.xml  |  9 +++--
+ .../res/layout/favorite_item_layout.xml       | 20 ++++++-----
+ .../dialer/theme/common/res/values/styles.xml |  5 +--
+ .../theme/hidden/res/drawable/plait_card.xml  |  5 +++
+ .../res/drawable/plait_circle_outline.xml     |  4 +++
+ .../res/values-night/colors_dialer_dark.xml   |  8 ++---
+ .../hidden/res/values-night/colors_plait.xml  |  5 +++
+ .../hidden/res/values/colors_dialer_dark.xml  |  8 ++---
+ .../hidden/res/values/colors_dialer_light.xml | 10 +++---
+ .../theme/hidden/res/values/colors_pallet.xml | 34 +++++++++----------
+ .../theme/hidden/res/values/colors_plait.xml  |  6 ++++
+ .../theme/res/values-night/colors.xml         |  2 +-
+ .../incallui/theme/res/values/colors.xml      | 10 +++---
+ 22 files changed, 125 insertions(+), 75 deletions(-)
+ create mode 100644 java/com/android/dialer/lettertile/res/values-night/colors.xml
+ create mode 100644 java/com/android/dialer/main/impl/bottomnav/res/drawable/plait_nav_pill.xml
+ create mode 100644 java/com/android/dialer/theme/hidden/res/drawable/plait_card.xml
+ create mode 100644 java/com/android/dialer/theme/hidden/res/drawable/plait_circle_outline.xml
+ create mode 100644 java/com/android/dialer/theme/hidden/res/values-night/colors_plait.xml
+ create mode 100644 java/com/android/dialer/theme/hidden/res/values/colors_plait.xml
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index fcd91c8..c7be73c 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -16,7 +16,7 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+   coreApp="true"
+   package="com.android.dialer"
+-  android:versionCode="2900000"
++  android:versionCode="2900001"
+   android:versionName="23.0">
+ 
+   <uses-sdk
+diff --git a/java/com/android/dialer/app/res/layout/call_log_list_item.xml b/java/com/android/dialer/app/res/layout/call_log_list_item.xml
+index c9c1a67..e871663 100644
+--- a/java/com/android/dialer/app/res/layout/call_log_list_item.xml
++++ b/java/com/android/dialer/app/res/layout/call_log_list_item.xml
+@@ -215,10 +215,11 @@
+ 
+         <ImageView
+           android:id="@+id/primary_action_button"
+-          android:layout_width="@dimen/call_log_list_item_primary_action_dimen"
+-          android:layout_height="@dimen/call_log_list_item_primary_action_dimen"
++          android:layout_width="44dp"
++          android:layout_height="44dp"
+           android:layout_gravity="center_vertical"
+-          android:background="?android:attr/selectableItemBackgroundBorderless"
++          android:background="@drawable/plait_circle_outline"
++          android:foreground="?android:attr/selectableItemBackgroundBorderless"
+           android:scaleType="center"
+           android:tint="?colorIcon"
+           android:visibility="gone"/>
+diff --git a/java/com/android/dialer/app/res/values-night/colors.xml b/java/com/android/dialer/app/res/values-night/colors.xml
+index 1d165af..b5a8ab1 100644
+--- a/java/com/android/dialer/app/res/values-night/colors.xml
++++ b/java/com/android/dialer/app/res/values-night/colors.xml
+@@ -15,6 +15,6 @@
+ -->
+ 
+ <resources>
+-  <color name="nav_item">#80FFFFFF</color>
+-  <color name="nav_item_selected">#FFFFFF</color>
++  <color name="nav_item">@android:color/system_neutral2_300</color>
++  <color name="nav_item_selected">@android:color/system_accent1_200</color>
+ </resources>
+diff --git a/java/com/android/dialer/app/res/values/colors.xml b/java/com/android/dialer/app/res/values/colors.xml
+index 2fdb45f..7dbc0ed 100644
+--- a/java/com/android/dialer/app/res/values/colors.xml
++++ b/java/com/android/dialer/app/res/values/colors.xml
+@@ -24,6 +24,6 @@
+   <!--  Colors for blocked numbers list -->
+   <color name="blocked_number_block_color">#F44336</color>
+ 
+-  <color name="nav_item">#80666666</color>
+-  <color name="nav_item_selected">#666666</color>
++  <color name="nav_item">@android:color/system_neutral2_600</color>
++  <color name="nav_item_selected">@android:color/system_accent1_700</color>
+ </resources>
+diff --git a/java/com/android/dialer/lettertile/res/values-night/colors.xml b/java/com/android/dialer/lettertile/res/values-night/colors.xml
+new file mode 100644
+index 0000000..6ae5f44
+--- /dev/null
++++ b/java/com/android/dialer/lettertile/res/values-night/colors.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++  <array name="letter_tile_colors">
++    <item>@android:color/system_accent1_200</item>
++    <item>@android:color/system_accent2_200</item>
++    <item>@android:color/system_accent3_200</item>
++    <item>@android:color/system_accent1_100</item>
++    <item>@android:color/system_accent2_100</item>
++    <item>@android:color/system_accent3_100</item>
++  </array>
++  <color name="letter_tile_font_color">@android:color/system_accent1_900</color>
++  <color name="letter_tile_default_color">@android:color/system_neutral2_100</color>
++</resources>
+diff --git a/java/com/android/dialer/lettertile/res/values/colors.xml b/java/com/android/dialer/lettertile/res/values/colors.xml
+index 406b490..a932f03 100644
+--- a/java/com/android/dialer/lettertile/res/values/colors.xml
++++ b/java/com/android/dialer/lettertile/res/values/colors.xml
+@@ -16,25 +16,17 @@
+   -->
+ <resources>
+   <array name="letter_tile_colors">
+-    <item>#DB4437</item>
+-    <item>#E91E63</item>
+-    <item>#9C27B0</item>
+-    <item>#673AB7</item>
+-    <item>#3F51B5</item>
+-    <item>#4285F4</item>
+-    <item>#039BE5</item>
+-    <item>#0097A7</item>
+-    <item>#009688</item>
+-    <item>#0F9D58</item>
+-    <item>#689F38</item>
+-    <item>#EF6C00</item>
+-    <item>#FF5722</item>
+-    <item>#757575</item>
++    <item>@android:color/system_accent1_600</item>
++    <item>@android:color/system_accent2_600</item>
++    <item>@android:color/system_accent3_600</item>
++    <item>@android:color/system_accent1_500</item>
++    <item>@android:color/system_accent2_500</item>
++    <item>@android:color/system_accent3_500</item>
+   </array>
+ 
+   <color name="spam_contact_background">#A52714</color>
+ 
+-  <color name="letter_tile_default_color">#cccccc</color>
++  <color name="letter_tile_default_color">@android:color/system_neutral2_400</color>
+ 
+-  <color name="letter_tile_font_color">#ffffff</color>
++  <color name="letter_tile_font_color">@android:color/system_accent1_0</color>
+ </resources>
+\ No newline at end of file
+diff --git a/java/com/android/dialer/main/impl/OldMainActivityPeer.java b/java/com/android/dialer/main/impl/OldMainActivityPeer.java
+index feb76ac..24367dc 100644
+--- a/java/com/android/dialer/main/impl/OldMainActivityPeer.java
++++ b/java/com/android/dialer/main/impl/OldMainActivityPeer.java
+@@ -1336,7 +1336,7 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+ 
+       if (ConfigProviderComponent.get(activity)
+           .getConfigProvider()
+-          .getBoolean("enable_new_favorites_tab", false)) {
++          .getBoolean("enable_new_favorites_tab", true)) {
+         android.support.v4.app.Fragment supportFragment =
+             supportFragmentManager.findFragmentByTag(SPEED_DIAL_TAG);
+         showSupportFragment(
+diff --git a/java/com/android/dialer/main/impl/bottomnav/res/drawable/plait_nav_pill.xml b/java/com/android/dialer/main/impl/bottomnav/res/drawable/plait_nav_pill.xml
+new file mode 100644
+index 0000000..4be05db
+--- /dev/null
++++ b/java/com/android/dialer/main/impl/bottomnav/res/drawable/plait_nav_pill.xml
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the selected tab sits on a tinted pill behind its icon -->
++<selector xmlns:android="http://schemas.android.com/apk/res/android">
++  <item android:state_selected="true">
++    <shape android:shape="rectangle">
++      <solid android:color="@color/dialer_theme_color_20pct"/>
++      <corners android:radius="16dp"/>
++    </shape>
++  </item>
++  <item>
++    <shape android:shape="rectangle">
++      <solid android:color="@android:color/transparent"/>
++      <corners android:radius="16dp"/>
++    </shape>
++  </item>
++</selector>
+diff --git a/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_bar_layout.xml b/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_bar_layout.xml
+index 1dd60d8..7c83049 100644
+--- a/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_bar_layout.xml
++++ b/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_bar_layout.xml
+@@ -20,7 +20,7 @@
+     android:layout_width="match_parent"
+     android:layout_height="wrap_content"
+     android:background="?android:attr/colorBackgroundFloating"
+-    android:elevation="8dp">
++    android:elevation="0dp">
+ 
+   <include
+       android:id="@+id/speed_dial_tab"
+diff --git a/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_item.xml b/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_item.xml
+index 02874a9..904e02c 100644
+--- a/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_item.xml
++++ b/java/com/android/dialer/main/impl/bottomnav/res/layout/bottom_nav_item.xml
+@@ -25,14 +25,17 @@
+     android:background="?android:attr/selectableItemBackgroundBorderless">
+ 
+   <FrameLayout
+-      android:layout_width="wrap_content"
+-      android:layout_height="wrap_content">
++      android:layout_width="64dp"
++      android:layout_height="32dp"
++      android:layout_marginTop="6dp"
++      android:duplicateParentState="true"
++      android:background="@drawable/plait_nav_pill">
+ 
+     <ImageView
+         android:id="@+id/bottom_nav_item_image"
+         android:layout_width="24dp"
+         android:layout_height="24dp"
+-        android:layout_marginTop="8dp"/>
++        android:layout_gravity="center"/>
+ 
+     <TextView
+         android:id="@+id/notification_badge"
+diff --git a/java/com/android/dialer/speeddial/res/layout/favorite_item_layout.xml b/java/com/android/dialer/speeddial/res/layout/favorite_item_layout.xml
+index 1299f08..a7d1d9b 100644
+--- a/java/com/android/dialer/speeddial/res/layout/favorite_item_layout.xml
++++ b/java/com/android/dialer/speeddial/res/layout/favorite_item_layout.xml
+@@ -19,21 +19,25 @@
+     android:orientation="vertical"
+     android:layout_width="match_parent"
+     android:layout_height="wrap_content"
+-    android:layout_marginTop="8dp"
+-    android:layout_marginBottom="12dp">
++    android:layout_marginTop="6dp"
++    android:layout_marginBottom="6dp"
++    android:layout_marginStart="6dp"
++    android:layout_marginEnd="6dp"
++    android:background="@drawable/plait_card">
+ 
+   <FrameLayout
+       android:id="@+id/avatar_container"
+       android:layout_width="wrap_content"
+-      android:layout_height="104dp"
++      android:layout_height="72dp"
+       android:layout_gravity="center_horizontal"
+-      android:layout_marginBottom="8dp"
+-      android:minWidth="128dp">
++      android:layout_marginTop="14dp"
++      android:layout_marginBottom="2dp"
++      android:minWidth="72dp">
+ 
+     <QuickContactBadge
+         android:id="@+id/avatar"
+-        android:layout_width="104dp"
+-        android:layout_height="104dp"
++        android:layout_width="72dp"
++        android:layout_height="72dp"
+         android:layout_gravity="center_horizontal"
+         android:clickable="false"/>
+ 
+@@ -78,7 +82,7 @@
+       android:layout_gravity="center_horizontal"
+       android:layout_marginStart="4dp"
+       android:layout_marginEnd="4dp"
+-      android:layout_marginBottom="17dp"
++      android:layout_marginBottom="14dp"
+       android:gravity="center_horizontal"
+       style="@style/Dialer.TextAppearance.Secondary"/>
+ </LinearLayout>
+\ No newline at end of file
+diff --git a/java/com/android/dialer/theme/common/res/values/styles.xml b/java/com/android/dialer/theme/common/res/values/styles.xml
+index 2c6446c..60b3c00 100644
+--- a/java/com/android/dialer/theme/common/res/values/styles.xml
++++ b/java/com/android/dialer/theme/common/res/values/styles.xml
+@@ -22,8 +22,9 @@
+     <item name="android:layout_height">wrap_content</item>
+     <item name="android:layout_margin">4dp</item>
+     <item name="android:baselineAligned">false</item>
+-    <item name="cardCornerRadius">2dp</item>
+-    <item name="cardBackgroundColor">?android:attr/colorBackgroundFloating</item>
++    <item name="cardCornerRadius">16dp</item>
++    <item name="cardElevation">0dp</item>
++    <item name="cardBackgroundColor">@color/plait_surface_container</item>
+   </style>
+ 
+   <!-- This Checkbox style helps align checkboxes with the common list element layout(Image + text) -->
+diff --git a/java/com/android/dialer/theme/hidden/res/drawable/plait_card.xml b/java/com/android/dialer/theme/hidden/res/drawable/plait_card.xml
+new file mode 100644
+index 0000000..5fb0375
+--- /dev/null
++++ b/java/com/android/dialer/theme/hidden/res/drawable/plait_card.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
++  <solid android:color="@color/plait_surface_container"/>
++  <corners android:radius="16dp"/>
++</shape>
+diff --git a/java/com/android/dialer/theme/hidden/res/drawable/plait_circle_outline.xml b/java/com/android/dialer/theme/hidden/res/drawable/plait_circle_outline.xml
+new file mode 100644
+index 0000000..91a9c33
+--- /dev/null
++++ b/java/com/android/dialer/theme/hidden/res/drawable/plait_circle_outline.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
++  <stroke android:width="1dp" android:color="@color/plait_hairline"/>
++</shape>
+diff --git a/java/com/android/dialer/theme/hidden/res/values-night/colors_dialer_dark.xml b/java/com/android/dialer/theme/hidden/res/values-night/colors_dialer_dark.xml
+index 8d04c72..f16011f 100644
+--- a/java/com/android/dialer/theme/hidden/res/values-night/colors_dialer_dark.xml
++++ b/java/com/android/dialer/theme/hidden/res/values-night/colors_dialer_dark.xml
+@@ -15,10 +15,10 @@
+   -->
+ <resources>
+   <!-- Essential theme colors -->
+-  <color name="dialer_theme_color">#5195EA</color>
+-  <color name="dialer_theme_color_20pct">#335195EA</color>
+-  <color name="dialer_secondary_color">#5195EA</color>
++  <color name="dialer_theme_color">@android:color/system_accent1_200</color>
++  <color name="dialer_theme_color_20pct">@android:color/system_accent1_700</color>
++  <color name="dialer_secondary_color">@android:color/system_accent1_200</color>
+   <color name="dialer_ripple_color">#33ffffff</color>
+-  <color name="dialer_search_bar_color">@color/google_grey_900</color>
++  <color name="dialer_search_bar_color">@android:color/system_neutral1_800</color>
+   <color name="settings_primary_dark">#2374CE</color>
+ </resources>
+diff --git a/java/com/android/dialer/theme/hidden/res/values-night/colors_plait.xml b/java/com/android/dialer/theme/hidden/res/values-night/colors_plait.xml
+new file mode 100644
+index 0000000..339a3ba
+--- /dev/null
++++ b/java/com/android/dialer/theme/hidden/res/values-night/colors_plait.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++  <color name="plait_surface_container">@android:color/system_neutral1_800</color>
++  <color name="plait_hairline">#26FFFFFF</color>
++</resources>
+diff --git a/java/com/android/dialer/theme/hidden/res/values/colors_dialer_dark.xml b/java/com/android/dialer/theme/hidden/res/values/colors_dialer_dark.xml
+index e48474e..412e0ca 100644
+--- a/java/com/android/dialer/theme/hidden/res/values/colors_dialer_dark.xml
++++ b/java/com/android/dialer/theme/hidden/res/values/colors_dialer_dark.xml
+@@ -15,8 +15,8 @@
+   -->
+ <resources>
+   <!-- Essential theme colors -->
+-  <color name="dialer_dark_theme_color">#5195EA</color>
+-  <color name="dialer_dark_theme_color_20pct">#335195EA</color>
+-  <color name="dialer_dark_theme_color_dark">#2374CE</color>
+-  <color name="dialer_dark_secondary_color">#5195EA</color>
++  <color name="dialer_dark_theme_color">@android:color/system_accent1_200</color>
++  <color name="dialer_dark_theme_color_20pct">@android:color/system_accent1_700</color>
++  <color name="dialer_dark_theme_color_dark">@android:color/system_neutral1_900</color>
++  <color name="dialer_dark_secondary_color">@android:color/system_accent1_200</color>
+ </resources>
+diff --git a/java/com/android/dialer/theme/hidden/res/values/colors_dialer_light.xml b/java/com/android/dialer/theme/hidden/res/values/colors_dialer_light.xml
+index e4d1e29..c0b62b1 100644
+--- a/java/com/android/dialer/theme/hidden/res/values/colors_dialer_light.xml
++++ b/java/com/android/dialer/theme/hidden/res/values/colors_dialer_light.xml
+@@ -15,12 +15,12 @@
+   -->
+ <resources>
+   <!-- Essential theme colors -->
+-  <color name="dialer_theme_color">#2A56C6</color>
+-  <color name="dialer_theme_color_20pct">#332A56C6</color>
++  <color name="dialer_theme_color">@android:color/system_accent1_600</color>
++  <color name="dialer_theme_color_20pct">@android:color/system_accent1_100</color>
+   <color name="dialer_theme_color_dark">@color/dialer_background_color</color>
+-  <color name="dialer_secondary_color">#F50057</color>
+-  <color name="dialer_background_color">#FAFAFA</color>
++  <color name="dialer_secondary_color">@android:color/system_accent1_600</color>
++  <color name="dialer_background_color">@android:color/system_neutral1_10</color>
+   <color name="dialer_ripple_color">#1f000000</color>
+-  <color name="dialer_search_bar_color">@color/google_grey_50</color>
++  <color name="dialer_search_bar_color">@android:color/system_neutral2_100</color>
+   <color name="settings_primary_dark">#1C3AA9</color>
+ </resources>
+diff --git a/java/com/android/dialer/theme/hidden/res/values/colors_pallet.xml b/java/com/android/dialer/theme/hidden/res/values/colors_pallet.xml
+index 7a092b2..0fa711a 100644
+--- a/java/com/android/dialer/theme/hidden/res/values/colors_pallet.xml
++++ b/java/com/android/dialer/theme/hidden/res/values/colors_pallet.xml
+@@ -14,22 +14,22 @@
+   ~ limitations under the License
+   -->
+ <resources>
+-  <color name="google_blue_900">#174EA6</color>
+-  <color name="google_blue_800">#185ABC</color>
+-  <color name="google_blue_700">#1967D2</color>
+-  <color name="google_blue_600">#1A73E8</color>
+-  <color name="google_blue_500">#4285F4</color>
+-  <color name="google_blue_100">#D2E3FC</color>
+-  <color name="google_blue_50">#E8F0FE</color>
++  <color name="google_blue_900">@android:color/system_accent1_800</color>
++  <color name="google_blue_800">@android:color/system_accent1_700</color>
++  <color name="google_blue_700">@android:color/system_accent1_600</color>
++  <color name="google_blue_600">@android:color/system_accent1_600</color>
++  <color name="google_blue_500">@android:color/system_accent1_400</color>
++  <color name="google_blue_100">@android:color/system_accent1_100</color>
++  <color name="google_blue_50">@android:color/system_accent1_50</color>
+ 
+-  <color name="google_grey_900">#202124</color>
+-  <color name="google_grey_800">#3C4043</color>
+-  <color name="google_grey_700">#5F6368</color>
+-  <color name="google_grey_600">#80868B</color>
+-  <color name="google_grey_500">#9AA0A6</color>
+-  <color name="google_grey_400">#BDC1C6</color>
+-  <color name="google_grey_300">#DADCE0</color>
+-  <color name="google_grey_200">#E8EAED</color>
+-  <color name="google_grey_100">#F1F3F4</color>
+-  <color name="google_grey_50">#F8F9FA</color>
++  <color name="google_grey_900">@android:color/system_neutral1_900</color>
++  <color name="google_grey_800">@android:color/system_neutral1_800</color>
++  <color name="google_grey_700">@android:color/system_neutral2_600</color>
++  <color name="google_grey_600">@android:color/system_neutral2_500</color>
++  <color name="google_grey_500">@android:color/system_neutral2_400</color>
++  <color name="google_grey_400">@android:color/system_neutral2_300</color>
++  <color name="google_grey_300">@android:color/system_neutral2_200</color>
++  <color name="google_grey_200">@android:color/system_neutral1_100</color>
++  <color name="google_grey_100">@android:color/system_neutral1_50</color>
++  <color name="google_grey_50">@android:color/system_neutral1_10</color>
+ </resources>
+diff --git a/java/com/android/dialer/theme/hidden/res/values/colors_plait.xml b/java/com/android/dialer/theme/hidden/res/values/colors_plait.xml
+new file mode 100644
+index 0000000..4ec892d
+--- /dev/null
++++ b/java/com/android/dialer/theme/hidden/res/values/colors_plait.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the surface a card sits on (the unified style: depth is tone, not outlines) and the line inside a group. -->
++<resources>
++  <color name="plait_surface_container">@android:color/system_neutral2_100</color>
++  <color name="plait_hairline">#1F000000</color>
++</resources>
+diff --git a/java/com/android/incallui/theme/res/values-night/colors.xml b/java/com/android/incallui/theme/res/values-night/colors.xml
+index 83357c0..fb49a3f 100644
+--- a/java/com/android/incallui/theme/res/values-night/colors.xml
++++ b/java/com/android/incallui/theme/res/values-night/colors.xml
+@@ -1,4 +1,4 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-  <color name="incall_dialpad_background">#000000</color>
++  <color name="incall_dialpad_background">@android:color/system_neutral1_900</color>
+ </resources>
+diff --git a/java/com/android/incallui/theme/res/values/colors.xml b/java/com/android/incallui/theme/res/values/colors.xml
+index 059fe59..3bd8634 100644
+--- a/java/com/android/incallui/theme/res/values/colors.xml
++++ b/java/com/android/incallui/theme/res/values/colors.xml
+@@ -20,7 +20,7 @@
+   <!-- Used with some smaller texts in manage conference screen. -->
+   <color name="conference_call_manager_secondary_text_color">#999999</color>
+ 
+-  <color name="incall_dialpad_background">#ffffff</color>
++  <color name="incall_dialpad_background">@android:color/system_neutral1_10</color>
+ 
+   <!-- Background color for status bar. For portrait this will be ignored. -->
+   <color name="statusbar_background_color">?android:attr/colorPrimary</color>
+@@ -53,11 +53,11 @@
+     <item>#841F10</item>
+   </array>
+ 
+-  <color name="incall_background_gradient_top">#E91141BB</color>
+-  <color name="incall_background_gradient_middle">#E91141BB</color>
+-  <color name="incall_background_gradient_bottom">#CC229FEB</color>
++  <color name="incall_background_gradient_top">@android:color/system_accent1_800</color>
++  <color name="incall_background_gradient_middle">@android:color/system_accent1_800</color>
++  <color name="incall_background_gradient_bottom">@android:color/system_accent1_900</color>
+ 
+-  <color name="incall_background_multiwindow">#E91141BB</color>
++  <color name="incall_background_multiwindow">@android:color/system_accent1_800</color>
+ 
+   <color name="incall_background_gradient_spam_top">#E5A30B0B</color>
+   <color name="incall_background_gradient_spam_middle">#D6C01111</color>
+-- 
+2.56.0
+

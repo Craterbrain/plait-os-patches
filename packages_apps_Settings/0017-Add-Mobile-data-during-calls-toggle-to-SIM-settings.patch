@@ -1,0 +1,132 @@
+From dee9af18c6735c149835f697d268945a4038a00a Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 20:27:27 -0600
+Subject: [PATCH 17/18] Add Mobile data during calls toggle to SIM settings
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ res/values/plait_strings.xml                  |  4 ++
+ res/xml/mobile_network_settings.xml           |  8 +++
+ .../DataDuringCallsPreferenceController.java  | 65 +++++++++++++++++++
+ .../telephony/MobileNetworkSettings.java      |  1 +
+ 4 files changed, 78 insertions(+)
+ create mode 100644 src/com/android/settings/network/telephony/DataDuringCallsPreferenceController.java
+
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+index c7e285c..de87fd6 100644
+--- a/res/values/plait_strings.xml
++++ b/res/values/plait_strings.xml
+@@ -140,4 +140,8 @@
+     <!-- Shared values -->
+     <string name="plait_default_entry">Default</string>
+     <string name="plait_off">Off</string>
++
++    <!-- Mobile data during calls (SIM page) -->
++    <string name="plait_data_during_calls_title">Mobile data during calls</string>
++    <string name="plait_data_during_calls_summary">Use this SIM for mobile data while you\'re on a call with it, since the data SIM can\'t be used then</string>
+ </resources>
+diff --git a/res/xml/mobile_network_settings.xml b/res/xml/mobile_network_settings.xml
+index 3179140..6b9f293 100644
+--- a/res/xml/mobile_network_settings.xml
++++ b/res/xml/mobile_network_settings.xml
+@@ -92,6 +92,14 @@
+             android:summary="@string/auto_data_switch_summary"
+             settings:controller="com.android.settings.network.telephony.AutoDataSwitchPreferenceController"/>
+ 
++        <!-- PlaitOS: data on this SIM during its calls (DataDuringCallsPreferenceController) -->
++        <SwitchPreferenceCompat
++            android:key="data_during_calls"
++            android:order="85"
++            android:title="@string/plait_data_during_calls_title"
++            android:summary="@string/plait_data_during_calls_summary"
++            settings:controller="com.android.settings.network.telephony.DataDuringCallsPreferenceController"/>
++
+         <!-- Settings search is handled by RoamingSearchItem. -->
+         <com.android.settings.spa.preference.ComposePreference
+             android:key="button_roaming_key"
+diff --git a/src/com/android/settings/network/telephony/DataDuringCallsPreferenceController.java b/src/com/android/settings/network/telephony/DataDuringCallsPreferenceController.java
+new file mode 100644
+index 0000000..16f3cc7
+--- /dev/null
++++ b/src/com/android/settings/network/telephony/DataDuringCallsPreferenceController.java
+@@ -0,0 +1,65 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.network.telephony;
++
++import android.content.Context;
++import android.telephony.SubscriptionManager;
++import android.telephony.TelephonyManager;
++
++import androidx.annotation.NonNull;
++import androidx.annotation.Nullable;
++
++/**
++ * PlaitOS: "Mobile data during calls", the toggle Android 14 removed. On a DSDS phone the modem serves one SIM at a
++ * time during a call, so a call on the other SIM suspends mobile data on the data SIM. With this on, the calling SIM
++ * carries data for the length of the call only (MOBILE_DATA_POLICY_DATA_ON_NON_DEFAULT_DURING_VOICE_CALL, still
++ * honoured by telephony), unlike "Switch mobile data automatically", which also switches outside calls.
++ *
++ * Shown on the non-data SIM's page; unlike the auto-switch toggle it stays visible with the dual-SIM onboarding flow.
++ */
++public class DataDuringCallsPreferenceController extends AutoDataSwitchPreferenceController {
++
++    @Nullable
++    private TelephonyManager mTelephony;
++
++    public DataDuringCallsPreferenceController(
++            @NonNull Context context, @NonNull String preferenceKey) {
++        super(context, preferenceKey);
++    }
++
++    @Override
++    void init(int subId) {
++        super.init(subId);
++        mTelephony = mContext.getSystemService(TelephonyManager.class)
++                .createForSubscriptionId(subId);
++    }
++
++    @Override
++    public boolean isChecked() {
++        return mTelephony != null && mTelephony.isMobileDataPolicyEnabled(
++                TelephonyManager.MOBILE_DATA_POLICY_DATA_ON_NON_DEFAULT_DURING_VOICE_CALL);
++    }
++
++    @Override
++    public boolean setChecked(boolean isChecked) {
++        if (mTelephony != null) {
++            mTelephony.setMobileDataPolicyEnabled(
++                    TelephonyManager.MOBILE_DATA_POLICY_DATA_ON_NON_DEFAULT_DURING_VOICE_CALL,
++                    isChecked);
++        }
++        return true;
++    }
++
++    @Override
++    public int getAvailabilityStatus(int subId) {
++        if (!SubscriptionManager.isValidSubscriptionId(subId)
++                || SubscriptionManager.getDefaultDataSubscriptionId() == subId
++                || !hasMobileData()) {
++            return CONDITIONALLY_UNAVAILABLE;
++        }
++        return AVAILABLE;
++    }
++}
+diff --git a/src/com/android/settings/network/telephony/MobileNetworkSettings.java b/src/com/android/settings/network/telephony/MobileNetworkSettings.java
+index 4d73dbc..3a00476 100644
+--- a/src/com/android/settings/network/telephony/MobileNetworkSettings.java
++++ b/src/com/android/settings/network/telephony/MobileNetworkSettings.java
+@@ -273,6 +273,7 @@ public class MobileNetworkSettings extends AbstractMobileNetworkSettings impleme
+         // settings (backup calling).
+         new ViewModelProvider(this).get(CrossSimCallingViewModel.class);
+         use(AutoDataSwitchPreferenceController.class).init(mSubId);
++        use(DataDuringCallsPreferenceController.class).init(mSubId);
+         if (!isCatalystEnabled()) {
+             use(DisabledSubscriptionController.class).init(mSubId);
+         }
+-- 
+2.56.0
+

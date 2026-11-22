@@ -34,7 +34,7 @@ public final class SuClient {
         try {
             s.connect(new LocalSocketAddress(SuServer.PATH, LocalSocketAddress.Namespace.FILESYSTEM));
         } catch (Exception e) {
-            System.err.println("su: Plait Broker is not running (" + e.getMessage() + ")");
+            System.err.println("su: Broker is not running (" + e.getMessage() + ")");
             System.exit(1);
         }
         OutputStream out = s.getOutputStream();

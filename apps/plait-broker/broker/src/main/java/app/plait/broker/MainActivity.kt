@@ -1,5 +1,9 @@
 package app.plait.broker
 
+import app.plait.design.PlaitSwitch
+import app.plait.design.PlaitFilterChip
+import androidx.compose.ui.graphics.compositeOver
+import app.plait.design.PlaitIcon
 import android.content.pm.PackageManager
 import android.content.Intent
 import android.os.Bundle
@@ -26,20 +30,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,7 +44,6 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -192,24 +185,24 @@ private fun BrokerApp(openUid: MutableIntState) {
                             value = query, onValueChange = { query = it }, singleLine = true,
                             placeholder = { Text("Search apps") }, modifier = Modifier.fillMaxWidth()
                         )
-                        else -> Text("Plait Broker")
+                        else -> Text("Broker")
                     }
                 },
                 navigationIcon = {
                     if (selected != null || page != Page.LIST) {
                         IconButton(onClick = { if (selected != null) selectedUid = null else page = Page.LIST }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            PlaitIcon(PlaitIcon.Back, contentDescription = "Back")
                         }
                     }
                 },
                 actions = {
                     if (selected == null && page == Page.LIST) {
                         if (searching) {
-                            IconButton(onClick = { searching = false; query = "" }) { Icon(Icons.Default.Close, contentDescription = "Close search") }
+                            IconButton(onClick = { searching = false; query = "" }) { PlaitIcon(PlaitIcon.Close, contentDescription = "Close search") }
                         } else {
-                            IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, contentDescription = "Search") }
+                            IconButton(onClick = { searching = true }) { PlaitIcon(PlaitIcon.Search, contentDescription = "Search") }
                             TextButton(onClick = { page = Page.ACTIVITY }) { Text("Activity") }
-                            IconButton(onClick = { page = Page.SETTINGS }) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
+                            IconButton(onClick = { page = Page.SETTINGS }) { PlaitIcon(PlaitIcon.Settings, contentDescription = "Settings") }
                         }
                     }
                 }
@@ -276,7 +269,7 @@ private fun SettingsPage(
     if (confirmGates) {
         AlertDialog(
             onDismissRequest = { confirmGates = false },
-            icon = { Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            icon = { PlaitIcon(PlaitIcon.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Switch on gated functions?") },
             text = {
                 Text(
@@ -292,7 +285,7 @@ private fun SettingsPage(
     LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item(key = "hosts") {
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
             ) {
@@ -317,14 +310,14 @@ private fun SettingsPage(
         item(key = "grants") {
             val context = androidx.compose.ui.platform.LocalContext.current
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
             ) {
                 Column(Modifier.padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
                     Text("Signed grants", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Full-backup access for Plait Backup, signed by this app's hardware key. Review or revoke them here.",
+                        "Full-backup access for Backup, signed by this app's hardware key. Review or revoke them here.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     TextButton(
@@ -428,7 +421,7 @@ private fun AppList(entries: List<AppEntry>, query: String, modeFilter: String?,
         item {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(MODE_PERMISSIVE, MODE_RESTRICTED, MODE_DENIED).forEach { m ->
-                    FilterChip(selected = modeFilter == m, onClick = { onFilter(m) }, label = { Text(modeTitle(m)) })
+                    PlaitFilterChip(modeTitle(m), modeFilter == m, { onFilter(m) })
                 }
             }
         }
@@ -444,7 +437,7 @@ private fun AppList(entries: List<AppEntry>, query: String, modeFilter: String?,
         items(shown, key = { it.uid }) { e ->
             val accent = MaterialTheme.colorScheme.primary
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
             ) {
@@ -669,7 +662,7 @@ private fun SettingCard(
     val accent = MaterialTheme.colorScheme.primary
     val expandable = children.isNotEmpty() && onExpand != null
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
     ) {
@@ -692,8 +685,8 @@ private fun SettingCard(
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (expandable) {
-                    Icon(
-                        if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    PlaitIcon(
+                        if (expanded) PlaitIcon.KeyboardArrowUp else PlaitIcon.KeyboardArrowDown,
                         contentDescription = if (expanded) "Collapse" else "Expand",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp)
@@ -701,7 +694,7 @@ private fun SettingCard(
                 }
                 if (checked != null) {
                     Spacer(Modifier.width(8.dp))
-                    Switch(checked = checked, onCheckedChange = onToggle)
+                    PlaitSwitch(checked, onToggle)
                 }
             }
             if (expandable && expanded) {
@@ -719,7 +712,7 @@ private fun SettingCard(
                             Text(c.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Spacer(Modifier.width(12.dp))
-                        Switch(checked = c.checked, onCheckedChange = c.onToggle, modifier = Modifier.scale(0.85f))
+                        PlaitSwitch(c.checked, c.onToggle, modifier = Modifier.scale(0.85f))
                     }
                 }
                 Spacer(Modifier.size(10.dp))
@@ -769,8 +762,8 @@ private fun ActivityLog(lines: List<String>, entries: List<AppEntry>, onOpenApp:
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !refusedOnly, onClick = { refusedOnly = false }, label = { Text("All") })
-                FilterChip(selected = refusedOnly, onClick = { refusedOnly = true }, label = { Text("Refused") })
+                PlaitFilterChip("All", !refusedOnly, { refusedOnly = false })
+                PlaitFilterChip("Refused", refusedOnly, { refusedOnly = true })
             }
         }
         if (shown.isEmpty()) item { Text("Nothing yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -779,7 +772,7 @@ private fun ActivityLog(lines: List<String>, entries: List<AppEntry>, onOpenApp:
             val entry = entries.firstOrNull { it.pkg == l.who || it.uid.toString() == l.who }
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (l.refused) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer
+                color = if (l.refused) MaterialTheme.colorScheme.error.copy(alpha = 0.16f).compositeOver(MaterialTheme.colorScheme.surfaceContainer) else MaterialTheme.colorScheme.surfaceContainer
             ) {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(

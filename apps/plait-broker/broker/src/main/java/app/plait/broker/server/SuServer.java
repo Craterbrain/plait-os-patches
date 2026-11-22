@@ -41,6 +41,7 @@ final class SuServer {
     private static final int EXIT = Integer.MIN_VALUE;
     private static final int MAX_SUBSTITUTION_DEPTH = 4;
     private static final int MAX_CAPTURE = 1 << 20;
+    private static final int MAX_CLIENTS = 16;
 
     private final BrokerService broker;
 
@@ -65,9 +66,24 @@ final class SuServer {
             sock.setReadable(true, false);
             sock.setWritable(true, false);
             LocalServerSocket ss = new LocalServerSocket(server.getFileDescriptor());
+            // A few connections at a time: each holds a thread, and any app can connect
+            java.util.concurrent.Semaphore slots = new java.util.concurrent.Semaphore(MAX_CLIENTS);
             while (true) {
                 LocalSocket client = ss.accept();
-                new Thread(() -> handle(client), "su-client").start();
+                if (!slots.tryAcquire()) {
+                    try {
+                        client.close();
+                    } catch (IOException ignored) {
+                    }
+                    continue;
+                }
+                new Thread(() -> {
+                    try {
+                        handle(client);
+                    } finally {
+                        slots.release();
+                    }
+                }, "su-client").start();
             }
         } catch (IOException e) {
             android.util.Log.w("PlaitBroker", "su server stopped", e);

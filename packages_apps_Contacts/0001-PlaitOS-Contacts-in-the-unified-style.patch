@@ -1,0 +1,425 @@
+From 340c4f9f424842ce4884cedd0aa1c708df45a05d Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 21:18:16 -0600
+Subject: [PATCH] PlaitOS: Contacts in the unified style
+
+Palette from the system's wallpaper tones (day and night), tonal avatar colours, contact-card sections as 16 dp tonal cards without a
+shadow, section titles in the app accent instead of a colour taken from the contact's photo (unreadable on dark photos).
+versionCode 10736 so it installs as an update while iterating.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ AndroidManifest.xml                           |  2 +-
+ res/values-night/colors.xml                   | 86 ++++++++-----------
+ res/values/colors.xml                         | 70 ++++++---------
+ res/values/dimens.xml                         |  6 +-
+ .../quickcontact/ExpandingEntryCardView.java  |  5 +-
+ 5 files changed, 69 insertions(+), 100 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 4cff3c5..6123e82 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -16,7 +16,7 @@
+ 
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+           package="com.android.contacts"
+-          android:versionCode="10734"
++          android:versionCode="10736"
+           android:versionName="1.7.34">
+ 
+     <uses-sdk
+diff --git a/res/values-night/colors.xml b/res/values-night/colors.xml
+index 2b80039..aacbbf4 100644
+--- a/res/values-night/colors.xml
++++ b/res/values-night/colors.xml
+@@ -19,21 +19,21 @@
+     <color name="text_color_secondary">#D9FFFFFF</color>
+     <color name="hint_text_color">#61FFFFFF</color>
+ 
+-    <color name="quickcontact_entry_sub_header_text_color">#B4B4B4</color>
+-    <color name="quickcontact_entry_header_text_color">#D6D6D6</color>
++    <color name="quickcontact_entry_sub_header_text_color">@android:color/system_neutral2_300</color>
++    <color name="quickcontact_entry_header_text_color">@android:color/system_neutral1_100</color>
+ 
+-    <color name="action_bar_background">#CC2A56C6</color>
++    <color name="action_bar_background">@android:color/system_accent1_700</color>
+ 
+     <color name="nav_item_selected_background">#99FFFFFF</color>
+ 
+     <color name="actionbar_background_color">@color/primary_color</color>
+ 
+-    <color name="contextual_selection_bar_color">#060606</color>
++    <color name="contextual_selection_bar_color">@android:color/system_accent1_800</color>
+     <!-- Color of the status bar above the contextual selection bar. -->
+     <color name="contextual_selection_bar_status_bar_color">#5B5B5B</color>
+ 
+-    <color name="primary_color_dark">#265AB6</color>
+-    <color name="primary_color">#3872D7</color>
++    <color name="primary_color_dark">@android:color/system_accent1_800</color>
++    <color name="primary_color">@android:color/system_accent1_200</color>
+ 
+     <color name="group_primary_color_dark">#546E7A</color>
+     <color name="group_primary_color">#607D8B</color>
+@@ -45,10 +45,10 @@
+     <color name="expanding_entry_card_button_text_color">@android:color/white</color>
+ 
+     <!-- Background color for an ExpandingEntryCard -->
+-    <color name="expanding_entry_card_background_color">#000000</color>
++    <color name="expanding_entry_card_background_color">@android:color/system_neutral1_800</color>
+ 
+     <!-- Color of the margin for cards -->
+-    <color name="card_margin_color">#252323</color>
++    <color name="card_margin_color">@android:color/system_neutral1_900</color>
+ 
+     <color name="call_arrow_green">#2aad6f</color>
+     <color name="call_arrow_red">#ff2e58</color>
+@@ -78,21 +78,21 @@
+     <color name="swipe_refresh_color4">#f4b400</color>
+ 
+     <!-- Divider color for header separator -->
+-    <color name="primary_text_color">#CBCACA</color>
++    <color name="primary_text_color">@android:color/system_neutral1_100</color>
+ 
+     <color name="secondary_text_color">@color/dialtacts_secondary_text_color</color>
+ 
+     <!-- Color of the theme of the People app -->
+-    <color name="people_app_theme_color">#C9C9C9</color>
++    <color name="people_app_theme_color">@android:color/system_neutral1_100</color>
+ 
+     <!-- Color of image view placeholder. -->
+     <color name="image_placeholder">#393838</color>
+ 
+     <!-- Primary text color in the Phone app -->
+-    <color name="dialtacts_primary_text_color">#D5D5D5</color>
++    <color name="dialtacts_primary_text_color">@android:color/system_neutral1_100</color>
+ 
+     <!-- Secondary text color in the Phone app -->
+-    <color name="dialtacts_secondary_text_color">#C8C8C8</color>
++    <color name="dialtacts_secondary_text_color">@android:color/system_neutral2_300</color>
+ 
+     <color name="shortcut_overlay_text_background">#7FFFFFFF</color>
+ 
+@@ -107,52 +107,36 @@
+         These colors are also used by MaterialColorMapUtils to generate primary activity colors.
+     -->
+     <array name="letter_tile_colors">
+-        <item>#DB4437</item>
+-        <item>#E91E63</item>
+-        <item>#9C27B0</item>
+-        <item>#673AB7</item>
+-        <item>#3F51B5</item>
+-        <item>#4285F4</item>
+-        <item>#039BE5</item>
+-        <item>#0097A7</item>
+-        <item>#009688</item>
+-        <item>#0F9D58</item>
+-        <item>#689F38</item>
+-        <item>#EF6C00</item>
+-        <item>#FF5722</item>
+-        <item>#757575</item>
++        <item>@android:color/system_accent1_700</item>
++        <item>@android:color/system_accent2_700</item>
++        <item>@android:color/system_accent3_700</item>
++        <item>@android:color/system_accent1_600</item>
++        <item>@android:color/system_accent2_600</item>
++        <item>@android:color/system_accent3_600</item>
+     </array>
+ 
+     <!-- Darker versions of letter_tile_colors, two shades darker. These colors are used
+         for settings secondary activity colors. -->
+     <array name="letter_tile_colors_dark">
+-        <item>#C53929</item>
+-        <item>#C2185B</item>
+-        <item>#7B1FA2</item>
+-        <item>#512DA8</item>
+-        <item>#303F9F</item>
+-        <item>#3367D6</item>
+-        <item>#0277BD</item>
+-        <item>#006064</item>
+-        <item>#00796B</item>
+-        <item>#0B8043</item>
+-        <item>#33691E</item>
+-        <item>#E65100</item>
+-        <item>#E64A19</item>
+-        <item>#424242</item>
++        <item>@android:color/system_accent1_800</item>
++        <item>@android:color/system_accent2_800</item>
++        <item>@android:color/system_accent3_800</item>
++        <item>@android:color/system_accent1_700</item>
++        <item>@android:color/system_accent2_700</item>
++        <item>@android:color/system_accent3_700</item>
+     </array>
+ 
+     <!-- The default color used for tinting photos when no color can be extracted via Palette,
+             this is Blue Grey 500 -->
+-    <color name="quickcontact_default_photo_tint_color">#607D8B</color>
++    <color name="quickcontact_default_photo_tint_color">@android:color/system_accent2_700</color>
+     <!-- The default secondary color when no color can be extracted via Palette,
+             this is Blue Grey 700 -->
+-    <color name="quickcontact_default_photo_tint_color_dark">#455A64</color>
++    <color name="quickcontact_default_photo_tint_color_dark">@android:color/system_accent2_800</color>
+ 
+ 
+-    <color name="letter_tile_default_color">#4B4B4B</color>
++    <color name="letter_tile_default_color">@android:color/system_neutral2_700</color>
+ 
+-    <color name="letter_tile_font_color">#000000</color>
++    <color name="letter_tile_font_color">@android:color/system_accent1_100</color>
+ 
+     <!-- Color of the title to the Frequently Contacted section -->
+     <color name="frequently_contacted_title_color">@color/actionbar_background_color</color>
+@@ -167,13 +151,13 @@
+     <!-- Text color of the search box text as entered by user  -->
+     <color name="searchbox_text_color">#FFFFFF</color>
+     <!-- Background color of the search box -->
+-    <color name="searchbox_background_color">#000000</color>
++    <color name="searchbox_background_color">@android:color/system_neutral1_800</color>
+ 
+     <color name="searchbox_hint_text_color">#66FFFFFF</color>
+ 
+     <!-- Color of the background of the contact detail and editor pages -->
+-    <color name="background_primary">#181717</color>
+-    <color name="contact_all_list_background_color">#2C2C2C</color>
++    <color name="background_primary">@android:color/system_neutral1_900</color>
++    <color name="contact_all_list_background_color">@android:color/system_neutral1_900</color>
+ 
+     <!-- Text color used for character counter when the max limit has been exceeded -->
+     <color name="call_subject_limit_exceeded">#d1041c</color>
+@@ -201,22 +185,22 @@
+     <color name="custom_filter_divider">#444444</color>
+ 
+     <!-- Primary text color in Contacts app -->
+-    <color name="contacts_text_color">#EAEAEA</color>
++    <color name="contacts_text_color">@android:color/system_neutral1_100</color>
+ 
+     <!-- tint color for device account icons -->
+     <color name="device_account_tint_color">#7f7f7f</color>
+ 
+     <!-- Background color for sync-off alert. -->
+-    <color name="alert_background">#585858</color>
++    <color name="alert_background">@android:color/system_neutral1_800</color>
+ 
+     <!-- Divider color in navigation drawer -->
+     <color name="drawer_divider_color">#252424</color>
+ 
+     <!-- Background color for the navigation drawer -->
+-    <color name="navigation_drawer_background_color">#181717</color>
++    <color name="navigation_drawer_background_color">@android:color/system_neutral1_900</color>
+ 
+     <!-- Background color for the current selected item in the navigation drawer -->
+-    <color name="drawer_selected_color">#1F1F1F</color>
++    <color name="drawer_selected_color">@android:color/system_neutral1_800</color>
+ 
+     <color name="sold_background_color">@android:color/black</color>
+     <color name="navigation_bar_color">@color/background_primary</color>
+diff --git a/res/values/colors.xml b/res/values/colors.xml
+index 87fffa7..506455e 100644
+--- a/res/values/colors.xml
++++ b/res/values/colors.xml
+@@ -22,7 +22,7 @@
+     <color name="quickcontact_entry_sub_header_text_color">#737373</color>
+     <color name="quickcontact_entry_header_text_color">#202020</color>
+ 
+-    <color name="action_bar_background">#2a56c6</color>
++    <color name="action_bar_background">@android:color/system_accent1_600</color>
+ 
+     <color name="nav_item_selected_background">#0f000000</color>
+ 
+@@ -30,12 +30,12 @@
+ 
+     <color name="actionbar_background_color">@color/primary_color</color>
+ 
+-    <color name="contextual_selection_bar_color">#f6f6f6</color>
++    <color name="contextual_selection_bar_color">@android:color/system_accent1_100</color>
+     <!-- Color of the status bar above the contextual selection bar. -->
+     <color name="contextual_selection_bar_status_bar_color">#bababa</color>
+ 
+-    <color name="primary_color_dark">#1c3aa9</color>
+-    <color name="primary_color">#2a56c6</color>
++    <color name="primary_color_dark">@android:color/system_accent1_700</color>
++    <color name="primary_color">@android:color/system_accent1_600</color>
+ 
+     <color name="group_primary_color_dark">#546E7A</color>
+     <color name="group_primary_color">#607D8B</color>
+@@ -52,10 +52,10 @@
+     <color name="expanding_entry_card_button_text_color">@android:color/black</color>
+ 
+     <!-- Background color for an ExpandingEntryCard -->
+-    <color name="expanding_entry_card_background_color">#ffffff</color>
++    <color name="expanding_entry_card_background_color">@android:color/system_neutral2_100</color>
+ 
+     <!-- Color of the margin for cards -->
+-    <color name="card_margin_color">#f4f4f4</color>
++    <color name="card_margin_color">@android:color/system_neutral1_10</color>
+ 
+     <color name="call_arrow_green">#2aad6f</color>
+     <color name="call_arrow_red">#ff2e58</color>
+@@ -81,7 +81,7 @@
+     <!-- Colors of swipeRefreshLayout's spinning circle. -->
+     <color name="swipe_refresh_color1">#0f9d58</color>
+     <color name="swipe_refresh_color2">#dd4b37</color>
+-    <color name="swipe_refresh_color3">#4285f4</color>
++    <color name="swipe_refresh_color3">@android:color/system_accent1_600</color>
+     <color name="swipe_refresh_color4">#f4b400</color>
+ 
+     <!-- Divider color for header separator -->
+@@ -117,50 +117,34 @@
+         These colors are also used by MaterialColorMapUtils to generate primary activity colors.
+     -->
+     <array name="letter_tile_colors">
+-        <item>#DB4437</item>
+-        <item>#E91E63</item>
+-        <item>#9C27B0</item>
+-        <item>#673AB7</item>
+-        <item>#3F51B5</item>
+-        <item>#4285F4</item>
+-        <item>#039BE5</item>
+-        <item>#0097A7</item>
+-        <item>#009688</item>
+-        <item>#0F9D58</item>
+-        <item>#689F38</item>
+-        <item>#EF6C00</item>
+-        <item>#FF5722</item>
+-        <item>#757575</item>
++        <item>@android:color/system_accent1_600</item>
++        <item>@android:color/system_accent2_600</item>
++        <item>@android:color/system_accent3_600</item>
++        <item>@android:color/system_accent1_500</item>
++        <item>@android:color/system_accent2_500</item>
++        <item>@android:color/system_accent3_500</item>
+     </array>
+ 
+     <!-- Darker versions of letter_tile_colors, two shades darker. These colors are used
+         for settings secondary activity colors. -->
+     <array name="letter_tile_colors_dark">
+-        <item>#C53929</item>
+-        <item>#C2185B</item>
+-        <item>#7B1FA2</item>
+-        <item>#512DA8</item>
+-        <item>#303F9F</item>
+-        <item>#3367D6</item>
+-        <item>#0277BD</item>
+-        <item>#006064</item>
+-        <item>#00796B</item>
+-        <item>#0B8043</item>
+-        <item>#33691E</item>
+-        <item>#E65100</item>
+-        <item>#E64A19</item>
+-        <item>#424242</item>
++        <item>@android:color/system_accent1_700</item>
++        <item>@android:color/system_accent2_700</item>
++        <item>@android:color/system_accent3_700</item>
++        <item>@android:color/system_accent1_600</item>
++        <item>@android:color/system_accent2_600</item>
++        <item>@android:color/system_accent3_600</item>
+     </array>
+ 
+     <!-- The default color used for tinting photos when no color can be extracted via Palette,
+             this is Blue Grey 500 -->
+-    <color name="quickcontact_default_photo_tint_color">#607D8B</color>
++    <color name="quickcontact_default_photo_tint_color">@android:color/system_accent2_600</color>
+     <!-- The default secondary color when no color can be extracted via Palette,
+             this is Blue Grey 700 -->
+-    <color name="quickcontact_default_photo_tint_color_dark">#455A64</color>
++    <color name="quickcontact_default_photo_tint_color_dark">@android:color/system_accent2_700</color>
+ 
+ 
+-    <color name="letter_tile_default_color">#cccccc</color>
++    <color name="letter_tile_default_color">@android:color/system_neutral2_400</color>
+ 
+     <color name="letter_tile_font_color">#ffffff</color>
+ 
+@@ -183,15 +167,15 @@
+     <!-- Text color of the search box text as entered by user  -->
+     <color name="searchbox_text_color">#000000</color>
+     <!-- Background color of the search box -->
+-    <color name="searchbox_background_color">#ffffff</color>
++    <color name="searchbox_background_color">@android:color/system_neutral2_100</color>
+ 
+     <color name="searchbox_hint_text_color">#66000000</color>
+ 
+     <color name="search_shortcut_icon_color">@color/primary_color</color>
+ 
+     <!-- Color of the background of the contact detail and editor pages -->
+-    <color name="background_primary">#f9f9f9</color>
+-    <color name="contact_all_list_background_color">#FFFFFF</color>
++    <color name="background_primary">@android:color/system_neutral1_10</color>
++    <color name="contact_all_list_background_color">@android:color/system_neutral1_10</color>
+ 
+     <!-- Text color used for character counter when the max limit has been exceeded -->
+     <color name="call_subject_limit_exceeded">#d1041c</color>
+@@ -218,7 +202,7 @@
+     <color name="account_filter_text_color">@color/actionbar_text_color_black</color>
+     <color name="custom_filter_divider">#dbdbdb</color>
+ 
+-    <color name="material_star_pink">#f50057</color>
++    <color name="material_star_pink">@android:color/system_accent1_600</color>
+ 
+     <!-- Primary text color in Contacts app -->
+     <color name="contacts_text_color">#333333</color>
+@@ -233,7 +217,7 @@
+     <color name="drawer_divider_color">#E5E5E5</color>
+ 
+     <!-- Background color for the navigation drawer -->
+-    <color name="navigation_drawer_background_color">#FAFAFA</color>
++    <color name="navigation_drawer_background_color">@android:color/system_neutral1_10</color>
+ 
+     <!-- Background color for the current selected item in the navigation drawer -->
+     <color name="drawer_selected_color">#E8E8E8</color>
+diff --git a/res/values/dimens.xml b/res/values/dimens.xml
+index 6d100ac..50cc952 100644
+--- a/res/values/dimens.xml
++++ b/res/values/dimens.xml
+@@ -118,14 +118,14 @@
+     <dimen name="contact_filter_header_min_height">24dip</dimen>
+ 
+     <!-- Margins for ExpandingEntryCardView -->
+-    <dimen name="expanding_entry_card_marginStartEnd">8dp</dimen>
++    <dimen name="expanding_entry_card_marginStartEnd">12dp</dimen>
+     <dimen name="expanding_entry_card_marginBottom">12dp</dimen>
+ 
+     <!-- Top margin for the communication card, used to add space from header. -->
+     <dimen name="first_card_marginTop">12dp</dimen>
+ 
+     <!-- Elevation of an ExpandingEntryCard, for the sake of shadow casting -->
+-    <dimen name="expanding_entry_card_elevation">2dp</dimen>
++    <dimen name="expanding_entry_card_elevation">0dp</dimen>
+     <!-- Elevation of the QuickContact's Toolbar, for the sake of shadow casting -->
+     <dimen name="quick_contact_toolbar_elevation">4.5dp</dimen>
+ 
+@@ -160,7 +160,7 @@
+     <dimen name="expanding_entry_card_item_icon_margin_right">12dp</dimen>
+     <dimen name="expanding_entry_card_item_header_only_margin_top">6dp</dimen>
+ 
+-    <dimen name="expanding_entry_card_card_corner_radius">2dp</dimen>
++    <dimen name="expanding_entry_card_card_corner_radius">16dp</dimen>
+     <dimen name="expanding_entry_card_header_margin_bottom">2dp</dimen>
+     <!-- The top margin when the sub header and text views are both gone -->
+     <dimen name="expanding_entry_card_item_header_only_margin_bottom">2dp</dimen>
+diff --git a/src/com/android/contacts/quickcontact/ExpandingEntryCardView.java b/src/com/android/contacts/quickcontact/ExpandingEntryCardView.java
+index d462a0e..d124ebc 100644
+--- a/src/com/android/contacts/quickcontact/ExpandingEntryCardView.java
++++ b/src/com/android/contacts/quickcontact/ExpandingEntryCardView.java
+@@ -593,7 +593,8 @@ public class ExpandingEntryCardView extends CardView {
+         if (mThemeColor != 0 && mThemeColorFilter != null) {
+             // Title
+             if (mTitleTextView != null) {
+-                mTitleTextView.setTextColor(mThemeColor);
++                // PlaitOS: the section title uses the app's accent: a colour taken from the contact's photo can be unreadable on the card
++                mTitleTextView.setTextColor(getContext().getColor(R.color.primary_color));
+             }
+ 
+             // Entry icons
+@@ -622,7 +623,7 @@ public class ExpandingEntryCardView extends CardView {
+             }
+ 
+             // Expand/Collapse
+-            mExpandCollapseTextView.setTextColor(mThemeColor);
++            mExpandCollapseTextView.setTextColor(getContext().getColor(R.color.primary_color));
+             mExpandCollapseArrow.setColorFilter(mThemeColorFilter);
+         }
+     }
+-- 
+2.56.0
+

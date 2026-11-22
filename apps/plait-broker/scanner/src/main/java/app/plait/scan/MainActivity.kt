@@ -1,13 +1,16 @@
 package app.plait.scan
 
+import app.plait.design.Tone
+import app.plait.design.PlaitTonalButton
+import app.plait.design.PlaitFilledButton
+import app.plait.design.PlaitCard
+import app.plait.design.NoticeCard
+import app.plait.design.PlaitIcon
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.mutableIntStateOf
@@ -32,53 +35,27 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.DeviceUnknown
-import androidx.compose.material.icons.filled.Laptop
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Print
-import androidx.compose.material.icons.filled.Router
-import androidx.compose.material.icons.filled.SettingsRemote
-import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.Speaker
-import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.TabletAndroid
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
+import app.plait.design.PlaitTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -103,8 +80,7 @@ class MainActivity : ComponentActivity() {
         PortCache.init(this)
         enableEdgeToEdge()
         setContent {
-            val colors = if (isSystemInDarkTheme()) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this)
-            MaterialTheme(colorScheme = colors) { AppRoot() }
+            PlaitTheme { AppRoot() }
         }
     }
 }
@@ -118,9 +94,9 @@ private fun AppRoot() {
     Scaffold(
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Filled.Wifi, null) }, label = { Text("Network") })
-                NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Icon(Icons.Filled.Bluetooth, null) }, label = { Text("Bluetooth") })
-                NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = { Icon(Icons.Filled.Build, null) }, label = { Text("Tools") })
+                NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { PlaitIcon(PlaitIcon.Wifi, null) }, label = { Text("Network") })
+                NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { PlaitIcon(PlaitIcon.Bluetooth, null) }, label = { Text("Bluetooth") })
+                NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = { PlaitIcon(PlaitIcon.Tools, null) }, label = { Text("Tools") })
             }
         },
         contentWindowInsets = WindowInsets(0),
@@ -194,8 +170,8 @@ private fun ScanScreen(active: Boolean) {
     val page = hosts.firstOrNull { it.ip == selected }
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text(page?.let { it.identity?.name?.takeIf { n -> n.isNotBlank() } ?: it.name?.substringBefore('.') ?: it.ip } ?: "Plait Scan") },
-            navigationIcon = { if (page != null) IconButton(onClick = { selected = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            title = { Text(page?.let { it.identity?.name?.takeIf { n -> n.isNotBlank() } ?: it.name?.substringBefore('.') ?: it.ip } ?: "Scan") },
+            navigationIcon = { if (page != null) IconButton(onClick = { selected = null }) { PlaitIcon(PlaitIcon.Back, "Back") } },
         )
     }, contentWindowInsets = WindowInsets(0)) { pad ->
         if (page != null) {
@@ -208,12 +184,12 @@ private fun ScanScreen(active: Boolean) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
-                Card(Modifier.fillMaxWidth()) {
+                PlaitCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(lan?.let { "Network ${it.label}" } ?: "No network", style = MaterialTheme.typography.titleMedium)
                         lan?.let { Text("This phone ${it.self}   Gateway ${it.gateway ?: "?"}", style = MaterialTheme.typography.bodySmall) }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(onClick = { scan() }, enabled = !scanning && broker == Broker.State.READY && oui != null) {
+                            PlaitFilledButton(onClick = { scan() }, enabled = !scanning && broker == Broker.State.READY && oui != null) {
                                 Text(if (hosts.isEmpty()) "Scan" else "Scan again")
                             }
                             if (scanning) CircularProgressIndicator(Modifier.padding(4.dp))
@@ -232,39 +208,39 @@ private fun ScanScreen(active: Boolean) {
 
 @Composable
 private fun BrokerCard(state: Broker.State, request: () -> Unit) {
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+    NoticeCard(Tone.Danger, Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("MAC addresses need Plait Broker", style = MaterialTheme.typography.titleSmall)
+            Text("MAC addresses need Broker", style = MaterialTheme.typography.titleSmall)
             when (state) {
                 Broker.State.NOT_RUNNING -> Text("The broker is not running. Android hides the neighbor table from apps; the broker reads it for you.")
                 else -> {
-                    Text("Allow Plait Scan in the broker. It only gets to run `ip neigh show` and `ip link show`.")
-                    Button(onClick = request) { Text("Request access") }
+                    Text("Allow Scan in the broker. It only gets to run `ip neigh show` and `ip link show`.")
+                    PlaitFilledButton(onClick = request) { Text("Request access") }
                 }
             }
         }
     }
 }
 
-private fun Kind.icon(): ImageVector = when (this) {
-    Kind.ROUTER -> Icons.Filled.Router
-    Kind.PHONE -> Icons.Filled.Smartphone
-    Kind.TABLET -> Icons.Filled.TabletAndroid
-    Kind.LAPTOP -> Icons.Filled.Laptop
-    Kind.COMPUTER -> Icons.Filled.DesktopWindows
-    Kind.TV -> Icons.Filled.Tv
-    Kind.STREAMER -> Icons.Filled.Cast
-    Kind.SPEAKER -> Icons.Filled.Speaker
-    Kind.PRINTER -> Icons.Filled.Print
-    Kind.CAMERA -> Icons.Filled.Videocam
-    Kind.NAS -> Icons.Filled.Storage
-    Kind.CONSOLE -> Icons.Filled.SportsEsports
-    Kind.HOME -> Icons.Filled.Lightbulb
-    Kind.WATCH -> Icons.Filled.Watch
-    Kind.SBC -> Icons.Filled.Memory
-    Kind.IOT -> Icons.Filled.SettingsRemote
-    Kind.PHONE_OR_PC -> Icons.Filled.Devices
-    Kind.UNKNOWN -> Icons.Filled.DeviceUnknown
+private fun Kind.icon(): Int = when (this) {
+    Kind.ROUTER -> PlaitIcon.Router
+    Kind.PHONE -> PlaitIcon.Smartphone
+    Kind.TABLET -> PlaitIcon.Tablet
+    Kind.LAPTOP -> PlaitIcon.Laptop
+    Kind.COMPUTER -> PlaitIcon.Desktop
+    Kind.TV -> PlaitIcon.Tv
+    Kind.STREAMER -> PlaitIcon.Cast
+    Kind.SPEAKER -> PlaitIcon.Speaker
+    Kind.PRINTER -> PlaitIcon.Print
+    Kind.CAMERA -> PlaitIcon.Videocam
+    Kind.NAS -> PlaitIcon.Storage
+    Kind.CONSOLE -> PlaitIcon.Esports
+    Kind.HOME -> PlaitIcon.Lightbulb
+    Kind.WATCH -> PlaitIcon.Watch
+    Kind.SBC -> PlaitIcon.Memory
+    Kind.IOT -> PlaitIcon.Remote
+    Kind.PHONE_OR_PC -> PlaitIcon.Devices
+    Kind.UNKNOWN -> PlaitIcon.DeviceUnknown
 }
 
 @Composable
@@ -274,16 +250,16 @@ private fun HostRow(h: Host, onOpen: () -> Unit) {
     val kind = id?.kind ?: Kind.UNKNOWN
     val title = id?.name?.takeIf { it.isNotBlank() } ?: h.name?.substringBefore('.') ?: id?.model ?: h.vendor?.takeUnless { h.randomized } ?: kind.label
     val sub = listOfNotNull(kind.label.takeIf { id != null && it != title }, id?.model?.takeIf { it != title })
-    Card(
+    PlaitCard(
         Modifier.fillMaxWidth().clickable { onOpen() },
-        colors = CardDefaults.cardColors(containerColor = if (h.alias != null) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceContainer),
+        color = if (h.alias != null) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(
                 Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(kind.icon(), kind.label, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                PlaitIcon(kind.icon(), kind.label, tint = MaterialTheme.colorScheme.onPrimaryContainer)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val tags = listOfNotNull(if (h.self) "this phone" else null, if (h.gateway) "gateway" else null)
@@ -323,10 +299,10 @@ private fun DevicePage(h: Host, pad: PaddingValues) {
     val kind = id?.kind ?: Kind.UNKNOWN
     LazyColumn(Modifier.padding(pad).fillMaxWidth(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
-            Card(Modifier.fillMaxWidth()) {
+            PlaitCard(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                        Icon(kind.icon(), kind.label, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(30.dp))
+                        PlaitIcon(kind.icon(), kind.label, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(30.dp))
                     }
                     Column {
                         Text(listOfNotNull(kind.label, id?.model).joinToString(" · "), style = MaterialTheme.typography.titleMedium)
@@ -339,7 +315,7 @@ private fun DevicePage(h: Host, pad: PaddingValues) {
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            PlaitCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Fact("IP address", h.ip + (h.rttMs?.let { "   ($it ms)" } ?: ""))
                     Fact("MAC address", h.mac ?: "unknown")
@@ -360,7 +336,7 @@ private fun DevicePage(h: Host, pad: PaddingValues) {
         if (!h.self) item { PortCard(ps) }
         if (id != null && id.evidence.isNotEmpty()) {
             item {
-                Card(Modifier.fillMaxWidth()) {
+                PlaitCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("How we know", style = MaterialTheme.typography.titleSmall)
                         id.evidence.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
@@ -383,7 +359,7 @@ private fun Fact(label: String, value: String) {
 @Composable
 private fun PortCard(ps: PortScan) {
     val ctx = LocalContext.current
-    Card(Modifier.fillMaxWidth()) {
+    PlaitCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Open ports", style = MaterialTheme.typography.titleSmall)
             val all = ps.tried >= ps.total
@@ -454,15 +430,15 @@ private fun PortCard(ps: PortScan) {
             val scope = rememberCoroutineScope()
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (ps.running) {
-                    OutlinedButton(onClick = { ps.stop() }) { Text("Stop") }
+                    PlaitTonalButton(onClick = { ps.stop() }) { Text("Stop") }
                 } else {
-                    if (!all) Button(onClick = { ps.start(PortScans.scope, includeRest = true) }) {
+                    if (!all) PlaitFilledButton(onClick = { ps.start(PortScans.scope, includeRest = true) }) {
                         Text(if (ps.commonDone && ps.tried > PortScan.COMMON.size) "Resume" else if (ps.commonDone) "Scan the remaining ports" else "Scan all ports")
                     }
                     // a rescan covers as much as the last scan did: everything if all ports were checked, else the common ones
                     if (ps.tried > 0) {
                         val rescan = { ps.rescan(PortScans.scope, includeRest = all) }
-                        if (all) Button(onClick = rescan) { Text("Rescan") } else OutlinedButton(onClick = rescan) { Text("Rescan") }
+                        if (all) PlaitFilledButton(onClick = rescan) { Text("Rescan") } else PlaitTonalButton(onClick = rescan) { Text("Rescan") }
                     }
                 }
             }

@@ -48,6 +48,20 @@ object GrantStore {
     fun isHolder(context: Context, pkg: String, cert: String?) =
         holder(context)?.let { it.packageName == pkg && it.certSha256 == cert } == true
 
+    /**
+     * Plait Backup's own signing certificate (~/plait-keys/plait-backup.jks), for phones where it is not built in
+     * (the rooted test phone). In the ROM it is a system app, signed with the release key.
+     */
+    const val PLAIT_BACKUP_CERT_SHA256 = "fed7d1f110fe111a4e209820156f64136d63bc21f847a1d34f9cd62329baaac7"
+
+    /** Who may hold the backup slot: an app that came with the system image, or Plait Backup signed with its own key. */
+    fun mayHoldSlot(pm: PackageManager, pkg: String, cert: String?): Boolean {
+        if (cert == null) return false
+        if (cert == PLAIT_BACKUP_CERT_SHA256) return true
+        val flags = runCatching { pm.getApplicationInfo(pkg, 0).flags }.getOrNull() ?: return false
+        return flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0
+    }
+
     // ---- grants ----
 
     fun add(context: Context, grant: GrantToken, token: String) {
@@ -68,7 +82,8 @@ object GrantStore {
     fun isActive(context: Context, grantId: String): Boolean {
         if (prefs(context).getBoolean("r:$grantId", false)) return false
         val g = grant(context, grantId) ?: return false
-        return isHolder(context, g.packageName, g.certSha256)
+        return isHolder(context, g.packageName, g.certSha256) &&
+            mayHoldSlot(context.packageManager, g.packageName, g.certSha256)
     }
 
     fun all(context: Context): List<Entry> {
@@ -96,7 +111,7 @@ object GrantStore {
 
     fun describe(g: GrantToken): String {
         val what = g.scopes.sorted().joinToString(" + ") { if (it == GrantToken.SCOPE_BACKUP) "backup" else "restore" }
-        val whom = if (g.targets.isEmpty()) "all apps" else g.targets.sorted().joinToString(", ")
+        val whom = if (g.targets.isEmpty()) "all apps, messages, call log and contacts" else g.targets.sorted().joinToString(", ")
         val life = when {
             g.isStanding -> "until revoked"
             g.scopes.size > 1 -> "session of ${(g.expiresAt - g.issuedAt) / 60000} min"

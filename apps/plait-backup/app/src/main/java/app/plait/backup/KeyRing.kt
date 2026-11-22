@@ -13,7 +13,8 @@ import javax.crypto.spec.GCMParameterSpec
 /**
  * Archive keys. The current passphrase's derived key is kept wrapped by an AES key in Android Keystore, so backups
  * run without typing it while nothing usable sits on disk. Keys for other salts (archives made with an earlier
- * passphrase, or before a wipe) are derived when the user types that passphrase and kept for this process only.
+ * passphrase, or before a wipe) are derived when the user types that passphrase and kept for this process only, tied to
+ * what was typed so that correcting a typo takes effect at once.
  */
 object KeyRing {
     private const val WRAP_ALIAS = "plait_archive_wrap_v1"
@@ -40,6 +41,7 @@ object KeyRing {
         prefs(context).edit().clear().apply()
         current = null
         session.clear()
+        extra.use(null)
     }
 
     /** The key new backups are encrypted with, or null if no passphrase is set. */
@@ -54,21 +56,70 @@ object KeyRing {
             .also { current = it; session[b64(it.salt)] = it }
     }
 
-    /** Remembers a passphrase typed for older archives; keys are derived per salt when a file needs one. */
-    private var extraPassphrase: CharArray? = null
+    /** Keys from a passphrase typed for older archives, derived per salt when a file needs one (see [ExtraKeys]). */
+    private val extra = ExtraKeys { pass, salt, iterations -> ArchiveCrypto.derive(pass, salt, iterations) }
 
-    fun useExtraPassphrase(passphrase: CharArray?) {
-        extraPassphrase = passphrase
+    /**
+     * True if [passphrase] is the one new backups are encrypted with: derives its key with the current key's salt and
+     * compares (slow on purpose: PBKDF2, a second or two). Null when no passphrase is set.
+     */
+    fun checkPassphrase(context: Context, passphrase: CharArray): Boolean? {
+        val key = currentKey(context) ?: return null
+        val candidate = ArchiveCrypto.derive(passphrase, key.salt, key.iterations)
+        return java.security.MessageDigest.isEqual(candidate.bytes, key.bytes)
+    }
+
+    fun useExtraPassphrase(passphrase: CharArray?) = extra.use(passphrase)
+
+    /** A short fingerprint of a key for the log (a hash of it, 4 bytes: it identifies a key without being one). */
+    fun fingerprint(key: ArchiveCrypto.Key) =
+        java.security.MessageDigest.getInstance("SHA-256").digest(key.bytes).take(4).joinToString("") { "%02x".format(it) }
+
+    private var recoveryFailedFor: String? = null
+
+    /**
+     * The typed older passphrase did not open [sample]: try what a keyboard may have done to it (see [PassphraseVariants]). On a
+     * hit the variant becomes the passphrase for this run and its description is returned; null if none opens the file (and not
+     * tried again for the same typed text, since each try is a slow key derivation).
+     */
+    @Synchronized
+    fun recoverTyped(sample: java.io.File): String? {
+        val typed = extra.typed()?.concatToString() ?: return null
+        if (recoveryFailedFor == typed) return null
+        val header = sample.inputStream().use { it.readNBytes(ArchiveCrypto.headerSize()) }
+        val (salt, iterations) = ArchiveCrypto.readParams(header) ?: return null
+        val hit = PassphraseVariants.find(typed) { variant ->
+            sample.inputStream().use { ArchiveCrypto.opensFirstChunk(it, ArchiveCrypto.derive(variant.toCharArray(), salt, iterations)) }
+        }
+        if (hit == null) { recoveryFailedFor = typed; return null }
+        extra.use(hit.second.toCharArray())
+        android.util.Log.i("PlaitKeyRing", "the typed passphrase opened nothing, but this variant did: ${hit.first}")
+        return hit.first
     }
 
     /** The key for a file's salt, or null if neither the current nor the typed passphrase matches it. */
     @Synchronized
     fun keyFor(context: Context, salt: ByteArray, iterations: Int): ArchiveCrypto.Key? {
-        currentKey(context)
-        session[b64(salt)]?.let { return it }
-        val pass = extraPassphrase ?: return null
-        return ArchiveCrypto.derive(pass, salt, iterations).also { session[b64(salt)] = it }
+        // Opening the stored key can fail on its own (the Keystore key that wraps it): that is not a wrong passphrase, and the
+        // same exception type (a GCM tag mismatch) would otherwise be reported as one
+        try {
+            currentKey(context)
+        } catch (e: Exception) {
+            android.util.Log.w("PlaitKeyRing", "the stored key could not be opened", e)
+            throw KeystoreProblem("the key stored on this phone could not be opened (${e.javaClass.simpleName}: ${e.message})", e)
+        }
+        val fromSession = session[b64(salt)]
+        android.util.Log.i("PlaitKeyRing", "key for salt ${b64(salt).take(6)}: " + when {
+            fromSession != null -> "the stored key (salt matches)"
+            extra.hasPassphrase() -> "derived from the typed older passphrase"
+            else -> "none (no older passphrase typed, stored key has a different salt)"
+        })
+        fromSession?.let { return it }
+        return extra.keyFor(salt, iterations)?.also { android.util.Log.i("PlaitKeyRing", "derived key fingerprint ${fingerprint(it)}") }
     }
+
+    /** The Keystore step failed, not the passphrase. */
+    class KeystoreProblem(message: String, cause: Throwable) : IllegalStateException(message, cause)
 
     private fun wrapKey(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

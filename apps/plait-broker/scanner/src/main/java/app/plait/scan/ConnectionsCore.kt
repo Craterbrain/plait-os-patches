@@ -61,7 +61,7 @@ object ConnParse {
     /** Names for the uids that belong to the system, not to an installed app. */
     val SYSTEM_UIDS = mapOf(
         0 to "root", 1000 to "Android system", 1001 to "Phone and radio", 1002 to "Bluetooth", 1010 to "Wi-Fi", 1013 to "Media", 1020 to "Multicast DNS",
-        1021 to "GPS", 1027 to "NFC", 1036 to "Logging", 1051 to "Network (DNS)", 1066 to "Statistics", 2000 to "Shell (adb, Plait Broker)", 9999 to "Nobody",
+        1021 to "GPS", 1027 to "NFC", 1036 to "Logging", 1051 to "Network (DNS)", 1066 to "Statistics", 2000 to "Shell (adb, Broker)", 9999 to "Nobody",
     )
 
     /** Well-known remote ports, so "443" reads as "HTTPS". */

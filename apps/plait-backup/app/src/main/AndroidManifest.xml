@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- To list the apps to back up -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <!-- PlaitOS backend: the app itself writes the archive folder in shared storage (All files access) -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- Size of the apps to back up (storage stats), on both backends: Settings > Usage access lists the app because of this -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- To find the Plait Broker manager's grant screen -->
     <queries>
@@ -12,7 +16,7 @@
     </queries>
 
     <application
-        android:label="Plait Backup"
+        android:label="Backup"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">

@@ -1,0 +1,36 @@
+From f14c313fbbb95f7d27939f4d3802d6ae796ff233 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 20:48:43 -0600
+Subject: [PATCH] Slim Recents: close at once on the home key
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../com/android/systemui/slimrecent/RecentController.java    | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/slimrecent/src/com/android/systemui/slimrecent/RecentController.java b/slimrecent/src/com/android/systemui/slimrecent/RecentController.java
+index 422548e..95e9c15 100644
+--- a/slimrecent/src/com/android/systemui/slimrecent/RecentController.java
++++ b/slimrecent/src/com/android/systemui/slimrecent/RecentController.java
+@@ -116,6 +116,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
+     private static final String TAG = "SlimRecentsController";
+ 
+     static final String SYSTEM_DIALOG_REASON_RECENT_APPS = "recentapps";
++    static final String SYSTEM_DIALOG_REASON_HOME_KEY = "homekey";
+ 
+     private static final float DIM_AMOUNT = 0.32f;
+ 
+@@ -188,7 +189,9 @@ public class RecentController implements RecentPanelView.OnExitListener,
+                 String reason = intent.getStringExtra("reason");
+                 if (reason != null &&
+                         !reason.equals(SYSTEM_DIALOG_REASON_RECENT_APPS)) {
+-                    hideRecents(false);
++                    // Home goes straight to the launcher: drop the panel at once instead of
++                    // letting its exit animation play over the go-home animation
++                    hideRecents(SYSTEM_DIALOG_REASON_HOME_KEY.equals(reason));
+                 }
+             } else if (Intent.ACTION_SCREEN_OFF.equals(action)){
+                 hideRecents(true);
+-- 
+2.56.0
+

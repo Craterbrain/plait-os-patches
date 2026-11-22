@@ -29,10 +29,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            val dark = isSystemInDarkTheme()
-            MaterialTheme(colorScheme = if (dark) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this)) {
-                App(vm)
-            }
+            app.plait.design.PlaitTheme { App(vm) }
         }
     }
 }
@@ -68,7 +65,7 @@ private fun App(vm: BackupViewModel) {
             grantVersion++
             if (flow != null) startWith(flow, token)
         } else {
-            notice = "Plait Broker did not issue a grant. If no dialog appeared, check Plait Broker > Settings > " +
+            notice = "Broker did not issue a grant. If no dialog appeared, check Broker > Settings > " +
                 "Signed grants > Log for the reason."
         }
     }
@@ -80,7 +77,7 @@ private fun App(vm: BackupViewModel) {
         if (existing != null) startWith(flow, existing)
         else {
             pendingFlow = flow
-            if (!Grants.brokerInstalled(context)) notice = "Plait Broker is not installed, so no grant can be issued."
+            if (!Grants.brokerInstalled(context)) notice = "Broker is not installed, so no grant can be issued."
             else grantLauncher.launch(Grants.requestIntent(scope, standing = false))
         }
     }
@@ -89,7 +86,7 @@ private fun App(vm: BackupViewModel) {
 
     fun startSession(minutes: Int) {
         pendingFlow = null
-        if (!Grants.brokerInstalled(context)) notice = "Plait Broker is not installed, so no grant can be issued."
+        if (!Grants.brokerInstalled(context)) notice = "Broker is not installed, so no grant can be issued."
         else grantLauncher.launch(Grants.sessionIntent(minutes))
     }
 
@@ -119,7 +116,14 @@ private fun App(vm: BackupViewModel) {
             vm, grantVersion,
             onStartSession = ::startSession,
             onEndSession = ::endSession,
-            onBackup = { vm.query = ""; screen = Screen.Select(Flow.BACKUP) },
+            onBackup = { vm.query = ""; vm.phoneDataList = false; vm.selectedApps.removeAll { Personal.of(it) != null }; screen = Screen.Select(Flow.BACKUP) },
+            onPhoneData = {
+                vm.query = ""
+                vm.phoneDataList = true
+                vm.selectedApps.clear()
+                vm.selectedApps.addAll(Personal.entries.map { it.target })
+                screen = Screen.Select(Flow.BACKUP)
+            },
             onRestore = { vm.query = ""; screen = Screen.Select(Flow.RESTORE) },
             onHistory = { screen = Screen.History },
             onSettings = { screen = Screen.Settings },

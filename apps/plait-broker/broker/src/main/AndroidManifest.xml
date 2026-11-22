@@ -19,7 +19,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Plait Broker"
+        android:label="Broker"
         android:theme="@style/Theme.Broker">
 
         <activity
@@ -71,8 +71,8 @@
             </intent-filter>
         </activity>
 
-        <!-- Plait Backup starts this for a result to ask for a signed grant. Only the pinned Plait Backup app is ever
-             shown a dialog; who is asking comes from the verified calling package, never from the extras. -->
+        <!-- Plait Backup starts this for a result to ask for a signed grant. Only a system app or Plait Backup's own
+             certificate is ever shown a dialog (GrantStore.mayHoldSlot); who is asking comes from the verified calling package, never from the extras. -->
         <activity
             android:name=".grants.GrantActivity"
             android:exported="true"

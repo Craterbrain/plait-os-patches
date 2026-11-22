@@ -1,5 +1,6 @@
 package app.plait.broker
 
+import app.plait.design.PlaitIcon
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.os.Handler
@@ -7,8 +8,6 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,14 +65,14 @@ class QuestionActivity : ComponentActivity() {
                     }
                     "ask" -> Question(
                         title = "$label wants to $what",
-                        body = (detail?.let { "$it\n\n" } ?: "") + "Your answer is remembered for $label; change it on its page in Plait Broker.",
+                        body = (detail?.let { "$it\n\n" } ?: "") + "Your answer is remembered for $label; change it on its page in Broker.",
                         buttons = listOf("Allow" to ANSWER_ALLOW),
                         deny = "Deny" to ANSWER_AS_ITSELF
                     )
                     "su" -> Question(
                         title = "$label wants to use su",
                         body = (detail?.let { "$it\n\n" } ?: "") + "Choose how long $label may use it. You can change this later on " +
-                            "$label's page in Plait Broker.",
+                            "$label's page in Broker.",
                         buttons = listOf(
                             "Allow for 10 minutes" to 600, "Allow for 1 hour" to 3600, "Always allow" to ANSWER_SU_ALWAYS,
                             "Always deny" to ANSWER_SU_DENY_ALWAYS
@@ -96,7 +95,7 @@ class QuestionActivity : ComponentActivity() {
     private fun Question(title: String, body: String, buttons: List<Pair<String, Int>>, deny: Pair<String, Int>) {
         AlertDialog(
             onDismissRequest = { reply(ANSWER_NONE) },
-            icon = { Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            icon = { PlaitIcon(PlaitIcon.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text(title) },
             text = { Text(body) },
             confirmButton = {

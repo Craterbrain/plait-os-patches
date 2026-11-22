@@ -1,0 +1,235 @@
+From bceaa71b41b021a4f3640a6e76337c685a3ab40c Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 07:40:30 -0600
+Subject: [PATCH] PlaitOS: Settings rows and icon styles on Android 17's pages
+
+- The pages that hold PlaitOS rows (Display, Sound, Lock screen, 3-button
+  navigation) stay on their XML: with the catalyst flags on, Settings built
+  them from code and left the rows out (search, reading the XML, still found them)
+- The PlaitOS tile is on the expressive home page too (top_level_settings_expressive*)
+- Icon styles also apply to screens built from code, and restyle only the symbol
+  of the expressive home tiles (the whole tile was painted white)
+- List summaries use %s: an entry like 50% crashed Settings in String.format
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ res/drawable/ic_homepage_plait.xml            | 21 +++++++++++++++++++
+ res/xml/top_level_settings_expressive.xml     |  8 +++++++
+ .../top_level_settings_expressive_desktop.xml |  8 +++++++
+ src/com/android/settings/DisplaySettings.java |  4 +++-
+ .../settings/SettingsPreferenceFragment.java  |  2 ++
+ .../ButtonNavigationSettingsFragment.java     |  4 +++-
+ .../settings/notification/SoundSettings.java  |  4 +++-
+ .../settings/plait/PlaitControllers.kt        |  8 +++++--
+ .../android/settings/plait/PlaitIconStyler.kt | 17 ++++++++++++++-
+ .../security/LockscreenDashboardFragment.java |  4 +++-
+ 10 files changed, 73 insertions(+), 7 deletions(-)
+ create mode 100644 res/drawable/ic_homepage_plait.xml
+
+diff --git a/res/drawable/ic_homepage_plait.xml b/res/drawable/ic_homepage_plait.xml
+new file mode 100644
+index 0000000..898f8e8
+--- /dev/null
++++ b/res/drawable/ic_homepage_plait.xml
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS settings entry on the expressive home page: the "tune" symbol on a colored circle, like the stock tiles -->
++<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
++
++    <item>
++        <com.android.settingslib.widget.AdaptiveIconShapeDrawable
++            android:width="@dimen/dashboard_tile_image_size"
++            android:height="@dimen/dashboard_tile_image_size"
++            android:color="@color/homepage_cyan_bg" />
++    </item>
++
++    <item
++        android:width="@dimen/dashboard_tile_foreground_image_size"
++        android:height="@dimen/dashboard_tile_foreground_image_size"
++        android:start="@dimen/dashboard_tile_foreground_image_inset"
++        android:top="@dimen/dashboard_tile_foreground_image_inset">
++        <com.android.settings.widget.TintDrawable
++            android:drawable="@drawable/ic_settings_plait_filled"
++            android:tint="@color/homepage_cyan_fg" />
++    </item>
++</layer-list>
+diff --git a/res/xml/top_level_settings_expressive.xml b/res/xml/top_level_settings_expressive.xml
+index dc7afc7..1989691 100644
+--- a/res/xml/top_level_settings_expressive.xml
++++ b/res/xml/top_level_settings_expressive.xml
+@@ -142,6 +142,14 @@
+             settings:highlightableMenuKey="@string/menu_key_battery"
+             settings:controller="com.android.settings.fuelgauge.TopLevelBatteryPreferenceController"/>
+ 
++        <com.android.settings.widget.HomepagePreference
++            android:fragment="com.android.settings.plait.PlaitSettingsFragment"
++            android:icon="@drawable/ic_homepage_plait"
++            android:key="top_level_plait"
++            android:order="-21"
++            android:title="@string/plait_settings_title"
++            android:summary="@string/plait_settings_summary"/>
++
+         <com.android.settings.widget.HomepagePreference
+             android:fragment="com.android.settings.system.SystemDashboardFragment"
+             android:icon="@drawable/ic_homepage_system_dashboard"
+diff --git a/res/xml/top_level_settings_expressive_desktop.xml b/res/xml/top_level_settings_expressive_desktop.xml
+index 16335e2..f527694 100644
+--- a/res/xml/top_level_settings_expressive_desktop.xml
++++ b/res/xml/top_level_settings_expressive_desktop.xml
+@@ -137,6 +137,14 @@
+             settings:highlightableMenuKey="@string/menu_key_battery"
+             settings:controller="com.android.settings.fuelgauge.TopLevelBatteryPreferenceController"/>
+ 
++        <com.android.settings.widget.HomepagePreference
++            android:fragment="com.android.settings.plait.PlaitSettingsFragment"
++            android:icon="@drawable/ic_homepage_plait"
++            android:key="top_level_plait"
++            android:order="-21"
++            android:title="@string/plait_settings_title"
++            android:summary="@string/plait_settings_summary"/>
++
+         <com.android.settings.widget.HomepagePreference
+             android:fragment="com.android.settings.system.SystemDashboardFragment"
+             android:icon="@drawable/ic_homepage_system_dashboard"
+diff --git a/src/com/android/settings/DisplaySettings.java b/src/com/android/settings/DisplaySettings.java
+index 1a61022..5707517 100644
+--- a/src/com/android/settings/DisplaySettings.java
++++ b/src/com/android/settings/DisplaySettings.java
+@@ -115,7 +115,9 @@ public class DisplaySettings extends DashboardFragment {
+ 
+     @Override
+     public @Nullable String getPreferenceScreenBindingKey(@NonNull Context context) {
+-        return DisplayScreen.KEY;
++        // PlaitOS: this page holds PlaitOS rows, which are in its XML only; catalyst would build the page
++        // from code and leave them out. Null keeps the XML page (search indexes the same XML).
++        return null; // was DisplayScreen.KEY
+     }
+ }
+ // LINT.ThenChange(com.android.settings.display.DisplayScreen.kt,
+diff --git a/src/com/android/settings/SettingsPreferenceFragment.java b/src/com/android/settings/SettingsPreferenceFragment.java
+index 18379fb..133c93f 100644
+--- a/src/com/android/settings/SettingsPreferenceFragment.java
++++ b/src/com/android/settings/SettingsPreferenceFragment.java
+@@ -378,6 +378,8 @@ public abstract class SettingsPreferenceFragment extends InstrumentedPreferenceF
+             if (mHeader != null) {
+                 preferenceScreen.addPreference(mHeader);
+             }
++            // PlaitOS: icon style here too, for screens built from code (catalyst) that never load an XML
++            com.android.settings.plait.PlaitIconStyler.styleIcons(preferenceScreen, getContext());
+         }
+     }
+ 
+diff --git a/src/com/android/settings/gestures/ButtonNavigationSettingsFragment.java b/src/com/android/settings/gestures/ButtonNavigationSettingsFragment.java
+index 05206c2..8101edc 100644
+--- a/src/com/android/settings/gestures/ButtonNavigationSettingsFragment.java
++++ b/src/com/android/settings/gestures/ButtonNavigationSettingsFragment.java
+@@ -57,7 +57,9 @@ public class ButtonNavigationSettingsFragment extends DashboardFragment {
+     @Override
+     @Nullable
+     public String getPreferenceScreenBindingKey(@NonNull Context context) {
+-        return ButtonNavigationSettingsScreen.KEY;
++        // PlaitOS: this page holds PlaitOS rows, which are in its XML only; catalyst would build the page
++        // from code and leave them out. Null keeps the XML page (search indexes the same XML).
++        return null; // was ButtonNavigationSettingsScreen.KEY
+     }
+ 
+     public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
+diff --git a/src/com/android/settings/notification/SoundSettings.java b/src/com/android/settings/notification/SoundSettings.java
+index e0da708..a61392c 100644
+--- a/src/com/android/settings/notification/SoundSettings.java
++++ b/src/com/android/settings/notification/SoundSettings.java
+@@ -314,6 +314,8 @@ public class SoundSettings extends DashboardFragment implements OnActivityResult
+ 
+     @Override
+     public @Nullable String getPreferenceScreenBindingKey(@NonNull Context context) {
+-        return SoundScreen.KEY;
++        // PlaitOS: this page holds PlaitOS rows, which are in its XML only; catalyst would build the page
++        // from code and leave them out. Null keeps the XML page (search indexes the same XML).
++        return null; // was SoundScreen.KEY
+     }
+ }
+diff --git a/src/com/android/settings/plait/PlaitControllers.kt b/src/com/android/settings/plait/PlaitControllers.kt
+index ad14ffc..abf65b4 100644
+--- a/src/com/android/settings/plait/PlaitControllers.kt
++++ b/src/com/android/settings/plait/PlaitControllers.kt
+@@ -50,7 +50,9 @@ open class PlaitListController(context: Context, key: String) :
+         super.updateState(preference)
+         val list = preference as? ListPreference ?: return
+         list.value = PlaitSettings.get(mContext, preferenceKey).toString()
+-        list.summary = list.entry
++        // "%s": ListPreference fills in the chosen entry. Never the entry itself: its text goes through
++        // String.format, and an entry like "50%" crashes Settings
++        list.summary = "%s"
+     }
+ 
+     override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
+@@ -58,7 +60,9 @@ open class PlaitListController(context: Context, key: String) :
+         PlaitSettings.put(mContext, preferenceKey, value)
+         val list = preference as ListPreference
+         list.value = newValue
+-        list.summary = list.entry
++        // "%s": ListPreference fills in the chosen entry. Never the entry itself: its text goes through
++        // String.format, and an entry like "50%" crashes Settings
++        list.summary = "%s"
+         onValueChanged(value)
+         return true
+     }
+diff --git a/src/com/android/settings/plait/PlaitIconStyler.kt b/src/com/android/settings/plait/PlaitIconStyler.kt
+index 842397b..df87fdb 100644
+--- a/src/com/android/settings/plait/PlaitIconStyler.kt
++++ b/src/com/android/settings/plait/PlaitIconStyler.kt
+@@ -11,12 +11,14 @@ import android.graphics.Color
+ import android.graphics.drawable.AdaptiveIconDrawable
+ import android.graphics.drawable.BitmapDrawable
+ import android.graphics.drawable.Drawable
++import android.graphics.drawable.DrawableWrapper
+ import android.graphics.drawable.GradientDrawable
+ import android.graphics.drawable.LayerDrawable
+ import android.os.UserHandle
+ import android.provider.Settings
+ import androidx.preference.Preference
+ import androidx.preference.PreferenceGroup
++import com.android.settingslib.widget.AdaptiveIconShapeDrawable
+ import kotlin.math.abs
+ import kotlin.random.Random
+ 
+@@ -99,7 +101,20 @@ object PlaitIconStyler {
+         if (icon is StyledIcon || icon is BitmapDrawable || icon is AdaptiveIconDrawable) return
+         val color = colorFor(preference.key, context)
+         val accent = accent(context)
+-        preference.icon = styled(icon.mutate(), style, color, accent, context)
++        preference.icon = styled(symbolOf(icon).mutate(), style, color, accent, context)
++    }
++
++    /**
++     * The symbol to restyle. Android 17's expressive home tiles are already finished artwork: a layer-list of a colored
++     * shape (AdaptiveIconShapeDrawable) under the symbol in a TintDrawable. Restyling all of it would paint the whole
++     * tile white, so only its symbol is taken. Any other icon is the symbol itself.
++     */
++    private fun symbolOf(icon: Drawable): Drawable {
++        if (icon !is LayerDrawable || icon.numberOfLayers < 2 || icon.getDrawable(0) !is AdaptiveIconShapeDrawable) {
++            return icon
++        }
++        val top = icon.getDrawable(icon.numberOfLayers - 1) ?: return icon
++        return (top as? DrawableWrapper)?.drawable ?: top
+     }
+ 
+     private fun styled(icon: Drawable, style: Style, color: Int, accent: Int, context: Context):
+diff --git a/src/com/android/settings/security/LockscreenDashboardFragment.java b/src/com/android/settings/security/LockscreenDashboardFragment.java
+index d06004e..2467f4c 100644
+--- a/src/com/android/settings/security/LockscreenDashboardFragment.java
++++ b/src/com/android/settings/security/LockscreenDashboardFragment.java
+@@ -160,7 +160,9 @@ public class LockscreenDashboardFragment extends DashboardFragment
+ 
+     @Override
+     public @Nullable String getPreferenceScreenBindingKey(@NonNull Context context) {
+-        return LockScreenPreferenceScreen.KEY;
++        // PlaitOS: this page holds PlaitOS rows, which are in its XML only; catalyst would build the page
++        // from code and leave them out. Null keeps the XML page (search indexes the same XML).
++        return null; // was LockScreenPreferenceScreen.KEY
+     }
+ 
+     private AmbientDisplayConfiguration getConfig(Context context) {
+-- 
+2.56.0
+

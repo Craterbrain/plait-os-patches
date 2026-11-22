@@ -1,0 +1,36 @@
+From 4d7bf3ada24e0edcbafdfd0b452663b38b201f54 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 21:13:56 -0600
+Subject: [PATCH] PlaitOS: hide the Recordings tab when another tab is shown
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ java/com/android/dialer/main/impl/OldMainActivityPeer.java | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/java/com/android/dialer/main/impl/OldMainActivityPeer.java b/java/com/android/dialer/main/impl/OldMainActivityPeer.java
+index 4747871..8111ad5 100644
+--- a/java/com/android/dialer/main/impl/OldMainActivityPeer.java
++++ b/java/com/android/dialer/main/impl/OldMainActivityPeer.java
+@@ -1580,6 +1580,8 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+           supportFragmentManager.findFragmentByTag(CALL_LOG_TAG);
+       android.support.v4.app.Fragment newVoicemail =
+           supportFragmentManager.findFragmentByTag(VOICEMAIL_TAG);
++      android.support.v4.app.Fragment recordings =
++          supportFragmentManager.findFragmentByTag(RECORDINGS_TAG);
+ 
+       android.support.v4.app.FragmentTransaction supportTransaction =
+           supportFragmentManager.beginTransaction();
+@@ -1589,6 +1591,9 @@ public class OldMainActivityPeer implements MainActivityPeer, FragmentUtilListen
+           showIfEqualElseHideSupport(supportTransaction, supportFragment, newCallLog);
+       supportFragmentShown |=
+           showIfEqualElseHideSupport(supportTransaction, supportFragment, newVoicemail);
++      // PlaitOS: the Recordings tab has to be hidden with the rest, or it stays drawn under the other tabs
++      supportFragmentShown |=
++          showIfEqualElseHideSupport(supportTransaction, supportFragment, recordings);
+ 
+       if (!supportFragmentShown && supportFragment != null) {
+         LogUtil.i(
+-- 
+2.56.0
+

@@ -1,5 +1,7 @@
 package app.plait.scan
 
+import app.plait.design.PlaitTonalButton
+import app.plait.design.PlaitFilledButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -7,9 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -77,7 +77,7 @@ fun IperfTool(pad: PaddingValues) {
                 ChipRow(listOf(5, 10, 20, 30), seconds, { "$it" }) { seconds = it }
                 Text("Parallel streams", style = MaterialTheme.typography.labelMedium)
                 ChipRow(listOf(1, 2, 4, 8), streams, { "$it" }) { streams = it }
-                if (running) OutlinedButton(onClick = { client?.cancel() }) { Text("Stop") } else Button(onClick = { start() }, enabled = host.isNotBlank()) { Text("Start") }
+                if (running) PlaitTonalButton(onClick = { client?.cancel() }) { Text("Stop") } else PlaitFilledButton(onClick = { start() }, enabled = host.isNotBlank()) { Text("Start") }
                 if (phase.isNotEmpty()) Text(phase, style = MaterialTheme.typography.bodySmall)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 Text("Needs an iperf3 server on the other end: run `iperf3 -s` on a PC, NAS or router. Upload sends data to the server; Download has the server send to this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

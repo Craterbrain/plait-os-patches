@@ -1,6 +1,7 @@
 package app.plait.backup
 
 import android.os.Process
+import java.io.File
 import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
@@ -64,18 +65,24 @@ class DevRootBackend(private val context: android.content.Context) : Backend {
         try {
             val r = RootShell.run(backupScript(pkg, userId, parts, out))
             if (!r.ok) return false.also { log("Failed ($pkg): ${r.err.ifBlank { "exit ${r.code}" }.trim()}") }
+            // The name and icon go in the staging folder too, so the manifest covers them; they are copied out plain below
+            AppMeta.collect(context, pkg).let { (label, icon) ->
+                label?.let { b -> RootShell.writeFile("$out/${AppMeta.LABEL}") { it.write(b) } }
+                icon?.let { b -> RootShell.writeFile("$out/${AppMeta.ICON}") { it.write(b) } }
+            }
             if (!signArchive(pkg, userId, out)) return false.also { log("Failed ($pkg): could not sign the archive") }
             val dest = Layout.appDir(pkg, userId)
             val fresh = "$dest.new"
             if (!RootShell.run("rm -rf $fresh && mkdir -p $fresh", timeoutMinutes = 1).ok) return false.also { log("Failed ($pkg): no archive dir") }
             for (name in listNames(out)) {
                 RootShell.readFile("$out/$name") { plain ->
-                    RootShell.writeFile("$fresh/$name${ArchiveCrypto.SUFFIX}") { enc -> ArchiveCrypto.encrypt(key, plain, enc) }
+                    if (name in AppMeta.PLAIN) RootShell.writeFile("$fresh/$name") { o -> plain.copyTo(o) }
+                    else RootShell.writeFile("$fresh/$name${ArchiveCrypto.SUFFIX}") { enc -> ArchiveCrypto.encrypt(key, plain, enc) }
                 }
             }
             // Swap in the new archive only once every file is encrypted, so a failed backup keeps the previous one
             val swap = RootShell.run(
-                "rm -rf $dest && mv $fresh $dest && chown -R 1023:1023 $ROOT_DIR && chmod -R u=rwX,g=rwX,o= $dest && restorecon -RF $ROOT_DIR",
+                "rm -rf $dest && mv $fresh $dest && chown 1023:1023 $ROOT_DIR && chown -R 1023:1023 $ROOT_DIR/apps && chmod -R u=rwX,g=rwX,o= $dest && restorecon -RF $ROOT_DIR/apps",
                 timeoutMinutes = 5,
             )
             if (!swap.ok) return false.also { log("Failed ($pkg): ${swap.err.trim()}") }
@@ -141,7 +148,10 @@ class DevRootBackend(private val context: android.content.Context) : Backend {
             }
             verifyArchive(pkg, stage, parts, trustForeign)?.let { return false.also { _ -> log("Refused ($pkg): $it") } }
             log("Restoring $pkg (${parts.joinToString { it.label }})")
-            val r = RootShell.run(restoreScript(pkg, userId, parts, src = stage))
+            val recorded = InstallerSetting.parseRecorded(RootShell.run("cat $stage/${InstallerSetting.FILE} 2>/dev/null", timeoutMinutes = 1).out)
+            val installer = InstallerSetting.installerFor(InstallerSetting.choice, recorded)
+            if (Part.APK in parts && installer != null) log("Recording $pkg as installed by $installer")
+            val r = RootShell.run(restoreScript(pkg, userId, parts, src = stage, installer = installer))
             if (!r.ok) log("Failed ($pkg): ${r.err.ifBlank { "exit ${r.code}" }.trim()}")
             else logUse(grantIdOf(grant), "restore $pkg")
             return r.ok
@@ -170,20 +180,108 @@ class DevRootBackend(private val context: android.content.Context) : Backend {
         return null
     }
 
-    override fun listArchives(): List<ArchiveApp> {
-        val r = RootShell.run(
-            "cd $ROOT_DIR/apps 2>/dev/null || exit 0\nfor D in */user_*; do echo \"\$D \$(ls \$D | tr '\\n' ' ') \$(du -sk \$D | cut -f1)\"; done",
-            timeoutMinutes = 2,
+    override fun listArchives(): List<ArchiveApp> =
+        parseList(RootShell.run(listScript(ROOT_DIR), timeoutMinutes = 2).out)
+
+    // ---- phone data: backed up here, restored on PlaitOS ----
+
+    override val supportsPersonal get() = true
+
+    override fun restorePersonal(grant: String, kind: Personal, userId: Int, trustForeign: Boolean, log: (String) -> Unit): Boolean =
+        false.also { log("${kind.label}: restore it on PlaitOS (the root backend only backs phone data up)") }
+
+    /**
+     * Copies the provider's database as root into this app's private storage, reads it there and writes the same
+     * archive the PlaitOS service would. Attachments are read as root from the telephony provider's own folder.
+     */
+    override fun backupPersonal(grant: String, kind: Personal, userId: Int, log: (String) -> Unit): Boolean {
+        refuse(grant, GrantToken.SCOPE_BACKUP, kind.target)?.let { return false.also { _ -> log("Refused: $it") } }
+        val key = KeyRing.currentKey(context)
+            ?: return false.also { log("Refused: set an encryption passphrase in Settings first") }
+        log("Backing up ${kind.label}")
+        val snap = File(context.noBackupFilesDir, "personal-snap")
+        val fresh = File(context.noBackupFilesDir, "personal-out/${kind.dirName}")
+        val dest = Layout.personalDir(kind, userId)
+        try {
+            snap.deleteRecursively()
+            fresh.deleteRecursively()
+            if (!snap.mkdirs() || !fresh.mkdirs()) return false.also { log("Failed (${kind.label}): no work dir") }
+            val (provider, db) = when (kind) {
+                Personal.CALL_LOG -> "com.android.providers.contacts" to "calllog.db"
+                Personal.SMS, Personal.MMS -> "com.android.providers.telephony" to "mmssms.db"
+                Personal.CONTACTS -> "com.android.providers.contacts" to "contacts2.db"
+            }
+            // Credential-encrypted storage first: that is where the providers keep these. The telephony provider also
+            // leaves an empty mmssms.db in device-encrypted storage, which must not win
+            val copy = RootShell.run(
+                """
+                for D in /data/user/$userId/$provider/databases /data/user_de/$userId/$provider/databases; do
+                  if [ -f ${'$'}D/$db ]; then
+                    for F in $db $db-wal; do [ -f ${'$'}D/${'$'}F ] && cp ${'$'}D/${'$'}F ${snap.path}/; done
+                    chown -R $myUid:$myUid ${snap.path} && chmod -R u=rwX,go= ${snap.path} && restorecon -RF ${snap.path}
+                    exit 0
+                  fi
+                done
+                echo "$db not found" >&2; exit 1
+                """.trimIndent(),
+                timeoutMinutes = 5,
+            )
+            if (!copy.ok) return false.also { log("Failed (${kind.label}): ${copy.err.trim()}") }
+            val file = File(snap, db)
+            val parts = "/data/user_de/$userId/com.android.providers.telephony/app_parts/"
+            val store = DatabaseStore(
+                telephony = file.takeIf { db == "mmssms.db" }, calls = file.takeIf { db == "calllog.db" },
+                contacts = file.takeIf { db == "contacts2.db" },
+                readPart = { path ->
+                    // Only a plain file directly in the provider's own attachment folder (names keep the sender's file name,
+                    // spaces and all; RootShell quotes the path)
+                    val name = path.substringAfterLast('/')
+                    check(name.isNotEmpty() && name != "." && name != ".." && name.none { it == '\u0000' || it == '\n' || it == '\r' }) { "unexpected attachment name" }
+                    val bytes = RootShell.readFile("$parts$name") { it.readBytes() }
+                    bytes.inputStream()
+                },
+            )
+            val (count, attachments) = store.use { PersonalArchive.write(fresh, key, kind, userId, it) }
+            swapIn(fresh, dest, kind, log)?.let { return false }
+            log("${kind.label}: $count saved" + if (attachments > 0) ", $attachments attachments" else "")
+            logUse(grantIdOf(grant), "backup ${kind.target}")
+            return true
+        } catch (e: Exception) {
+            return false.also { log("Failed (${kind.label}): ${e.message}") }
+        } finally {
+            // The copies are plaintext messages and contacts: never left behind
+            snap.deleteRecursively()
+            fresh.deleteRecursively()
+        }
+    }
+
+    /** Moves a finished archive into place as root (the folder belongs to the media provider's group); null on success. */
+    private fun swapIn(fresh: File, dest: String, kind: Personal, log: (String) -> Unit): Unit? {
+        val swap = RootShell.run(
+            "rm -rf $dest.new && mkdir -p $dest.new && cp ${fresh.path}/* $dest.new/ && rm -rf $dest && mv $dest.new $dest && " +
+                "chown 1023:1023 $ROOT_DIR && chown -R 1023:1023 $ROOT_DIR/personal && chmod -R u=rwX,g=rwX,o= $ROOT_DIR/personal && restorecon -RF $ROOT_DIR/personal",
+            timeoutMinutes = 5,
         )
-        return r.out.lines().mapNotNull { line ->
-            val f = line.trim().split(' ').filter { it.isNotEmpty() }
-            if (f.size < 2) return@mapNotNull null
-            val pkg = f[0].substringBefore('/')
-            val user = f[0].substringAfter("user_").toIntOrNull() ?: return@mapNotNull null
-            val parts = Part.entries.filter { p -> f.any { it == p.fileName || it == p.fileName + ArchiveCrypto.SUFFIX } }.toSet()
-            val kb = f.last().toLongOrNull() ?: 0
-            if (parts.isEmpty() || !Layout.isSafePackage(pkg)) null else ArchiveApp(pkg, user, parts, kb * 1024)
-        }.sortedBy { it.packageName }
+        return if (swap.ok) null else Unit.also { log("Failed (${kind.label}): ${swap.err.trim()}") }
+    }
+
+    override fun importPersonal(kind: Personal, userId: Int, produce: ((String, () -> java.io.InputStream) -> Unit) -> ByteArray, log: (String) -> Unit): Boolean {
+        val key = KeyRing.currentKey(context)
+            ?: return false.also { log("Refused: set an encryption passphrase in Settings first") }
+        val fresh = File(context.noBackupFilesDir, "personal-out/${kind.dirName}")
+        try {
+            fresh.deleteRecursively()
+            if (!fresh.mkdirs()) return false.also { log("Failed (${kind.label}): no work dir") }
+            val (count, attachments) = PersonalArchive.writeFrom(fresh, key, kind, userId, produce)
+            if (count == 0) return false.also { log("${kind.label}: the file has none, nothing imported") }
+            swapIn(fresh, Layout.personalDir(kind, userId), kind, log)?.let { return false }
+            log("${kind.label}: $count imported" + if (attachments > 0) ", $attachments attachments" else "")
+            return true
+        } catch (e: Exception) {
+            return false.also { log("Failed (${kind.label}): ${e.message}") }
+        } finally {
+            fresh.deleteRecursively()
+        }
     }
 
     private fun grantIdOf(token: String) =
@@ -191,20 +289,58 @@ class DevRootBackend(private val context: android.content.Context) : Backend {
 
     companion object {
         private const val GRANTS = "app.plait.broker.grants"
-        private const val ROOT_DIR = Layout.ROOT
+        private val ROOT_DIR: String get() = Layout.ROOT
         /** Root-only (Magisk's /data/adb): neither apps nor the shell user (adb, the broker daemon) can touch it. */
         private const val STAGE = "/data/adb/plaitbackup.stage"
 
+        /**
+         * Lists the archives under [rootDir]/apps: per archive "dir parts... kilobytes", then "L dir name" and "I dir base64"
+         * for its plain name and icon (see [AppMeta]) when they exist. Pure, so tests can run it.
+         */
+        fun listScript(rootDir: String): String =
+            "cd $rootDir/apps 2>/dev/null || exit 0\n" +
+                "for D in */user_*; do echo \"\$D \$(ls \$D | tr '\\n' ' ') \$(du -sk \$D | cut -f1)\"; " +
+                "[ -f \$D/${AppMeta.LABEL} ] && echo \"L \$D \$(head -c ${AppMeta.MAX_LABEL_BYTES} \$D/${AppMeta.LABEL} | tr -d '\\n\\r')\"; " +
+                "[ -f \$D/${AppMeta.ICON} ] && [ \$(stat -c %s \$D/${AppMeta.ICON}) -le ${AppMeta.MAX_ICON_BYTES} ] && " +
+                "echo \"I \$D \$(base64 \$D/${AppMeta.ICON} | tr -d '\\n')\"; true; done\n"
+
+        /** The archives in [listScript]'s output; whatever is not a plain package name or a sane icon is dropped. */
+        fun parseList(out: String): List<ArchiveApp> {
+            val labels = mutableMapOf<String, String?>()
+            val icons = mutableMapOf<String, ByteArray?>()
+            for (line in out.lines()) {
+                val kind = line.substringBefore(' ')
+                if (kind != "L" && kind != "I") continue
+                val dir = line.substringAfter(' ').substringBefore(' ')
+                val value = line.substringAfter(' ').substringAfter(' ', "")
+                if (kind == "L") labels[dir] = AppMeta.parseLabel(value)
+                else icons[dir] = runCatching { java.util.Base64.getDecoder().decode(value) }.getOrNull()?.takeIf(AppMeta::looksLikeIcon)
+            }
+            return out.lines().mapNotNull { line ->
+                val f = line.trim().split(' ').filter { it.isNotEmpty() }
+                if (f.size < 2 || f[0] == "L" || f[0] == "I") return@mapNotNull null
+                val pkg = f[0].substringBefore('/')
+                val user = f[0].substringAfter("user_").toIntOrNull() ?: return@mapNotNull null
+                val parts = Part.entries.filter { p -> f.any { it == p.fileName || it == p.fileName + ArchiveCrypto.SUFFIX } }.toSet()
+                val kb = f.last().toLongOrNull() ?: 0
+                if (parts.isEmpty() || !Layout.isSafePackage(pkg)) null else ArchiveApp(pkg, user, parts, kb * 1024, labels[f[0]], icons[f[0]])
+            }.sortedBy { it.packageName }
+        }
+
         /** The root script for one app; pure, so tests can print it. [pkg] must pass [Layout.isSafePackage]. */
+        // No --selinux: toybox's tar corrupts memory with it and crashes in its --exclude matching on some apps' files
+        // (SIGSEGV in fnmatch). Labels are not needed: both restores relabel (restorecon here, installd on PlaitOS).
         fun backupScript(pkg: String, userId: Int, parts: Set<Part>, out: String = "$STAGE/out.$pkg"): String {
             val s = StringBuilder("set -o pipefail\nmkdir -p $STAGE && chmod 0700 $STAGE\nOUT=$out\nrm -rf \$OUT && mkdir -m 0700 \$OUT || exit 1\n")
             fun data(part: Part, parent: String) {
                 s.append(
                     """
                     if [ -d $parent/$pkg ]; then
-                      tar --selinux -cpf - -C $parent --exclude=$pkg/cache --exclude=$pkg/code_cache $pkg | zstd --single-thread -q -f -o ${'$'}OUT/${part.fileName} || exit 1
-                    else rm -f ${'$'}OUT/${part.fileName}; fi
-                    """.trimIndent() + "\n"
+                      tar -cpf - -C $parent --exclude=$pkg/cache --exclude=$pkg/code_cache $pkg | zstd --single-thread -q -f -o ${'$'}OUT/${part.fileName} || exit 1
+                    """.trimIndent() + "\n" +
+                        // Every installed app has its private folders: one missing means root cannot see them, not "no data"
+                        (if (part == Part.USER || part == Part.USER_DE) "else echo \"$parent/$pkg not found\" >&2; exit 6; fi\n"
+                        else "else rm -f ${'$'}OUT/${part.fileName}; fi\n")
                 )
             }
             if (Part.APK in parts) s.append(
@@ -225,23 +361,36 @@ class DevRootBackend(private val context: android.content.Context) : Backend {
                 dumpsys package $pkg | sed -n '/runtime permissions:/,/^ *[a-zA-Z ]*:${'$'}/p' | grep 'granted=true' | sed 's/^ *\([^:]*\):.*/\1/' > ${'$'}OUT/permissions.txt
                 appops get --user $userId $pkg > ${'$'}OUT/appops.txt 2>/dev/null
                 echo "$pkg" > ${'$'}OUT/package.txt
+                # Who installed it (Play Store, F-Droid, ...), so a restore can record the same installer
+                pm list packages -i --user $userId | sed -n 's/^package:$pkg  *installer=//p' | head -1 | tr -d '\r\n' > ${'$'}OUT/${InstallerSetting.FILE}
                 """.trimIndent() + "\n"
             )
     return s.toString()
         }
 
         /** The root script for one app; pure, so tests can print it. [pkg] must pass [Layout.isSafePackage]. */
-        fun restoreScript(pkg: String, userId: Int, parts: Set<Part>, src: String = "$STAGE/$pkg"): String {
+        fun restoreScript(pkg: String, userId: Int, parts: Set<Part>, src: String = "$STAGE/$pkg", installer: String? = null): String {
+            // The installer name goes into a shell command: only a plain package name gets through
+            val safeInstaller = installer?.takeIf { Layout.isSafePackage(it) }
+            // A recorded installer is applied as the system user: for root and adb installs Android pins "who started the
+            // install" to the shell, but a system caller may name the store, so the app looks installed by it (as the Play
+            // Store's own installs do). Without an installer the install stays a plain root one.
+            // Magisk's su: the uid goes first ("su 1000 -c cmd"); "su -c cmd 1000" silently runs as root
+            val asSystem: (String) -> String = { cmd -> if (safeInstaller != null) "su 1000 -c \"$cmd\"" else cmd }
+            // --update-ownership makes the store the update owner, as in its own installs; Android records it only for a new
+            // install (over an installed app it is cleared), same as the PlaitOS service's request
+            val createOptions = if (safeInstaller != null) " -i $safeInstaller --install-reason 4 --package-source 2 --update-ownership" else ""
             val s = StringBuilder("set -o pipefail\nSRC=$src\n")
             if (Part.APK in parts) s.append(
                 """
                 if [ -f ${'$'}SRC/apk.tar.zst ]; then
                   T=${'$'}SRC/apk.extract; rm -rf ${'$'}T; mkdir -m 0700 ${'$'}T
                   zstd -q -dc ${'$'}SRC/apk.tar.zst | tar -xf - -C ${'$'}T || exit 1
-                  SID=${'$'}(pm install-create -r --user $userId | sed -n 's/.*\[\([0-9]*\)\].*/\1/p')
+                  SID=${'$'}(${asSystem("pm install-create -r --user $userId$createOptions")} | sed -n 's/.*\[\([0-9]*\)\].*/\1/p')
                   [ -n "${'$'}SID" ] || exit 3
-                  for F in ${'$'}T/*.apk; do pm install-write -S ${'$'}(stat -c %s ${'$'}F) ${'$'}SID ${'$'}(basename ${'$'}F) ${'$'}F > /dev/null || exit 3; done
-                  pm install-commit ${'$'}SID || exit 3
+                  # Through a pipe: pm opens a path (or a file on stdin) inside system_server, which SELinux keeps out of /data/adb
+                  for F in ${'$'}T/*.apk; do cat ${'$'}F | ${asSystem("pm install-write -S ${'$'}(stat -c %s ${'$'}F) ${'$'}SID ${'$'}(basename ${'$'}F) -")} > /dev/null || exit 3; done
+                  ${asSystem("pm install-commit ${'$'}SID")} || exit 3
                   rm -rf ${'$'}T
                 fi
                 """.trimIndent() + "\n"

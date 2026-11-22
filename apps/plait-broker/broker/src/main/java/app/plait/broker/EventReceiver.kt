@@ -43,7 +43,7 @@ class EventReceiver : BroadcastReceiver() {
             (kind + uid + what + target).hashCode(),
             android.app.Notification.Builder(context, CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_notify_more)
-                .setContentTitle("Plait Broker request")
+                .setContentTitle("Broker request")
                 .setContentText(subject)
                 .setStyle(android.app.Notification.BigTextStyle().bigText(subject + "\n" + body))
                 .setContentIntent(open)

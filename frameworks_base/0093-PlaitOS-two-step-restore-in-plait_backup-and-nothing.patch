@@ -1,0 +1,249 @@
+From f2c3652613a417fc6b7604aee52132c1101ac2ff Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 08:24:09 -0600
+Subject: [PATCH] PlaitOS: two-step restore in plait_backup, and nothing a
+ client sends can crash system_server
+
+restorePartStage and restoreFinish let the app check the archive while it streams, instead of
+copying it aside first: the service extracts into a staging dir and swaps it in only on commit.
+PlaitBackupService.onTransact turns any unexpected exception into an IllegalStateException for the
+caller (an exception the binder cannot send ends in the uncaught handler, which kills
+system_server). The charging limit and the headset receiver no longer throw into the boot or a
+handler thread.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+---
+ .../android/internal/plait/IPlaitBackup.aidl  | 10 ++
+ .../server/plait/PlaitBackupService.java      | 99 +++++++++++++++++++
+ .../server/plait/PlaitChargeLimitService.java | 18 ++++
+ .../java/com/android/server/pm/Installer.java | 22 +++++
+ .../server/policy/PhoneWindowManager.java     |  3 +
+ 5 files changed, 152 insertions(+)
+
+diff --git a/core/java/com/android/internal/plait/IPlaitBackup.aidl b/core/java/com/android/internal/plait/IPlaitBackup.aidl
+index cac1f152d..ee2592100 100644
+--- a/core/java/com/android/internal/plait/IPlaitBackup.aidl
++++ b/core/java/com/android/internal/plait/IPlaitBackup.aidl
+@@ -78,4 +78,14 @@ interface IPlaitBackup {
+      * Added after the other calls: keep it last, the Plait Backup app calls the methods by their position.
+      */
+     void installApksAs(String grant, String packageName, int userId, in ParcelFileDescriptor source, String installer);
++
++    /**
++     * A restore of an app's data in two steps, so the archive can be checked on the way through instead of being
++     * copied aside first. restorePartStage extracts one part into a staging dir and leaves the app's data alone;
++     * restoreFinish then swaps every staged part in (commit) or throws them away (not commit). Always finish,
++     * also after a failure: a stage that was never finished is only removed by the next restore of that app.
++     */
++    void restorePartStage(String grant, String packageName, int userId, int part, in ParcelFileDescriptor source);
++
++    void restoreFinish(String grant, String packageName, int userId, in int[] parts, boolean commit);
+ }
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index 039e1b129..11dd39842 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -102,6 +102,32 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         watchForDefaultAccess();
+     }
+ 
++    /**
++     * Nothing a client sends may take system_server down. A binder method that throws an exception the binder
++     * cannot send to the caller (anything beyond SecurityException, IllegalArgumentException, IllegalStateException and
++     * the like) ends in the uncaught-exception handler, which kills this process: a soft reboot, for any app that
++     * can reach the service. So every unexpected exception (and error) becomes an IllegalStateException the caller
++     * gets, and is logged here.
++     */
++    @Override
++    public boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags)
++            throws android.os.RemoteException {
++        try {
++            return super.onTransact(code, data, reply, flags);
++        } catch (SecurityException | IllegalArgumentException | IllegalStateException | NullPointerException
++                | UnsupportedOperationException e) {
++            throw e;
++        } catch (Throwable t) {
++            Slog.e(TAG, "plait_backup call " + code + " failed unexpectedly", t);
++            if ((flags & android.os.IBinder.FLAG_ONEWAY) == 0 && reply != null) {
++                reply.setDataSize(0);
++                reply.setDataPosition(0);
++                reply.writeException(new IllegalStateException("plait_backup: " + t));
++            }
++            return true;
++        }
++    }
++
+     // ---- Plait Backup's default access ----
+ 
+     /** The backup app that ships with PlaitOS. */
+@@ -683,6 +709,79 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }
+     }
+ 
++    @Override
++    public void restorePartStage(String grant, String packageName, int userId, int part,
++            ParcelFileDescriptor source) {
++        try {
++            checkPart(part);
++            Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
++            final long ident = Binder.clearCallingIdentity();
++            try {
++                ApplicationInfo ai = target(call, true);
++                String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
++                mInstaller.plaitRestoreAppDataStage(volumeFor(ai, part), call.pkg, userId,
++                        UserHandle.getAppId(ai.uid), seInfo, part, source);
++                logUse(call, "stage part " + part + " of");
++            } catch (InstallerException e) {
++                throw failed("staging the restore of " + call.pkg, e);
++            } finally {
++                Binder.restoreCallingIdentity(ident);
++            }
++        } finally {
++            closeQuietly(source);
++        }
++    }
++
++    @Override
++    public void restoreFinish(String grant, String packageName, int userId, int[] parts, boolean commit) {
++        for (int part : parts) checkPart(part);
++        Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
++        final long ident = Binder.clearCallingIdentity();
++        try {
++            ApplicationInfo ai = target(call, true);
++            String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
++            int appId = UserHandle.getAppId(ai.uid);
++            if (!commit) {
++                discardStaged(ai, call, parts, seInfo, appId);
++                return;
++            }
++            // Frozen, not just stopped: an alarm, job or push must not start the app on half-restored data
++            try (AutoCloseable frozen = LocalServices.getService(PackageManagerInternal.class)
++                    .plaitFreezePackage(call.pkg, call.userId, "plait_backup restore")) {
++                for (int i = 0; i < parts.length; i++) {
++                    try {
++                        mInstaller.plaitRestoreAppDataFinish(volumeFor(ai, parts[i]), call.pkg, userId, appId,
++                                seInfo, parts[i], true);
++                    } catch (InstallerException e) {
++                        // What is not in place yet is thrown away; what already is stays (a swap cannot be undone)
++                        discardStaged(ai, call, java.util.Arrays.copyOfRange(parts, i + 1, parts.length), seInfo,
++                                appId);
++                        throw failed("restore of " + call.pkg, e);
++                    }
++                }
++            }
++            logUse(call, "restore parts of");
++        } catch (RuntimeException e) {
++            throw e;
++        } catch (Exception e) {
++            throw new IllegalStateException("restore of " + call.pkg + ": " + e.getMessage());
++        } finally {
++            Binder.restoreCallingIdentity(ident);
++        }
++    }
++
++    /** Throws staged parts away; never fails (a part with nothing staged is fine). */
++    private void discardStaged(ApplicationInfo ai, Call call, int[] parts, String seInfo, int appId) {
++        for (int part : parts) {
++            try {
++                mInstaller.plaitRestoreAppDataFinish(volumeFor(ai, part), call.pkg, call.userId, appId, seInfo, part,
++                        false);
++            } catch (InstallerException | RuntimeException e) {
++                Slog.w(TAG, "could not discard the staged part " + part + " of " + call.pkg, e);
++            }
++        }
++    }
++
+     @Override
+     public void restoreState(String grant, String packageName, int userId, String[] permissions, String[] ops,
+             String[] modes) {
+diff --git a/services/core/java/com/android/server/plait/PlaitChargeLimitService.java b/services/core/java/com/android/server/plait/PlaitChargeLimitService.java
+index 7945e0b5c..8c0c9fb44 100644
+--- a/services/core/java/com/android/server/plait/PlaitChargeLimitService.java
++++ b/services/core/java/com/android/server/plait/PlaitChargeLimitService.java
+@@ -82,11 +82,21 @@ public final class PlaitChargeLimitService extends SystemService {
+     public void onStart() {
+     }
+ 
++    // Nothing here may throw into the boot or a handler thread: that kills system_server (a boot loop when it runs
++    // every boot). Whatever goes wrong, the charging limit just does nothing and the phone charges as usual.
+     @Override
+     public void onBootPhase(int phase) {
+         if (phase != PHASE_SYSTEM_SERVICES_READY) {
+             return;
+         }
++        try {
++            start();
++        } catch (Throwable t) {
++            Slog.e(TAG, "the charging limit could not start", t);
++        }
++    }
++
++    private void start() {
+         for (String key : new String[] {ENABLED, LIMIT, BY_ALARM}) {
+             mContext.getContentResolver().registerContentObserver(
+                     Settings.System.getUriFor(key), false, mObserver, UserHandle.USER_SYSTEM);
+@@ -100,6 +110,14 @@ public final class PlaitChargeLimitService extends SystemService {
+     }
+ 
+     private void apply() {
++        try {
++            applyLimit();
++        } catch (Throwable t) {
++            Slog.e(TAG, "the charging limit could not be applied", t);
++        }
++    }
++
++    private void applyLimit() {
+         final AlarmManager alarms = mContext.getSystemService(AlarmManager.class);
+         alarms.cancel(mWindowAlarmListener);
+ 
+diff --git a/services/core/java/com/android/server/pm/Installer.java b/services/core/java/com/android/server/pm/Installer.java
+index e0c9dae30..e111488c2 100644
+--- a/services/core/java/com/android/server/pm/Installer.java
++++ b/services/core/java/com/android/server/pm/Installer.java
+@@ -729,6 +729,28 @@ public class Installer extends SystemService {
+         }
+     }
+ 
++    /** Extracts one part of an app's data from a tar.zst stream into a staging dir, leaving the app's data alone. */
++    public void plaitRestoreAppDataStage(String uuid, String pkg, @UserIdInt int userId, int appId,
++            String seInfo, int part, ParcelFileDescriptor source) throws InstallerException {
++        if (!checkBeforeRemote()) return;
++        try {
++            mInstalld.plaitRestoreAppDataStage(uuid, pkg, userId, appId, seInfo, part, source);
++        } catch (Exception e) {
++            throw InstallerException.from(e);
++        }
++    }
++
++    /** Swaps a staged part in (commit, then relabelled) or throws it away. */
++    public void plaitRestoreAppDataFinish(String uuid, String pkg, @UserIdInt int userId, int appId,
++            String seInfo, int part, boolean commit) throws InstallerException {
++        if (!checkBeforeRemote()) return;
++        try {
++            mInstalld.plaitRestoreAppDataFinish(uuid, pkg, userId, appId, seInfo, part, commit);
++        } catch (Exception e) {
++            throw InstallerException.from(e);
++        }
++    }
++
+     /** Streams the *.apk files of an app's code dir as tar.zst into out. */
+     public void plaitBackupApks(String codePath, ParcelFileDescriptor out)
+             throws InstallerException {
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index f21498de7..8f64b4330 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -2778,6 +2778,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                     startActivityAsUser(player, UserHandle.CURRENT);
+                 } catch (ActivityNotFoundException e) {
+                     Slog.w(TAG, "No music player to start for the headset");
++                } catch (RuntimeException e) {
++                    // A receiver runs on the handler thread: an exception here would kill system_server
++                    Slog.w(TAG, "Could not start the music player for the headset", e);
+                 }
+             }
+         };
+-- 
+2.56.0
+

@@ -1,0 +1,108 @@
+From a12020755d07160df31c272a22f17241f35a485a Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 09:46:57 -0600
+Subject: [PATCH] PlaitOS: plait_backup security review fixes
+
+Only system apps may use plait_backup; restored APKs are installed as from a
+local file (restricted settings apply); never installs over a system app that
+is uninstalled for the user; restoring MODE_DEFAULT counts as loosening.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../server/plait/PlaitBackupService.java      | 41 ++++++++++++++++---
+ 1 file changed, 35 insertions(+), 6 deletions(-)
+
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index 859475153..eb21b4a69 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -65,8 +65,8 @@ import java.util.concurrent.TimeUnit;
+  * <ul>
+  * <li>its signature checks out against the manager's key, and the manager is {@code app.plait.broker} as it came in
+  *     the system image (a system app that was never updated);
+- * <li>the caller is the uid, package and signing certificate the grant names, and the call is for the caller's own
+- *     user;
++ * <li>the caller is the uid, package and signing certificate the grant names, is a system app, and the call is for
++ *     the caller's own user;
+  * <li>it covers the scope and the target app, has not expired, and the manager still reports it active (revocation
+  *     and a change of backup app take effect on the next call).
+  * </ul>
+@@ -131,6 +131,10 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             if (!g.certSha256.equals(signingCert(g.packageName, userId))) {
+                 throw new SecurityException("the app's signing certificate does not match the grant");
+             }
++            // Only a backup app that came with the system image, whatever the manager signed
++            if (!isSystemApp(g.packageName, userId)) {
++                throw new SecurityException(g.packageName + " is not a system app; only those may use plait_backup");
++            }
+             if (!g.allows(scope, pkg, System.currentTimeMillis())) {
+                 throw new SecurityException("grant does not cover " + scope + " of " + pkg + " (or expired)");
+             }
+@@ -208,6 +212,15 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }
+     }
+ 
++    private boolean isSystemApp(String pkg, int userId) {
++        try {
++            ApplicationInfo ai = mContext.getPackageManager().getApplicationInfoAsUser(pkg, 0, userId);
++            return (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
++        } catch (PackageManager.NameNotFoundException e) {
++            return false;
++        }
++    }
++
+     /** The installed target, which must be a real app (not one sharing a system uid). */
+     private ApplicationInfo target(Call call) {
+         return target(call, false);
+@@ -390,12 +403,24 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
+             final long ident = Binder.clearCallingIdentity();
+             try {
+-                // Never an update over a system app; a new install or an update of an ordinary app is fine
++                // Never an update over a system app (also one uninstalled for this user, which is still on the
++                // device); a new install or an update of an ordinary app is fine
++                PackageManager pm = mContext.getPackageManager();
+                 try {
+-                    mContext.getPackageManager().getApplicationInfoAsUser(call.pkg, 0, call.userId);
++                    pm.getApplicationInfoAsUser(call.pkg, 0, call.userId);
+                     target(call, true);
+                 } catch (PackageManager.NameNotFoundException notInstalled) {
+-                    // not installed: nothing to protect
++                    try {
++                        ApplicationInfo known = pm.getApplicationInfoAsUser(call.pkg,
++                                PackageManager.MATCH_KNOWN_PACKAGES, call.userId);
++                        if ((known.flags & ApplicationInfo.FLAG_SYSTEM) != 0
++                                || UserHandle.getAppId(known.uid) < Process.FIRST_APPLICATION_UID) {
++                            throw new SecurityException(call.pkg
++                                    + " is a system app uninstalled for this user; it is never installed over");
++                        }
++                    } catch (PackageManager.NameNotFoundException unknown) {
++                        // not on the device at all: nothing to protect
++                    }
+                 }
+                 install(call, source);
+                 logUse(call, "install APKs of");
+@@ -437,6 +462,9 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         // The APKs must really be this package; installing over an existing install is fine
+         params.setAppPackageName(call.pkg);
+         params.setInstallReason(PackageManager.INSTALL_REASON_USER);
++        // Installed from a file, as a sideload would be: Android's restricted settings (accessibility, notification
++        // access, ...) apply to the app as they would to any app the user installed from a file
++        params.setPackageSource(PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE);
+         params.installFlags |= PackageManager.INSTALL_REPLACE_EXISTING;
+         int sessionId = -1;
+         try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(readEnd)) {
+@@ -576,8 +604,9 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+                     int code = opCode(uidMode ? ops[i].substring(4) : ops[i]);
+                     int mode = Arrays.asList(AppOpsManager.MODE_NAMES).indexOf(modes[i]);
+                     if (code < 0 || mode < 0) continue;
++                    // "default" counts too: for an op no permission backs, it can undo the user's "ignore"
+                     boolean loosens = mode == AppOpsManager.MODE_ALLOWED
+-                            || mode == AppOpsManager.MODE_FOREGROUND;
++                            || mode == AppOpsManager.MODE_FOREGROUND || mode == AppOpsManager.MODE_DEFAULT;
+                     String opPerm = AppOpsManager.opToPermission(code);
+                     if (loosens && (opPerm == null || !requested.contains(opPerm))) continue;
+                     try {
+-- 
+2.56.0
+

@@ -109,7 +109,66 @@ final class BinderRules {
         SENSITIVE.put("com.android.internal.telecom.ITelecomService", Gate.ROLES);
         SENSITIVE.put("android.app.backup.IBackupManager", Gate.BACKUP);
         SENSITIVE.put("android.os.IUserManager", Gate.USERS);
-        SENSITIVE.put("android.content.IContentProvider", Gate.SECURITY); // includes the settings provider
+    }
+
+    private static final String CONTENT_PROVIDER = "android.content.IContentProvider";
+    private static final int MODE_ALLOWED = 0, MODE_DEFAULT = 3, MODE_FOREGROUND = 4;
+
+    /**
+     * A scoped call on the caller itself: taking something away is normal, giving itself permissions or app-ops is asked
+     * (as for {@code pm grant} and {@code appops set}).
+     */
+    private static Decision selfCall(String descriptor, String key, Parcel data) {
+        int pos = data.dataPosition();
+        try {
+            data.setDataPosition(0);
+            data.enforceInterface(descriptor);
+            switch (key) {
+                case PERMISSIONS + ".grantRuntimePermission":
+                    data.readString();
+                    return Classifier.selfGrant(data.readString(), false);
+                case PERMISSIONS + ".addAllowlistedRestrictedPermission":
+                    data.readString();
+                    return Decision.ask("allowlist itself " + data.readString(),
+                            "lift Android's restriction on a restricted permission for itself (SMS, call log, ...)");
+                case PERMISSIONS + ".updatePermissionFlags":
+                    return Decision.ask("permission flags itself", "change how Android asks it for permissions (e.g. undo \"don't ask again\")");
+                case APP_OPS + ".setMode": {
+                    int code = data.readInt();
+                    data.readInt();
+                    data.readString();
+                    return selfMode(code, data.readInt());
+                }
+                case APP_OPS + ".setUidMode": {
+                    int code = data.readInt();
+                    data.readInt();
+                    return selfMode(code, data.readInt());
+                }
+                case APP_OPS + ".resetAllModes":
+                    return Decision.ask("app-op itself reset", "reset its app-ops, undoing what you denied it");
+                default:
+                    return Decision.normal();
+            }
+        } catch (RuntimeException e) {
+            return Decision.never(key + ": arguments could not be read");
+        } finally {
+            data.setDataPosition(pos);
+        }
+    }
+
+    private static Decision selfMode(int code, int mode) {
+        if (mode != MODE_ALLOWED && mode != MODE_DEFAULT && mode != MODE_FOREGROUND) return Decision.normal();
+        Decision d = Classifier.selfAppOp(opName(code), null);
+        return d != null ? d : Decision.normal();
+    }
+
+    /** An op's name ("PROJECT_MEDIA") from its code, as appops prints it; the number if the name cannot be read. */
+    private static String opName(int code) {
+        try {
+            return (String) android.app.AppOpsManager.class.getMethod("opToName", int.class).invoke(null, code);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return String.valueOf(code);
+        }
     }
 
     /** Methods on sensitive interfaces that only read. */
@@ -148,7 +207,7 @@ final class BinderRules {
                 if (p == null) return Decision.never(key + ": no package named");
                 if (!p.equals(caller)) others.add(p);
             }
-            if (others.isEmpty()) return Decision.normal();
+            if (others.isEmpty()) return selfCall(descriptor, key, data);
             if (rule.scope == Scope.UNINSTALL && others.size() == 1 && apps.installedBy(others.get(0), caller)) {
                 return Decision.ask("uninstall " + others.get(0), "uninstall " + others.get(0) + ", which it installed");
             }
@@ -156,8 +215,15 @@ final class BinderRules {
             return Decision.scoped(rule.scope, others.get(0));
         }
         if (key.startsWith(INSTALLER + ".")) return Decision.normal(); // InstallGuard and the installer bundle
+        // A provider's Binder does not say whose it is: reads included, use `content --uri` (scoped to the owner)
+        if (descriptor.equals(CONTENT_PROVIDER)) {
+            return Decision.gated(Gate.SECURITY, key + " (raw content provider calls; use content --uri instead)");
+        }
         Gate gate = SENSITIVE.get(descriptor);
-        if (gate == null) return Decision.normal();
+        if (gate == null) {
+            return Decision.unlisted("binder " + descriptor, "make calls to the system interface " + descriptor
+                    + ", which the broker does not know to be a plain device function");
+        }
         String method = key.contains("#") ? "" : key.substring(descriptor.length() + 1);
         for (String p : READ_PREFIXES) {
             if (method.startsWith(p)) return Decision.normal();
