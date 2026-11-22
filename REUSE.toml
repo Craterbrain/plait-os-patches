@@ -1,0 +1,73 @@
+version = 1
+SPDX-PackageName = "PlaitOS patches and apps"
+SPDX-PackageSupplier = "Craterbrain"
+SPDX-PackageDownloadLocation = "https://github.com/Craterbrain/plait-os-patches"
+
+# One licence per chunk, chosen by where the chunk comes from (see LICENSING.md). Later entries win over earlier ones.
+
+# ---- PlaitOS's own work: scripts, documentation, the apps, the shared library ----
+[[annotations]]
+path = "**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Craterbrain"
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---- Patches to Android (AOSP and the ports from LineageOS, crDroid, AICP, ...) ----
+# A patch is a modification of the file it changes, so it follows that file's licence: Apache-2.0 for AOSP.
+# Each patch keeps the author it was written (or ported) by in its From: line, and new files carry their own header.
+[[annotations]]
+path = ["frameworks_base/**", "frameworks_native/**", "frameworks_libs_systemui/**", "build_make/**", "build_soong/**",
+        "external_zstd/**", "packages_apps_Contacts/**", "packages_apps_Dialer/**", "packages_apps_Launcher3/**",
+        "packages_apps_Settings/**", "packages_apps_ThemePicker/**"]
+precedence = "override"
+SPDX-FileCopyrightText = ["The Android Open Source Project and the patch authors named in each patch's From: line", "2026 Craterbrain"]
+SPDX-License-Identifier = "Apache-2.0"
+
+# GrapheneOS's own projects are MIT: patches to them are MIT (their LICENSE is in each folder)
+[[annotations]]
+path = ["branding/**", "packages_apps_SetupWizard2/**", "packages_apps_Updater/**"]
+precedence = "override"
+SPDX-FileCopyrightText = ["GrapheneOS and contributors (see LICENSE in this folder)", "2026 Craterbrain"]
+SPDX-License-Identifier = "MIT"
+
+# ---- Plait Broker: based on Shizuku (Apache-2.0, RikkaApps) ----
+[[annotations]]
+path = "apps/plait-broker/broker/**"
+precedence = "override"
+SPDX-FileCopyrightText = ["Shizuku: 2021- RikkaApps (where a file comes from Shizuku, notably rikka/shizuku/**)", "2026 Craterbrain"]
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---- Plait Scan data files ----
+[[annotations]]
+path = ["apps/plait-broker/scanner/src/main/assets/bt_appearance.tsv", "apps/plait-broker/scanner/src/main/assets/bt_companies.tsv",
+        "apps/plait-broker/scanner/src/main/assets/bt_services.tsv", "apps/plait-broker/scanner/src/main/assets/bluetooth-numbers-LICENSE.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "2019-2020 Nordic Semiconductor ASA (Bluetooth Numbers Database)"
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "apps/plait-broker/scanner/src/main/assets/oui.tsv"
+precedence = "override"
+SPDX-FileCopyrightText = "hwdata contributors; the vendor names are the IEEE Registration Authority's public OUI registry"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# ---- Magisk module packaging: the installer script is Magisk's boilerplate ----
+[[annotations]]
+path = "apps/**/META-INF/com/google/android/**"
+precedence = "override"
+SPDX-FileCopyrightText = "John Wu and Magisk contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# ---- Icons from Google's Material Symbols (Apache-2.0) ----
+[[annotations]]
+path = ["apps/plait-design/design/src/main/res/drawable/ps_*.xml", "apps/plait-design/tools/icons.json"]
+precedence = "override"
+SPDX-FileCopyrightText = "Google LLC (Material Symbols)"
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---- Gradle wrapper ----
+[[annotations]]
+path = ["apps/*/gradlew", "apps/*/gradlew.bat", "apps/*/gradle/wrapper/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "Gradle Inc. and contributors"
+SPDX-License-Identifier = "Apache-2.0"

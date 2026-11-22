@@ -1,0 +1,7 @@
+Plait Broker, Plait Shield, Plait Scan
+Copyright 2026 Craterbrain. Apache-2.0.
+
+Plait Broker is based on Shizuku, Copyright RikkaApps, Apache-2.0 (LICENSE-Shizuku); rikka/shizuku/** comes from it.
+Plait Scan ships assets/bt_*.tsv from the Bluetooth Numbers Database, Copyright 2019-2020 Nordic Semiconductor ASA, BSD-3-Clause (assets/bluetooth-numbers-LICENSE.txt),
+and assets/oui.tsv built from hwdata (GPL-2.0-or-later) carrying the IEEE OUI registry.
+The Magisk module zips contain the Magisk module installer script (GPL-3.0-or-later), which comes from Magisk.

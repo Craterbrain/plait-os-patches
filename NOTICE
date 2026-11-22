@@ -1,0 +1,14 @@
+PlaitOS patches and apps
+Copyright 2026 Craterbrain
+
+Licensed under the Apache License, Version 2.0 except where LICENSING.md and REUSE.toml say otherwise.
+
+This repository contains or is based on:
+  - the Android Open Source Project (Apache-2.0), and patches ported from LineageOS, crDroid, AICP and others (Apache-2.0)
+  - GrapheneOS's Updater, Setup Wizard and branding projects (MIT), whose licence files are in the matching patch folders
+  - Shizuku, Copyright RikkaApps (Apache-2.0): the base of Plait Broker (apps/plait-broker/LICENSE-Shizuku)
+  - Bluetooth Numbers Database, Copyright 2019-2020 Nordic Semiconductor ASA (BSD-3-Clause)
+  - hwdata (GPL-2.0-or-later), carrying IEEE's public OUI registry: assets/oui.tsv in Plait Scan
+  - Magisk's module installer script (GPL-3.0-or-later)
+  - Google's Material Symbols icons (Apache-2.0)
+  - Gradle's wrapper (Apache-2.0)

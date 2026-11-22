@@ -1,0 +1,4 @@
+Plait Design
+Copyright 2026 Craterbrain. Apache-2.0.
+
+The icons (design/src/main/res/drawable/ps_*.xml, tools/icons.json) are Google's Material Symbols (Apache-2.0), converted to Android vector drawables.

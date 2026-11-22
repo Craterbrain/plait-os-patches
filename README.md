@@ -19,3 +19,7 @@ The apps built into the ROM, as staged into `vendor/plait` (the ROM build import
 | Plait Broker, Plait Shield, Plait Scan | `apps/plait-broker` (modules `broker`, `shield`, `scanner`) |
 
 Clone with `git clone --recurse-submodules`.
+
+## Licensing
+
+Each part is under the licence of what it comes from: patches follow the file they change (Apache-2.0 for AOSP, MIT for GrapheneOS's own projects), Plait Broker follows Shizuku (Apache-2.0), and PlaitOS's own work is Apache-2.0. See [LICENSING.md](LICENSING.md); `REUSE.toml` has it per path and the texts are in `LICENSES/`.
