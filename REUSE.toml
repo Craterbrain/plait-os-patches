@@ -16,7 +16,7 @@ SPDX-License-Identifier = "Apache-2.0"
 # A patch is a modification of the file it changes, so it follows that file's licence: Apache-2.0 for AOSP.
 # Each patch keeps the author it was written (or ported) by in its From: line, and new files carry their own header.
 [[annotations]]
-path = ["frameworks_base/**", "frameworks_native/**", "frameworks_libs_systemui/**", "build_make/**", "build_soong/**",
+path = ["art/**", "frameworks_base/**", "frameworks_native/**", "frameworks_libs_systemui/**", "build_make/**", "build_soong/**",
         "external_zstd/**", "packages_apps_Contacts/**", "packages_apps_Dialer/**", "packages_apps_Launcher3/**",
         "packages_apps_Settings/**", "packages_apps_ThemePicker/**"]
 precedence = "override"

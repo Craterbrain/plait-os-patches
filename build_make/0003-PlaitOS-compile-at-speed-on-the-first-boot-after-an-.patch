@@ -1,0 +1,28 @@
+From 7b99c67e6b0ad4790bdf537f4c242ed66878245f Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 13:49:13 -0600
+Subject: [PATCH] PlaitOS: compile at speed on the first boot after an OTA
+
+With JIT off no profiles are collected, so speed-profile here leaves the
+apps compiled at boot without optimized code until background dexopt
+redoes them. Match every other PlaitOS dexopt reason.
+---
+ target/product/runtime_libart.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/target/product/runtime_libart.mk b/target/product/runtime_libart.mk
+index 0299ac6..993d876 100644
+--- a/target/product/runtime_libart.mk
++++ b/target/product/runtime_libart.mk
+@@ -116,7 +116,7 @@ PRODUCT_SYSTEM_PROPERTIES += \
+ PRODUCT_SYSTEM_PROPERTIES += \
+     pm.dexopt.post-boot?=speed \
+     pm.dexopt.first-boot=speed \
+-    pm.dexopt.boot-after-ota=speed-profile \
++    pm.dexopt.boot-after-ota=speed \
+     pm.dexopt.boot-after-mainline-update?=speed \
+     pm.dexopt.install?=speed \
+     pm.dexopt.install-fast?=speed \
+-- 
+2.56.1
+

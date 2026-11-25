@@ -1,0 +1,59 @@
+From ac919360f75255e438c6e2e29aa32bfd8efd649d Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 11:09:58 -0600
+Subject: [PATCH] Honor configured ART pre-reboot compiler filter
+
+---
+ .../com/android/server/art/ReasonMapping.java     |  7 +++----
+ .../server/art/prereboot/PreRebootManager.java    | 15 +++++++++++++++
+ 2 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/libartservice/service/java/com/android/server/art/ReasonMapping.java b/libartservice/service/java/com/android/server/art/ReasonMapping.java
+index 6aeeaf4..b11a1d1 100644
+--- a/libartservice/service/java/com/android/server/art/ReasonMapping.java
++++ b/libartservice/service/java/com/android/server/art/ReasonMapping.java
+@@ -175,12 +175,11 @@ public class ReasonMapping {
+      */
+     @NonNull
+     public static String getCompilerFilterForReason(@NonNull String reason) {
+-        if (REASON_PRE_REBOOT_DEXOPT.equals(reason)) {
+-            return "speed-profile";
+-        }
+-
+         String value = SystemProperties.get("pm.dexopt." + reason);
+         if (TextUtils.isEmpty(value)) {
++            if (REASON_PRE_REBOOT_DEXOPT.equals(reason)) {
++                return "speed-profile";
++            }
+             if (reason.equals(REASON_POST_UNATTENDED_REBOOT)) {
+                 // The Post unattended reboot job is supposed to use the bg-dexopt compiler filter,
+                 // unless explicitly overridden.
+diff --git a/libartservice/service/java/com/android/server/art/prereboot/PreRebootManager.java b/libartservice/service/java/com/android/server/art/prereboot/PreRebootManager.java
+index 062f65b..29ea9b8 100644
+--- a/libartservice/service/java/com/android/server/art/prereboot/PreRebootManager.java
++++ b/libartservice/service/java/com/android/server/art/prereboot/PreRebootManager.java
+@@ -145,6 +145,21 @@ public class PreRebootManager implements PreRebootManagerInterface {
+                 throw new IllegalArgumentException(e);
+             }
+ 
++            // Older source builds pass ART's previous default, even when the product
++            // configures a different pre-reboot filter. Honor explicit forced filters.
++            if (params != null
++                    && "speed-profile".equals(params.getDexoptParams().getCompilerFilter())
++                    && (params.getDexoptParams().getFlags()
++                               & ArtFlags.FLAG_FORCE_COMPILER_FILTER) == 0) {
++                String filter = ReasonMapping.getCompilerFilterForReason(reason);
++                if (!"speed-profile".equals(filter)) {
++                    AsLog.i("Pre-reboot dexopt using configured filter " + filter);
++                    params = new BatchDexoptParams.Builder(params.getPackages(),
++                            params.getDexoptParams().toBuilder().setCompilerFilter(filter).build())
++                            .build();
++                }
++            }
++
+             artManagerLocal.dexoptPackagesWithParams(snapshot, reason, cancellationSignal,
+                     callbackExecutor, Map.of(ArtFlags.PASS_MAIN, progressCallback), params);
+         } finally {
+-- 
+2.56.1
+

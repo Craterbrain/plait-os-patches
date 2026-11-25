@@ -11,6 +11,7 @@ TREE="$(cd "${2:-.}" && pwd)"
 
 # patch folder -> repo path in the tree
 declare -A MAP=(
+  [art]=art
   [build_make]=build/make
   [build_soong]=build/soong
   [external_zstd]=external/zstd
