@@ -1,0 +1,2571 @@
+From ef790d08094b3e654318d6ffb7526d717ab1adc8 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 01:56:02 -0600
+Subject: [PATCH] Plait Messages: attach sheet, scheduled send, selfie GIFs and
+ stickers, the PlaitOS look
+
+- AppTheme uses the plait-design shapes and type scale.
+- The attach button opens a sheet of tonal tiles: Gallery, Camera, Files,
+  Voice, Contact, Location (one-time position + OpenStreetMap link), Notes,
+  GIFs, Stickers, Selfie GIF (ten frames encoded on-device).
+- Scheduled send queues text and subjects, keeps the chosen SIM, rearms on
+  boot; each conversation lists pending messages with retry or removal.
+- Conversation rows grouped by position; the title shows the version and the
+  gear opens Settings. Tests for the attach sheet text and the plait code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ AndroidManifest.xml                           |   9 +
+ app/build.gradle.kts                          |  13 +-
+ app/src/screenshot/AndroidManifest.xml        |  68 ++++
+ .../android/messaging/ScreenshotActivity.kt   |  15 +
+ .../plait/schedule/ScheduledMessageTest.kt    |  36 ++
+ .../participant/ParticipantAvatarColorTest.kt |   9 +
+ .../composer/ui/AttachSheetTextTest.kt        |  47 +++
+ jni/GifTranscoder.cpp                         |  54 +++
+ res/values/plait_strings.xml                  |  39 ++
+ .../plait/schedule/ScheduleDialog.kt          | 151 +++++++
+ .../plait/schedule/ScheduledMessage.kt        |  88 +++++
+ .../messaging/plait/schedule/ScheduledSend.kt | 124 ++++++
+ .../plait/schedule/ScheduledSendReceiver.kt   |  75 ++++
+ .../BootAndPackageReplacedReceiver.kt         |   3 +
+ .../participant/ParticipantAvatarColors.kt    |  22 +-
+ .../delegate/ConversationDraftDelegate.kt     |  42 ++
+ .../ConversationDraftEditorDelegate.kt        |  12 +
+ .../composer/ui/ConversationAttachSheet.kt    | 369 ++++++++++++++++++
+ .../composer/ui/ConversationComposeBar.kt     |  12 +
+ .../ui/ConversationComposeMessageField.kt     | 150 ++-----
+ .../ui/ConversationComposerSection.kt         |   6 +
+ .../ui/conversation/composer/ui/GifPicker.kt  |  92 +++++
+ .../composer/ui/LocalStickerPicker.kt         | 122 ++++++
+ .../composer/ui/SelfieGifDialog.kt            | 172 ++++++++
+ .../conversation/screen/ConversationScreen.kt |  82 ++--
+ .../screen/ConversationViewModel.kt           |  12 +
+ .../chats/ConversationListScreen.kt           |   2 +-
+ .../chats/ConversationListTopAppBar.kt        |  37 +-
+ .../common/item/ConversationListItemRow.kt    |   6 +-
+ .../common/list/ConversationListItems.kt      |  21 +-
+ src/com/android/messaging/ui/core/Theme.kt    |  33 +-
+ .../android/messaging/util/GifTranscoder.java |   2 +
+ 32 files changed, 1740 insertions(+), 185 deletions(-)
+ create mode 100644 app/src/screenshot/AndroidManifest.xml
+ create mode 100644 app/src/screenshot/java/com/android/messaging/ScreenshotActivity.kt
+ create mode 100644 app/src/test/kotlin/com/android/messaging/plait/schedule/ScheduledMessageTest.kt
+ create mode 100644 app/src/test/kotlin/com/android/messaging/ui/conversation/composer/ui/AttachSheetTextTest.kt
+ create mode 100644 res/values/plait_strings.xml
+ create mode 100644 src/com/android/messaging/plait/schedule/ScheduleDialog.kt
+ create mode 100644 src/com/android/messaging/plait/schedule/ScheduledMessage.kt
+ create mode 100644 src/com/android/messaging/plait/schedule/ScheduledSend.kt
+ create mode 100644 src/com/android/messaging/plait/schedule/ScheduledSendReceiver.kt
+ create mode 100644 src/com/android/messaging/ui/conversation/composer/ui/ConversationAttachSheet.kt
+ create mode 100644 src/com/android/messaging/ui/conversation/composer/ui/GifPicker.kt
+ create mode 100644 src/com/android/messaging/ui/conversation/composer/ui/LocalStickerPicker.kt
+ create mode 100644 src/com/android/messaging/ui/conversation/composer/ui/SelfieGifDialog.kt
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 81d97de2..271a0aaf 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -18,6 +18,9 @@
+     android:installLocation="internalOnly">
+ 
+     <!-- Application holds CPU wakelock while working in background -->
++    <!-- PlaitOS: the attach sheet's one-time Location: sent as text, never shared in the background -->
++    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
++    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+     <uses-permission android:name="android.permission.WAKE_LOCK" />
+     <!-- Application needs SMS/MMS permissions -->
+     <uses-permission android:name="android.permission.READ_SMS"/>
+@@ -44,6 +47,8 @@
+     <uses-permission android:name="android.permission.CALL_PHONE" />
+     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
++    <!-- PlaitOS: scheduled messages go out at the chosen minute -->
++    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+     <uses-permission android:name="android.permission.READ_CELL_BROADCASTS" />
+     <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
+@@ -326,6 +331,10 @@
+             </intent-filter>
+         </receiver>
+ 
++        <!-- PlaitOS: sends a scheduled message when its alarm fires (only this app's own alarms reach it) -->
++        <receiver android:name=".plait.schedule.ScheduledSendReceiver"
++            android:exported="false" />
++
+         <receiver android:name=".receiver.BootAndPackageReplacedReceiver"
+             android:exported="true">
+             <intent-filter>
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 85268252..0ef6c3ec 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -54,8 +54,8 @@ android {
+     namespace = "com.android.messaging"
+ 
+     defaultConfig {
+-        versionCode = 20000000 + 18
+-        versionName = "18"
++        versionCode = 20000019
++        versionName = "18-plait.1"  // PlaitOS: upstream 18 plus the unified look and attach sheet
+         minSdk = 36
+         targetSdk = 37
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+@@ -121,6 +121,15 @@ android {
+     }
+ 
+     buildTypes {
++        create("screenshot") {
++            initWith(getByName("debug"))
++            applicationIdSuffix = ".screenshot"
++            matchingFallbacks += listOf("debug")
++            enableUnitTestCoverage = false
++            enableAndroidTestCoverage = false
++            resValue("string", "app_name", "Messaging (Screenshot)")
++        }
++
+         getByName("release") {
+             isMinifyEnabled = true
+             isShrinkResources = true
+diff --git a/app/src/screenshot/AndroidManifest.xml b/app/src/screenshot/AndroidManifest.xml
+new file mode 100644
+index 00000000..7d259abf
+--- /dev/null
++++ b/app/src/screenshot/AndroidManifest.xml
+@@ -0,0 +1,68 @@
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:tools="http://schemas.android.com/tools">
++    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
++    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
++    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
++    <uses-permission android:name="android.permission.READ_SMS" tools:node="remove" />
++    <uses-permission android:name="android.permission.RECEIVE_SMS" tools:node="remove" />
++    <uses-permission android:name="android.permission.RECEIVE_MMS" tools:node="remove" />
++    <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove" />
++    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
++    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
++    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" tools:node="remove" />
++    <uses-permission android:name="android.permission.READ_CONTACTS" tools:node="remove" />
++    <uses-permission android:name="android.permission.WRITE_CONTACTS" tools:node="remove" />
++    <uses-permission android:name="android.permission.READ_PROFILE" tools:node="remove" />
++    <uses-permission android:name="android.permission.VIBRATE" tools:node="remove" />
++    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
++    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" tools:node="remove" />
++    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
++    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
++    <uses-permission android:name="android.permission.CALL_PHONE" tools:node="remove" />
++    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" tools:node="remove" />
++    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
++    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove" />
++    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove" />
++    <uses-permission android:name="android.permission.READ_CELL_BROADCASTS" tools:node="remove" />
++    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" tools:node="remove" />
++    <application tools:remove="android:name,android:backupAgent,android:manageSpaceActivity">
++        <activity android:name=".ui.MainActivity" tools:node="remove" />
++        <activity-alias android:name=".ui.conversationlist.ConversationListActivity" tools:node="remove" />
++        <activity android:name=".ui.conversation.LaunchConversationActivity" tools:node="remove" />
++        <activity android:name=".ui.conversation.ConversationActivity" tools:node="remove" />
++        <activity android:name=".ui.appsettings.SettingsActivity" tools:node="remove" />
++        <activity-alias android:name=".ui.appsettings.ApplicationSettingsActivity" tools:node="remove" />
++        <activity android:name=".ui.conversationpicker.host.share.ShareIntentActivity" tools:node="remove" />
++        <activity-alias android:name=".ui.conversationlist.ShareIntentActivity" tools:node="remove" />
++        <activity android:name=".ui.license.LicenseActivity" tools:node="remove" />
++        <activity-alias android:name=".ui.LicenseActivity" tools:node="remove" />
++        <activity android:name=".ui.RemoteInputEntrypointActivity" tools:node="remove" />
++        <activity android:name=".ui.debug.DebugMmsConfigActivity" tools:node="remove" />
++        <provider android:name=".datamodel.MessagingContentProvider" tools:node="remove" />
++        <provider android:name=".datamodel.MmsFileProvider" tools:node="remove" />
++        <provider android:name=".datamodel.MediaScratchFileProvider" tools:node="remove" />
++        <provider android:name=".datamodel.NotificationImageProvider" tools:node="remove" />
++        <service android:name=".datamodel.action.ActionServiceImpl" tools:node="remove" />
++        <service android:name=".datamodel.action.BackgroundWorkerService" tools:node="remove" />
++        <receiver android:name=".receiver.SmsReceiver" tools:node="remove" />
++        <receiver android:name=".receiver.MmsWapPushDeliverReceiver" tools:node="remove" />
++        <receiver android:name=".receiver.SmsDeliverReceiver" tools:node="remove" />
++        <receiver android:name=".receiver.SendStatusReceiver" tools:node="remove" />
++        <service android:name=".datamodel.NoConfirmationSmsSendService" tools:node="remove" />
++        <activity android:name=".ui.classzero.ClassZeroActivity" tools:node="remove" />
++        <receiver android:name=".receiver.StorageStatusReceiver" tools:node="remove" />
++        <receiver android:name=".plait.schedule.ScheduledSendReceiver" tools:node="remove" />
++        <receiver android:name=".receiver.BootAndPackageReplacedReceiver" tools:node="remove" />
++        <receiver android:name=".receiver.NotificationReceiver" tools:node="remove" />
++        <receiver android:name=".receiver.ConversationReadReceiver" tools:node="remove" />
++        <receiver android:name=".datamodel.action.ActionServiceImpl$PendingActionReceiver" tools:node="remove" />
++        <receiver android:name=".receiver.DefaultSmsSubscriptionChangeReceiver" tools:node="remove" />
++        <receiver android:name=".widget.BugleWidgetProvider" tools:node="remove" />
++        <receiver android:name=".widget.WidgetConversationProvider" tools:node="remove" />
++        <service android:name=".widget.WidgetConversationListService" tools:node="remove" />
++        <service android:name=".widget.WidgetConversationService" tools:node="remove" />
++        <activity android:name=".ui.conversationpicker.host.widget.WidgetPickConversationActivity" tools:node="remove" />
++        <activity-alias android:name=".ui.WidgetPickConversationActivity" tools:node="remove" />
++        <activity android:name="com.android.messaging.ScreenshotActivity" android:exported="true" />
++    </application>
++</manifest>
+diff --git a/app/src/screenshot/java/com/android/messaging/ScreenshotActivity.kt b/app/src/screenshot/java/com/android/messaging/ScreenshotActivity.kt
+new file mode 100644
+index 00000000..dc38f944
+--- /dev/null
++++ b/app/src/screenshot/java/com/android/messaging/ScreenshotActivity.kt
+@@ -0,0 +1,15 @@
++package com.android.messaging
++
++import android.os.Bundle
++import androidx.activity.ComponentActivity
++import androidx.activity.compose.setContent
++import androidx.activity.enableEdgeToEdge
++import com.android.messaging.ui.conversationlist.chats.ConversationListScaffoldItemsPreview
++
++class ScreenshotActivity : ComponentActivity() {
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        enableEdgeToEdge()
++        setContent { ConversationListScaffoldItemsPreview() }
++    }
++}
+diff --git a/app/src/test/kotlin/com/android/messaging/plait/schedule/ScheduledMessageTest.kt b/app/src/test/kotlin/com/android/messaging/plait/schedule/ScheduledMessageTest.kt
+new file mode 100644
+index 00000000..4cf981bd
+--- /dev/null
++++ b/app/src/test/kotlin/com/android/messaging/plait/schedule/ScheduledMessageTest.kt
+@@ -0,0 +1,36 @@
++package com.android.messaging.plait.schedule
++
++import java.time.ZonedDateTime
++import org.junit.Assert.assertEquals
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.annotation.Config
++
++@RunWith(RobolectricTestRunner::class)
++@Config(manifest = Config.NONE)
++class ScheduledMessageTest {
++    @Test
++    fun preservesMessageStateAndSelectedSim() {
++        val saved = listOf(
++            ScheduledMessage("one", "conversation", "Hello", "", 1234, selfParticipantId = "sim-two"),
++            ScheduledMessage("two", "conversation", "", "Subject", 3210, failed = true),
++        )
++
++        assertEquals(saved, ScheduledMessageCodec.decode(ScheduledMessageCodec.encode(saved)))
++    }
++
++    @Test
++    fun legacyEntriesHaveNoExplicitSim() {
++        val legacy = """[{"id":"one","conversationId":"thread","text":"Hi","sendAt":1234}]"""
++
++        assertEquals(listOf(ScheduledMessage("one", "thread", "Hi", "", 1234)), ScheduledMessageCodec.decode(legacy))
++    }
++
++    @Test
++    fun sundayOptionsDoNotRepeatMonday() {
++        val sunday = ZonedDateTime.parse("2026-11-22T17:15:00-06:00[America/Chicago]")
++
++        assertEquals(listOf(QuickTimeKind.Tomorrow), quickTimes(sunday).map { it.kind })
++    }
++}
+diff --git a/app/src/test/kotlin/com/android/messaging/ui/common/components/participant/ParticipantAvatarColorTest.kt b/app/src/test/kotlin/com/android/messaging/ui/common/components/participant/ParticipantAvatarColorTest.kt
+index 9101305f..804c93b8 100644
+--- a/app/src/test/kotlin/com/android/messaging/ui/common/components/participant/ParticipantAvatarColorTest.kt
++++ b/app/src/test/kotlin/com/android/messaging/ui/common/components/participant/ParticipantAvatarColorTest.kt
+@@ -63,4 +63,13 @@ class ParticipantAvatarColorTest {
+         assertNotEquals(light.background, dark.background)
+         assertNotEquals(light.content, dark.content)
+     }
++
++    @Test
++    fun participantAvatarToneIndex_isStableAndOneOfThree() {
++        val seeds = (0 until 200).map { "+1555010${it.toString().padStart(4, '0')}" }
++        val tones = seeds.map(::participantAvatarToneIndex)
++        org.junit.Assert.assertTrue(tones.all { it in 0..2 })
++        org.junit.Assert.assertEquals(tones, seeds.map(::participantAvatarToneIndex))
++        org.junit.Assert.assertEquals("all three tones are used", setOf(0, 1, 2), tones.toSet())
++    }
+ }
+diff --git a/app/src/test/kotlin/com/android/messaging/ui/conversation/composer/ui/AttachSheetTextTest.kt b/app/src/test/kotlin/com/android/messaging/ui/conversation/composer/ui/AttachSheetTextTest.kt
+new file mode 100644
+index 00000000..f9c117b7
+--- /dev/null
++++ b/app/src/test/kotlin/com/android/messaging/ui/conversation/composer/ui/AttachSheetTextTest.kt
+@@ -0,0 +1,47 @@
++package com.android.messaging.ui.conversation.composer.ui
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++/** PlaitOS: the text the attach sheet puts into a message for a location and for a note. */
++class AttachSheetTextTest {
++
++    @Test
++    fun locationIsCoordinatesAccuracyAndAnOpenStreetMapLink() {
++        assertEquals(
++            "📍 My location (±12 m)\nhttps://www.openstreetmap.org/?mlat=40.71280&mlon=-74.00600#map=17/40.71280/-74.00600",
++            locationText(latitude = 40.7128, longitude = -74.006, accuracyMeters = 12.4f),
++        )
++    }
++
++    @Test
++    fun unknownAccuracyIsLeftOut() {
++        assertTrue(locationText(1.0, 2.0, accuracyMeters = null).startsWith("📍 My location\n"))
++        assertTrue(locationText(1.0, 2.0, accuracyMeters = 0f).startsWith("📍 My location\n"))
++    }
++
++    @Test
++    fun coordinatesUseADotWhateverTheLocale() {
++        val previous = java.util.Locale.getDefault()
++        try {
++            java.util.Locale.setDefault(java.util.Locale.GERMANY)
++            assertTrue(locationText(52.52, 13.405, null).contains("mlat=52.52000&mlon=13.40500"))
++        } finally {
++            java.util.Locale.setDefault(previous)
++        }
++    }
++
++    @Test
++    fun noteIsTrimmedWithNormalLineEndings() {
++        assertEquals("Buy milk\nand eggs", noteText("  Buy milk\r\nand eggs \n\n"))
++    }
++
++    @Test
++    fun longNoteIsCutAtAWordAndMarked() {
++        val long = List(600) { "word" }.joinToString(" ")
++        val text = noteText(long)
++        assertTrue(text.length <= MAX_NOTE_CHARS + 1)
++        assertTrue(text.endsWith("word…"))
++    }
++}
+diff --git a/jni/GifTranscoder.cpp b/jni/GifTranscoder.cpp
+index e91cfd9a..5dc6f5b0 100644
+--- a/jni/GifTranscoder.cpp
++++ b/jni/GifTranscoder.cpp
+@@ -586,9 +586,63 @@ jboolean transcode(JNIEnv* env, jobject clazz, jstring filePath, jstring outFile
+     return (gifCode == GIF_OK);
+ }
+ 
++jboolean encodeBurst(JNIEnv* env, jclass, jstring filePath, jintArray pixels,
++        jint size, jint frameCount) {
++    if (size < 1 || size > 160 || frameCount < 2 || frameCount > 16 ||
++            env->GetArrayLength(pixels) != size * size * frameCount) {
++        return JNI_FALSE;
++    }
++
++    int error = 0;
++    const char* path = env->GetStringUTFChars(filePath, nullptr);
++    if (!path) return JNI_FALSE;
++    GifFileType* gif = EGifOpenFileName(path, false, &error);
++    env->ReleaseStringUTFChars(filePath, path);
++    if (!gif) return JNI_FALSE;
++
++    std::array<GifColorType, 256> colors;
++    for (int i = 0; i < 256; ++i) {
++        colors[i] = {static_cast<GifByteType>((i >> 5) * 255 / 7),
++                     static_cast<GifByteType>(((i >> 2) & 7) * 255 / 7),
++                     static_cast<GifByteType>((i & 3) * 255 / 3)};
++    }
++    ColorMapObject* map = GifMakeMapObject(colors.size(), colors.data());
++    EGifSetGifVersion(gif, true);
++    bool ok = map && EGifPutScreenDesc(gif, size, size, 8, 0, map) == GIF_OK;
++    if (map) GifFreeMapObject(map);
++
++    const GifByteType loop[] = {1, 0, 0};
++    ok = ok && EGifPutExtensionLeader(gif, APPLICATION_EXT_FUNC_CODE) == GIF_OK
++            && EGifPutExtensionBlock(gif, 11, "NETSCAPE2.0") == GIF_OK
++            && EGifPutExtensionBlock(gif, sizeof(loop), loop) == GIF_OK
++            && EGifPutExtensionTrailer(gif) == GIF_OK;
++
++    std::vector<jint> argb(size);
++    std::vector<GifByteType> indexed(size);
++    for (int frame = 0; ok && frame < frameCount; ++frame) {
++        const GifByteType control[] = {0, 20, 0, 0};
++        ok = EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, sizeof(control), control) == GIF_OK
++                && EGifPutImageDesc(gif, 0, 0, size, size, false, nullptr) == GIF_OK;
++        for (int y = 0; ok && y < size; ++y) {
++            env->GetIntArrayRegion(pixels, (frame * size + y) * size, size, argb.data());
++            if (env->ExceptionCheck()) {
++                ok = false;
++                break;
++            }
++            for (int x = 0; x < size; ++x) {
++                const auto color = static_cast<uint32_t>(argb[x]);
++                indexed[x] = ((color >> 16) & 0xe0) | ((color >> 11) & 0x1c) | ((color >> 6) & 3);
++            }
++            ok = EGifPutLine(gif, indexed.data(), size) == GIF_OK;
++        }
++    }
++    return EGifCloseFile(gif, &error) == GIF_OK && ok;
++}
++
+ constexpr char kClassPathName[] = "com/android/messaging/util/GifTranscoder";
+ 
+ const JNINativeMethod kMethods[] = {
++    { "encodeBurst", "(Ljava/lang/String;[III)Z", reinterpret_cast<void*>(encodeBurst) },
+     { "transcodeInternal", "(Ljava/lang/String;Ljava/lang/String;)Z", reinterpret_cast<void*>(transcode) },
+ };
+ 
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+new file mode 100644
+index 00000000..2b789ea3
+--- /dev/null
++++ b/res/values/plait_strings.xml
+@@ -0,0 +1,39 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the attach sheet (PlaitOS unified look). English only for now. -->
++<resources>
++    <string name="plait_attach_gallery">Gallery</string>
++    <string name="plait_attach_camera">Camera</string>
++    <string name="plait_attach_gifs">GIFs</string>
++    <string name="plait_attach_stickers">Stickers</string>
++    <string name="plait_attach_files">Files</string>
++    <string name="plait_attach_location">Location</string>
++    <string name="plait_attach_notes">Notes</string>
++    <string name="plait_attach_location_failed">Couldn\'t get your location. Turn on location and try again.</string>
++    <string name="plait_attach_location_denied">Location permission is needed to send your location.</string>
++    <string name="plait_attach_note_failed">Couldn\'t read that note.</string>
++    <string name="plait_schedule_title">Schedule send</string>
++    <string name="plait_schedule_text_only">Write a message without attachments to schedule it.</string>
++    <string name="plait_schedule_unavailable">Set Messages as the default SMS app and check your SIM before scheduling.</string>
++    <string name="plait_schedule_saved">Message scheduled</string>
++    <string name="plait_schedule_failed">Could not schedule the message</string>
++    <string name="plait_schedule_choose">Choose date and time</string>
++    <string name="plait_schedule_pending">Scheduled messages</string>
++    <string name="plait_schedule_retry">Retry</string>
++    <string name="plait_schedule_retry_status">Sending could not be confirmed. Check the conversation before retrying.</string>
++    <string name="plait_schedule_remove">Remove</string>
++    <string name="plait_schedule_future">Choose a time in the future.</string>
++    <string name="plait_attach_camera_failed">Could not open the camera</string>
++    <string name="plait_selfie_gif">Selfie GIF</string>
++    <string name="plait_selfie_record">Capture GIF</string>
++    <string name="plait_selfie_recording">Capturing…</string>
++    <string name="plait_selfie_failed">Could not make a selfie GIF for MMS</string>
++    <string name="plait_sticker_empty">Choose a folder containing PNG, WebP, or GIF stickers.</string>
++    <string name="plait_sticker_unavailable">The sticker folder could not be opened.</string>
++    <string name="plait_sticker_select_folder">Choose sticker folder</string>
++    <string name="plait_sticker_select_file">Choose image file</string>
++    <string name="plait_gif_recent">Recent GIFs</string>
++    <string name="plait_gif_local">Choose GIF from device</string>
++    <string name="plait_gif_external_detail">Search on GIPHY in your browser, then save a GIF to attach it here.</string>
++    <string name="plait_gif_external">Open GIPHY</string>
++    <string name="plait_schedule_next">Scheduled for %1$s</string>
++</resources>
+diff --git a/src/com/android/messaging/plait/schedule/ScheduleDialog.kt b/src/com/android/messaging/plait/schedule/ScheduleDialog.kt
+new file mode 100644
+index 00000000..8f2d6006
+--- /dev/null
++++ b/src/com/android/messaging/plait/schedule/ScheduleDialog.kt
+@@ -0,0 +1,151 @@
++package com.android.messaging.plait.schedule
++
++import android.app.DatePickerDialog
++import android.app.TimePickerDialog
++import android.content.SharedPreferences
++import android.text.format.DateFormat
++import android.widget.Toast
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.heightIn
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.DisposableEffect
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.rememberCoroutineScope
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.unit.dp
++import com.android.messaging.R
++import java.time.LocalDate
++import java.time.ZoneId
++import java.time.ZonedDateTime
++import java.time.format.DateTimeFormatter
++import java.time.format.FormatStyle
++import java.util.Date
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
++
++@Composable
++internal fun ScheduleDialog(
++    conversationId: String,
++    canSchedule: Boolean,
++    onSchedule: (Long) -> Unit,
++    onDismiss: () -> Unit,
++) {
++    val context = LocalContext.current
++    val scope = rememberCoroutineScope()
++    val pending = rememberScheduledMessages(conversationId)
++
++    fun submit(at: ZonedDateTime) {
++        val millis = at.toInstant().toEpochMilli()
++        if (millis <= System.currentTimeMillis()) {
++            Toast.makeText(context, R.string.plait_schedule_future, Toast.LENGTH_SHORT).show()
++            return
++        }
++        onSchedule(millis)
++        onDismiss()
++    }
++
++    val now = ZonedDateTime.now()
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text(stringResource(R.string.plait_schedule_title)) },
++        text = {
++            Column(Modifier.heightIn(max = 350.dp).verticalScroll(rememberScrollState())) {
++                if (canSchedule) {
++                    quickTimes(now).forEach { option ->
++                        TextButton(onClick = { submit(option.at) }) {
++                            Text(option.at.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)))
++                        }
++                    }
++                    TextButton(onClick = {
++                        DatePickerDialog(context, { _, year, month, day ->
++                            val date = LocalDate.of(year, month + 1, day)
++                            TimePickerDialog(context, { _, hour, minute ->
++                                submit(date.atTime(hour, minute).atZone(ZoneId.systemDefault()))
++                            }, now.hour, now.minute, DateFormat.is24HourFormat(context)).show()
++                        }, now.year, now.monthValue - 1, now.dayOfMonth).apply {
++                            datePicker.minDate = System.currentTimeMillis()
++                        }.show()
++                    }) { Text(stringResource(R.string.plait_schedule_choose)) }
++                } else {
++                    Text(stringResource(R.string.plait_schedule_text_only))
++                }
++                if (pending.isNotEmpty()) {
++                    Text(stringResource(R.string.plait_schedule_pending), style = MaterialTheme.typography.titleSmall)
++                }
++                pending.forEach { message ->
++                    Text(message.text.ifBlank { message.subject }, maxLines = 2)
++                    Text(java.text.DateFormat.getDateTimeInstance().format(Date(message.sendAtMillis)),
++                        style = MaterialTheme.typography.bodySmall)
++                    if (message.failed) Text(stringResource(R.string.plait_schedule_retry_status))
++                    Row {
++                        if (message.failed) {
++                            TextButton(onClick = {
++                                scope.launch {
++                                    val result = withContext(Dispatchers.IO) {
++                                        runCatching { ScheduledSend.retry(context, message.id) }
++                                    }
++                                    if (result.isFailure) {
++                                        Toast.makeText(context, R.string.plait_schedule_failed, Toast.LENGTH_SHORT).show()
++                                    }
++                                }
++                            }) { Text(stringResource(R.string.plait_schedule_retry)) }
++                        }
++                        TextButton(onClick = {
++                            scope.launch(Dispatchers.IO) { ScheduledSend.cancel(context, message.id) }
++                        }) { Text(stringResource(R.string.plait_schedule_remove)) }
++                    }
++                }
++            }
++        },
++        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) } },
++    )
++}
++
++
++@Composable
++internal fun ScheduledMessagesSummary(conversationId: String, onOpen: () -> Unit) {
++    val messages = rememberScheduledMessages(conversationId)
++    val next = messages.firstOrNull() ?: return
++    val time = java.text.DateFormat.getDateTimeInstance(
++        java.text.DateFormat.SHORT, java.text.DateFormat.SHORT,
++    ).format(Date(next.sendAtMillis))
++    val label = when {
++        messages.any { it.failed } -> stringResource(R.string.plait_schedule_retry_status)
++        messages.size == 1 -> stringResource(R.string.plait_schedule_next, time)
++        else -> stringResource(R.string.plait_schedule_pending)
++    }
++    TextButton(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text(label, maxLines = 2) }
++}
++
++@Composable
++private fun rememberScheduledMessages(conversationId: String): List<ScheduledMessage> {
++    val context = LocalContext.current
++    var pending by remember(conversationId) {
++        mutableStateOf(ScheduledSend.forConversation(context, conversationId))
++    }
++    DisposableEffect(context, conversationId) {
++        val prefs = ScheduledSend.prefs(context)
++        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
++            pending = ScheduledSend.forConversation(context, conversationId)
++        }
++        prefs.registerOnSharedPreferenceChangeListener(listener)
++        pending = ScheduledSend.forConversation(context, conversationId)
++        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
++    }
++
++    return pending
++}
+diff --git a/src/com/android/messaging/plait/schedule/ScheduledMessage.kt b/src/com/android/messaging/plait/schedule/ScheduledMessage.kt
+new file mode 100644
+index 00000000..4e2ea99c
+--- /dev/null
++++ b/src/com/android/messaging/plait/schedule/ScheduledMessage.kt
+@@ -0,0 +1,88 @@
++package com.android.messaging.plait.schedule
++
++import org.json.JSONArray
++import org.json.JSONObject
++import java.time.DayOfWeek
++import java.time.LocalTime
++import java.time.ZonedDateTime
++import java.time.temporal.TemporalAdjusters
++
++/**
++ * PlaitOS: a message waiting to be sent at [sendAtMillis]. Text only for now (a subject counts as text): the draft's
++ * attachments live in scratch space the draft may clean up, so scheduling one with attachments is refused.
++ * [failed] marks one whose send did not go through; it stays until the person retries or cancels it.
++ */
++internal data class ScheduledMessage(
++    val id: String,
++    val conversationId: String,
++    val text: String,
++    val subject: String,
++    val sendAtMillis: Long,
++    val failed: Boolean = false,
++    val selfParticipantId: String? = null,
++)
++
++/** How scheduled messages are stored (one JSON array); anything unreadable is dropped rather than crashing. */
++internal object ScheduledMessageCodec {
++    fun encode(messages: List<ScheduledMessage>): String =
++        JSONArray().apply {
++            messages.forEach { m ->
++                put(
++                    JSONObject()
++                        .put("id", m.id)
++                        .put("conversationId", m.conversationId)
++                        .put("text", m.text)
++                        .put("subject", m.subject)
++                        .put("sendAt", m.sendAtMillis)
++                        .put("failed", m.failed)
++                        .put("self", m.selfParticipantId),
++                )
++            }
++        }.toString()
++
++    fun decode(json: String?): List<ScheduledMessage> {
++        if (json.isNullOrBlank()) return emptyList()
++        return runCatching {
++            val array = JSONArray(json)
++            (0 until array.length()).mapNotNull { i ->
++                val o = array.optJSONObject(i) ?: return@mapNotNull null
++                val id = o.optString("id")
++                val conversationId = o.optString("conversationId")
++                if (id.isEmpty() || conversationId.isEmpty() || !o.has("sendAt")) return@mapNotNull null
++                ScheduledMessage(
++                    id = id,
++                    conversationId = conversationId,
++                    text = o.optString("text"),
++                    subject = o.optString("subject"),
++                    sendAtMillis = o.getLong("sendAt"),
++                    failed = o.optBoolean("failed"),
++                    selfParticipantId = o.optString("self").takeIf(String::isNotEmpty),
++                )
++            }
++        }.getOrDefault(emptyList())
++    }
++}
++
++/** A quick choice in the schedule sheet. */
++internal enum class QuickTimeKind { LaterToday, Tomorrow, NextMonday }
++
++internal data class QuickTime(val kind: QuickTimeKind, val at: ZonedDateTime)
++
++/**
++ * The quick choices for [now]: later today at 6 PM (only while that is at least an hour away), tomorrow at 8 AM, and
++ * Monday at 8 AM (left out when tomorrow already is Monday). Times are in [now]'s zone.
++ */
++internal fun quickTimes(now: ZonedDateTime): List<QuickTime> {
++    val evening = LocalTime.of(18, 0)
++    val morning = LocalTime.of(8, 0)
++    val result = mutableListOf<QuickTime>()
++    val today6pm = now.with(evening).withSecond(0).withNano(0)
++    if (!today6pm.isBefore(now.plusHours(1))) result += QuickTime(QuickTimeKind.LaterToday, today6pm)
++    val tomorrow = now.toLocalDate().plusDays(1)
++    result += QuickTime(QuickTimeKind.Tomorrow, tomorrow.atTime(morning).atZone(now.zone))
++    if (tomorrow.dayOfWeek != DayOfWeek.MONDAY) {
++        val monday = now.toLocalDate().with(TemporalAdjusters.next(DayOfWeek.MONDAY))
++        result += QuickTime(QuickTimeKind.NextMonday, monday.atTime(morning).atZone(now.zone))
++    }
++    return result
++}
+diff --git a/src/com/android/messaging/plait/schedule/ScheduledSend.kt b/src/com/android/messaging/plait/schedule/ScheduledSend.kt
+new file mode 100644
+index 00000000..611b239a
+--- /dev/null
++++ b/src/com/android/messaging/plait/schedule/ScheduledSend.kt
+@@ -0,0 +1,124 @@
++package com.android.messaging.plait.schedule
++
++import android.app.AlarmManager
++import android.app.PendingIntent
++import android.content.Context
++import android.content.Intent
++import android.content.SharedPreferences
++import java.util.UUID
++
++/**
++ * PlaitOS: scheduled messages. Kept in this app's own storage and sent by an exact alarm (set again after a reboot or
++ * an app update, see BootAndPackageReplacedReceiver), through the same send path as tapping Send. The phone has to be
++ * on at the time.
++ */
++internal object ScheduledSend {
++    private const val PREFS = "plait_scheduled_messages"
++    private const val KEY = "messages"
++    const val ACTION_SEND = "com.android.messaging.plait.SEND_SCHEDULED"
++    const val EXTRA_ID = "id"
++
++    private val lock = Any()
++    private val dispatching = mutableSetOf<String>()
++
++    fun prefs(context: Context): SharedPreferences =
++        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
++
++    fun all(context: Context): List<ScheduledMessage> = ScheduledMessageCodec.decode(prefs(context).getString(KEY, null))
++
++    fun forConversation(context: Context, conversationId: String): List<ScheduledMessage> =
++        all(context).filter { it.conversationId == conversationId }.sortedBy { it.sendAtMillis }
++
++    fun find(context: Context, id: String): ScheduledMessage? = all(context).firstOrNull { it.id == id }
++
++    /** Schedules [text] (and [subject]) for [conversationId] at [sendAtMillis]; returns the new message. */
++    fun add(context: Context, conversationId: String, text: String, subject: String, sendAtMillis: Long, self: String?) {
++        require(sendAtMillis > System.currentTimeMillis())
++        val message = ScheduledMessage(UUID.randomUUID().toString(), conversationId, text, subject, sendAtMillis,
++            selfParticipantId = self)
++        check(update(context) { it + message })
++        try {
++            arm(context, message)
++        } catch (e: RuntimeException) {
++            cancel(context, message.id)
++            throw e
++        }
++    }
++
++    fun claim(context: Context, id: String): ScheduledMessage? = synchronized(lock) {
++        val message = find(context, id)?.takeIf { !it.failed && it.sendAtMillis <= System.currentTimeMillis() }
++            ?: return@synchronized null
++        if (id in dispatching || !markFailed(context, id)) return@synchronized null
++        dispatching.add(id)
++        message
++    }
++
++    fun cancel(context: Context, id: String) = synchronized(lock) {
++        disarm(context, id)
++        update(context) { list -> list.filterNot { it.id == id } }
++    }
++
++    fun finish(context: Context, id: String, queued: Boolean) = synchronized(lock) {
++        if (dispatching.remove(id) && queued) {
++            update(context) { list -> list.filterNot { it.id == id } }
++        }
++    }
++
++    fun markFailed(context: Context, id: String) =
++        update(context) { list -> list.map { if (it.id == id) it.copy(failed = true) else it } }
++
++    /** Tries a failed one again in a few seconds. */
++    fun retry(context: Context, id: String) = synchronized(lock) {
++        check(id !in dispatching)
++        val retried = find(context, id)?.takeIf { it.failed }?.copy(failed = false, sendAtMillis = System.currentTimeMillis() + 3_000) ?: return@synchronized
++        if (update(context) { list -> list.map { if (it.id == id) retried else it } }) {
++            try {
++                arm(context, retried)
++            } catch (e: RuntimeException) {
++                markFailed(context, id)
++                throw e
++            }
++        }
++    }
++
++    /** After a reboot or an app update alarms are gone: set every waiting one again (overdue ones go out now). */
++    fun rearmAll(context: Context) = synchronized(lock) {
++        all(context).filterNot { it.failed }.forEach { message ->
++            try {
++                arm(context, message)
++            } catch (e: RuntimeException) {
++                markFailed(context, message.id)
++            }
++        }
++    }
++
++    private fun update(context: Context, change: (List<ScheduledMessage>) -> List<ScheduledMessage>) = synchronized(lock) {
++        val p = prefs(context)
++        val next = change(ScheduledMessageCodec.decode(p.getString(KEY, null)))
++        p.edit().putString(KEY, ScheduledMessageCodec.encode(next)).commit()
++    }
++
++    private fun arm(context: Context, message: ScheduledMessage) {
++        val alarms = checkNotNull(context.getSystemService(AlarmManager::class.java))
++        val at = maxOf(message.sendAtMillis, System.currentTimeMillis() + 1_000)
++        val operation = checkNotNull(operation(context, message.id, PendingIntent.FLAG_UPDATE_CURRENT))
++        // USE_EXACT_ALARM is declared, so exact alarms are allowed; fall back to an inexact one if not
++        if (alarms.canScheduleExactAlarms()) {
++            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, operation)
++        } else {
++            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, operation)
++        }
++    }
++
++    private fun disarm(context: Context, id: String) {
++        val operation = operation(context, id, PendingIntent.FLAG_NO_CREATE) ?: return
++        context.getSystemService(AlarmManager::class.java)?.cancel(operation)
++        operation.cancel()
++    }
++
++    private fun operation(context: Context, id: String, flags: Int): PendingIntent? {
++        val intent = Intent(context, ScheduledSendReceiver::class.java).setAction(ACTION_SEND).putExtra(EXTRA_ID, id)
++            .setData(android.net.Uri.parse("plait-scheduled:$id"))   // one PendingIntent per message
++        return PendingIntent.getBroadcast(context, 0, intent, flags or PendingIntent.FLAG_IMMUTABLE)
++    }
++}
+diff --git a/src/com/android/messaging/plait/schedule/ScheduledSendReceiver.kt b/src/com/android/messaging/plait/schedule/ScheduledSendReceiver.kt
+new file mode 100644
+index 00000000..940282fa
+--- /dev/null
++++ b/src/com/android/messaging/plait/schedule/ScheduledSendReceiver.kt
+@@ -0,0 +1,75 @@
++package com.android.messaging.plait.schedule
++
++import android.app.role.RoleManager
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import com.android.messaging.data.conversation.model.ConversationId
++import com.android.messaging.data.conversation.model.ParticipantId
++import com.android.messaging.data.conversation.model.draft.ConversationDraft
++import com.android.messaging.domain.conversation.usecase.draft.SendConversationDraft
++import com.android.messaging.util.LogUtil
++import dagger.hilt.EntryPoint
++import dagger.hilt.InstallIn
++import dagger.hilt.android.EntryPointAccessors
++import dagger.hilt.components.SingletonComponent
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.flow.collect
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withTimeout
++
++/**
++ * PlaitOS: sends a scheduled message when its alarm fires, through SendConversationDraft (the same validation and
++ * send as tapping Send). A failed send is kept and marked, so the conversation shows it with Retry instead of losing it.
++ */
++class ScheduledSendReceiver : BroadcastReceiver() {
++
++    @EntryPoint
++    @InstallIn(SingletonComponent::class)
++    internal interface Dependencies {
++        fun sendConversationDraft(): SendConversationDraft
++    }
++
++    override fun onReceive(context: Context, intent: Intent) {
++        if (intent.action != ScheduledSend.ACTION_SEND) return
++        val id = intent.getStringExtra(ScheduledSend.EXTRA_ID) ?: return
++        val app = context.applicationContext
++        val pending = goAsync()
++        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
++            var claimed = false
++            var queued = false
++            try {
++                val message = ScheduledSend.claim(app, id) ?: return@launch
++                claimed = true
++                if (app.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_SMS) != true) {
++                    return@launch
++                }
++                val send = EntryPointAccessors.fromApplication(app, Dependencies::class.java).sendConversationDraft()
++                withTimeout(SEND_TIMEOUT_MILLIS) {
++                    send(
++                        conversationId = ConversationId(message.conversationId),
++                        draft = ConversationDraft(
++                            messageText = message.text,
++                            subjectText = message.subject,
++                            selfParticipantId = message.selfParticipantId?.let(::ParticipantId),
++                        ),
++                    ).collect()
++                }
++                queued = true
++            } catch (e: Exception) {
++                LogUtil.w(TAG, "Scheduled message could not be sent", e)
++            } finally {
++                if (claimed) ScheduledSend.finish(app, id, queued)
++                pending.finish()
++            }
++        }
++    }
++
++    private companion object {
++        const val TAG = "PlaitScheduledSend"
++        // goAsync gives about 10 s before the broadcast is considered stuck; sending is queued well before that
++        const val SEND_TIMEOUT_MILLIS = 8_000L
++    }
++}
+diff --git a/src/com/android/messaging/receiver/BootAndPackageReplacedReceiver.kt b/src/com/android/messaging/receiver/BootAndPackageReplacedReceiver.kt
+index b974e58b..f3e53b0e 100644
+--- a/src/com/android/messaging/receiver/BootAndPackageReplacedReceiver.kt
++++ b/src/com/android/messaging/receiver/BootAndPackageReplacedReceiver.kt
+@@ -32,6 +32,9 @@ class BootAndPackageReplacedReceiver : BroadcastReceiver() {
+         )
+ 
+         UpdateMessageNotificationAction.updateMessageNotification()
++
++        // PlaitOS: alarms do not survive a reboot or an app update; set the scheduled messages' again
++        com.android.messaging.plait.schedule.ScheduledSend.rearmAll(context)
+         BugleApplication.updateAppConfig(context)
+     }
+ }
+diff --git a/src/com/android/messaging/ui/common/components/participant/ParticipantAvatarColors.kt b/src/com/android/messaging/ui/common/components/participant/ParticipantAvatarColors.kt
+index a0572e31..381cc394 100644
+--- a/src/com/android/messaging/ui/common/components/participant/ParticipantAvatarColors.kt
++++ b/src/com/android/messaging/ui/common/components/participant/ParticipantAvatarColors.kt
+@@ -2,13 +2,10 @@ package com.android.messaging.ui.common.components.participant
+ 
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.runtime.Composable
+-import androidx.compose.runtime.remember
+ import androidx.compose.ui.graphics.Color
+-import androidx.compose.ui.graphics.luminance
+ import kotlin.math.abs
+ import kotlin.math.roundToInt
+ 
+-private const val DARK_THEME_LUMINANCE_THRESHOLD = 0.5f
+ private const val FULL_HUE_CIRCLE_DEGREES = 360f
+ private const val HUE_SEGMENT_DEGREES = 60f
+ private const val GOLDEN_ANGLE_DEGREES = 137.508f
+@@ -37,7 +34,6 @@ internal fun resolvedFallbackColors(
+     isSelected: Boolean,
+ ): ParticipantAvatarFallbackColors {
+     val colorScheme = MaterialTheme.colorScheme
+-    val isDarkTheme = colorScheme.background.luminance() < DARK_THEME_LUMINANCE_THRESHOLD
+ 
+     return when {
+         isSelected -> ParticipantAvatarFallbackColors(
+@@ -50,15 +46,23 @@ internal fun resolvedFallbackColors(
+             content = colorScheme.onPrimaryContainer,
+         )
+ 
+-        else -> remember(colorSeedCode, isDarkTheme) {
+-            participantAvatarFallbackColors(
+-                colorSeedCode = colorSeedCode,
+-                isDarkTheme = isDarkTheme,
+-            )
++        // PlaitOS: on screen, people get one of the three avatar tones every PlaitOS app uses (plait-design
++        // PlaitAvatar): primary, secondary or tertiary container, chosen by the stable seed, never a random hue.
++        // Notification bitmaps, drawn without a theme, still use participantAvatarFallbackColors.
++        else -> when (participantAvatarToneIndex(colorSeedCode = colorSeedCode)) {
++            0 -> ParticipantAvatarFallbackColors(colorScheme.primaryContainer, colorScheme.onPrimaryContainer)
++            1 -> ParticipantAvatarFallbackColors(colorScheme.secondaryContainer, colorScheme.onSecondaryContainer)
++            else -> ParticipantAvatarFallbackColors(colorScheme.tertiaryContainer, colorScheme.onTertiaryContainer)
+         }
+     }
+ }
+ 
++/** PlaitOS: which of the three avatar tones a seed gets (0, 1 or 2); the same person always the same one. */
++internal fun participantAvatarToneIndex(colorSeedCode: String): Int =
++    (colorSeedCode.stableHashCode() and Int.MAX_VALUE) % AVATAR_TONE_COUNT
++
++private const val AVATAR_TONE_COUNT = 3
++
+ internal fun participantAvatarFallbackColors(
+     colorSeedCode: String,
+     isDarkTheme: Boolean,
+diff --git a/src/com/android/messaging/ui/conversation/composer/delegate/ConversationDraftDelegate.kt b/src/com/android/messaging/ui/conversation/composer/delegate/ConversationDraftDelegate.kt
+index 43dc96ec..e380101b 100644
+--- a/src/com/android/messaging/ui/conversation/composer/delegate/ConversationDraftDelegate.kt
++++ b/src/com/android/messaging/ui/conversation/composer/delegate/ConversationDraftDelegate.kt
+@@ -63,6 +63,9 @@ internal interface ConversationDraftDelegate : ConversationScreenDelegate<Conver
+ 
+     fun onMessageTextChanged(messageText: String, messageTextRevision: Int)
+ 
++    /** PlaitOS: see [ConversationDraftEditorDelegate.appendMessageText]. */
++    fun appendMessageText(text: String)
++
+     fun onSubjectTextChanged(subjectText: String)
+ 
+     fun showSubjectDialog()
+@@ -103,6 +106,8 @@ internal interface ConversationDraftDelegate : ConversationScreenDelegate<Conver
+         captionText: String,
+     )
+ 
++    fun scheduleSend(context: android.content.Context, at: Long) {}
++
+     fun onSendClick()
+ 
+     fun dismissAttachmentLimitWarning()
+@@ -171,6 +176,10 @@ internal class ConversationDraftDelegateImpl @Inject constructor(
+         )
+     }
+ 
++    override fun appendMessageText(text: String) {
++        conversationDraftEditorDelegate.appendMessageText(text = text)
++    }
++
+     override fun onMessageTextChanged(messageText: String, messageTextRevision: Int) {
+         conversationDraftEditorDelegate.onMessageTextChanged(
+             messageText = messageText,
+@@ -281,6 +290,39 @@ internal class ConversationDraftDelegateImpl @Inject constructor(
+         )
+     }
+ 
++    override fun scheduleSend(context: android.content.Context, at: Long) {
++        val scope = boundScope ?: return
++        val request = conversationDraftEditorDelegate.createSendRequestOrNull()
++        if (request == null || request.draft.attachments.isNotEmpty()) {
++            emitEffect(ConversationScreenEffect.ShowMessage(R.string.plait_schedule_text_only))
++            return
++        }
++        if (checkConversationActionRequirements() != ConversationActionRequirementsResult.Ready) {
++            emitEffect(ConversationScreenEffect.ShowMessage(R.string.plait_schedule_unavailable))
++            return
++        }
++        if (!conversationDraftEditorDelegate.markSendingForSendRequest(request)) return
++        val app = context.applicationContext
++        scope.launch {
++            try {
++                withContext(kotlinx.coroutines.NonCancellable + kotlinx.coroutines.Dispatchers.IO) {
++                    com.android.messaging.plait.schedule.ScheduledSend.add(
++                        app, request.conversationId.value, request.draft.messageText, request.draft.subjectText,
++                        at, request.draft.selfParticipantId?.value,
++                    )
++                }
++                conversationDraftEditorDelegate.clearConversationDraftAfterSend(request)
++                emitEffect(ConversationScreenEffect.ShowMessage(R.string.plait_schedule_saved))
++            } catch (e: CancellationException) {
++                throw e
++            } catch (e: RuntimeException) {
++                emitEffect(ConversationScreenEffect.ShowMessage(R.string.plait_schedule_failed))
++            } finally {
++                conversationDraftEditorDelegate.markConversationDraftAsIdle(request.conversationId)
++            }
++        }
++    }
++
+     override fun onSendClick() {
+         conversationDraftEditorDelegate.createSendRequestOrNull()
+             ?.let(::sendDraftWhenActionRequirementsSatisfied)
+diff --git a/src/com/android/messaging/ui/conversation/composer/delegate/ConversationDraftEditorDelegate.kt b/src/com/android/messaging/ui/conversation/composer/delegate/ConversationDraftEditorDelegate.kt
+index 456ab9d8..009504e4 100644
+--- a/src/com/android/messaging/ui/conversation/composer/delegate/ConversationDraftEditorDelegate.kt
++++ b/src/com/android/messaging/ui/conversation/composer/delegate/ConversationDraftEditorDelegate.kt
+@@ -33,6 +33,9 @@ internal interface ConversationDraftEditorDelegate {
+ 
+     fun onMessageTextChanged(messageText: String, messageTextRevision: Int)
+ 
++    /** PlaitOS: adds [text] to the draft's message (a new line when there is text already), e.g. a location or a note. */
++    fun appendMessageText(text: String)
++
+     fun onSubjectTextChanged(subjectText: String)
+ 
+     fun onSelfParticipantIdChanged(
+@@ -137,6 +140,15 @@ internal class ConversationDraftEditorDelegateImpl @Inject constructor(
+         }
+     }
+ 
++    override fun appendMessageText(text: String) {
++        if (text.isBlank()) return
++        // Not a field edit, so the revision moves on and the message field shows the new text
++        updateDraftEditorState { currentDraftEditorState ->
++            val existing = currentDraftEditorState.effectiveDraft.messageText.trimEnd()
++            currentDraftEditorState.withMessageText(if (existing.isEmpty()) text else "$existing\n$text")
++        }
++    }
++
+     override fun onSubjectTextChanged(subjectText: String) {
+         updateDraftEditorState { currentDraftEditorState ->
+             currentDraftEditorState.withSubjectText(subjectText)
+diff --git a/src/com/android/messaging/ui/conversation/composer/ui/ConversationAttachSheet.kt b/src/com/android/messaging/ui/conversation/composer/ui/ConversationAttachSheet.kt
+new file mode 100644
+index 00000000..7c42a19a
+--- /dev/null
++++ b/src/com/android/messaging/ui/conversation/composer/ui/ConversationAttachSheet.kt
+@@ -0,0 +1,369 @@
++package com.android.messaging.ui.conversation.composer.ui
++
++import android.Manifest
++import android.view.WindowManager
++import androidx.compose.material3.Surface
++import androidx.compose.ui.unit.IntOffset
++import androidx.compose.ui.unit.IntRect
++import androidx.compose.ui.unit.IntSize
++import androidx.compose.ui.unit.LayoutDirection
++import androidx.compose.ui.window.Popup
++import androidx.compose.ui.window.PopupPositionProvider
++import androidx.compose.ui.window.PopupProperties
++import android.content.Context
++import android.content.pm.PackageManager
++import android.location.Location
++import android.location.LocationManager
++import android.net.Uri
++import android.widget.Toast
++import androidx.activity.compose.rememberLauncherForActivityResult
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.annotation.StringRes
++import androidx.compose.foundation.background
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.rounded.AttachFile
++import androidx.compose.material.icons.rounded.EditNote
++import androidx.compose.material.icons.rounded.EmojiEmotions
++import androidx.compose.material.icons.rounded.Gif
++import androidx.compose.material.icons.rounded.LocationOn
++import androidx.compose.material.icons.rounded.Mic
++import androidx.compose.material.icons.rounded.Person
++import androidx.compose.material.icons.rounded.Schedule
++import androidx.compose.material.icons.rounded.Face
++import androidx.compose.material.icons.rounded.PhotoCamera
++import androidx.compose.material.icons.rounded.PhotoLibrary
++import androidx.compose.material3.Icon
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.saveable.rememberSaveable
++import androidx.compose.runtime.setValue
++import com.android.messaging.datamodel.MediaScratchFileProvider
++import androidx.compose.runtime.rememberCoroutineScope
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.vector.ImageVector
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.platform.testTag
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.text.style.TextAlign
++import androidx.compose.ui.unit.dp
++import com.android.messaging.R
++import com.android.messaging.ui.conversation.CONVERSATION_ATTACHMENT_AUDIO_MENU_ITEM_TEST_TAG
++import com.android.messaging.ui.conversation.CONVERSATION_ATTACHMENT_CONTACT_MENU_ITEM_TEST_TAG
++import com.android.messaging.ui.conversation.CONVERSATION_ATTACHMENT_MEDIA_MENU_ITEM_TEST_TAG
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
++import java.util.Locale
++import kotlin.math.roundToInt
++
++/** PlaitOS: what the attach sheet can do. Gallery and Camera open the existing media picker (camera and photos). */
++internal enum class AttachAction { Gallery, Camera, Gifs, Stickers, Files, Voice, Contact, Location, Notes, Schedule, SelfieGif }
++
++/**
++ * PlaitOS: the result launchers for the attach sheet's own actions (files, GIFs, stickers, notes, location). They live
++ * with the attach button, not the sheet, so a picker's result still arrives after the sheet has closed.
++ */
++internal class AttachLaunchers(
++    val pickMedia: (Array<String>) -> Unit,
++    val pickNote: () -> Unit,
++    val shareLocation: () -> Unit,
++    val takePhoto: () -> Unit,
++    val selfieGif: () -> Unit,
++    val selectSticker: () -> Unit,
++    val selectGif: () -> Unit,
++)
++
++@Composable
++internal fun rememberAttachLaunchers(
++    onAttachContentUris: (List<String>) -> Unit,
++    onAppendMessageText: (String) -> Unit,
++): AttachLaunchers {
++    val context = LocalContext.current
++    val scope = rememberCoroutineScope()
++
++    // Files, GIFs and stickers are images or videos picked from any app (the same path as the photo picker's media)
++    val mediaLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
++        if (uris.isNotEmpty()) onAttachContentUris(uris.map(Uri::toString))
++    }
++
++    val noteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
++        if (uri == null) return@rememberLauncherForActivityResult
++        scope.launch {
++            val text = withContext(Dispatchers.IO) {
++                runCatching {
++                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
++                        val text = CharArray(4097)
++                        var count = 0
++                        while (count < text.size) {
++                            val read = reader.read(text, count, text.size - count)
++                            if (read < 0) break
++                            count += read
++                        }
++                        noteText(String(text, 0, count))
++                    }
++                }.getOrNull()
++            }
++            if (text.isNullOrEmpty()) toast(context, R.string.plait_attach_note_failed) else onAppendMessageText(text)
++        }
++    }
++
++    var photoUri by rememberSaveable { mutableStateOf<String?>(null) }
++    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
++        val uri = photoUri
++        photoUri = null
++        if (uri != null) {
++            if (success) onAttachContentUris(listOf(uri))
++            else context.contentResolver.delete(Uri.parse(uri), null, null)
++        }
++    }
++    fun launchCamera() {
++        if (photoUri != null) return
++        val uri = MediaScratchFileProvider.buildMediaScratchSpaceUri("jpg")
++        photoUri = uri.toString()
++        try {
++            camera.launch(uri)
++        } catch (e: android.content.ActivityNotFoundException) {
++            context.contentResolver.delete(uri, null, null)
++            photoUri = null
++            toast(context, R.string.plait_attach_camera_failed)
++        }
++    }
++    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
++        if (granted) launchCamera() else toast(context, R.string.plait_attach_camera_failed)
++    }
++
++    fun sendCurrentLocation() {
++        currentLocation(context) { location ->
++            if (location == null) toast(context, R.string.plait_attach_location_failed)
++            else onAppendMessageText(locationText(location))
++        }
++    }
++
++    val locationPermissionLauncher = rememberLauncherForActivityResult(
++        ActivityResultContracts.RequestMultiplePermissions(),
++    ) { granted ->
++        if (granted.values.any { it }) sendCurrentLocation() else toast(context, R.string.plait_attach_location_denied)
++    }
++
++    var showSelfie by rememberSaveable { mutableStateOf(false) }
++    val selfiePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
++        if (granted) showSelfie = true else toast(context, R.string.plait_selfie_failed)
++    }
++    if (showSelfie) SelfieGifDialog(onAttachContentUris) { showSelfie = false }
++    var showStickers by rememberSaveable { mutableStateOf(false) }
++    if (showStickers) {
++        LocalStickerPicker(
++            onPickImage = { mediaLauncher.launch(arrayOf("image/webp", "image/png", "image/gif")) },
++            onAttach = onAttachContentUris,
++            onDismiss = { showStickers = false },
++        )
++    }
++
++    var showGifs by rememberSaveable { mutableStateOf(false) }
++    if (showGifs) GifPicker(onAttachContentUris) { showGifs = false }
++    return AttachLaunchers(
++        selectGif = { showGifs = true },
++        selectSticker = { showStickers = true },
++        selfieGif = {
++            if (context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) showSelfie = true
++            else selfiePermission.launch(Manifest.permission.CAMERA)
++        },
++        takePhoto = {
++            if (context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launchCamera()
++            else cameraPermission.launch(Manifest.permission.CAMERA)
++        },
++        pickMedia = { types -> mediaLauncher.launch(types) },
++        pickNote = { noteLauncher.launch(arrayOf("text/plain", "text/markdown", "text/*")) },
++        shareLocation = {
++            if (hasLocationPermission(context)) sendCurrentLocation()
++            else locationPermissionLauncher.launch(
++                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
++            )
++        },
++    )
++}
++
++/**
++ * The attach sheet: the actions as tonal tiles, four to a row, on a raised surface with 28 dp top corners (the PlaitOS
++ * unified look). It is a popup, not a modal sheet, and keeps the old attachment menu's window flags: focusable so back
++ * closes it, ALT_FOCUSABLE_IM so the keyboard stays up behind it (the media picker relies on that), NO_LIMITS and
++ * WATCH_OUTSIDE_TOUCH as before. It sits full width just above the attach button. Call it inside the button's box.
++ */
++@Composable
++internal fun ConversationAttachSheet(
++    isAudioRecordActionEnabled: Boolean,
++    showSchedule: Boolean = false,
++    onDismiss: () -> Unit,
++    onAction: (AttachAction) -> Unit,
++) {
++    val tiles = listOf(
++        AttachTile(AttachAction.Gallery, Icons.Rounded.PhotoLibrary, R.string.plait_attach_gallery),
++        AttachTile(AttachAction.Camera, Icons.Rounded.PhotoCamera, R.string.plait_attach_camera),
++        AttachTile(AttachAction.Gifs, Icons.Rounded.Gif, R.string.plait_attach_gifs),
++        AttachTile(AttachAction.Stickers, Icons.Rounded.EmojiEmotions, R.string.plait_attach_stickers),
++        AttachTile(AttachAction.Files, Icons.Rounded.AttachFile, R.string.plait_attach_files),
++        AttachTile(AttachAction.Voice, Icons.Rounded.Mic, R.string.mediapicker_audio_title, isAudioRecordActionEnabled),
++        AttachTile(AttachAction.Contact, Icons.Rounded.Person, R.string.mediapicker_contact_title),
++        AttachTile(AttachAction.Location, Icons.Rounded.LocationOn, R.string.plait_attach_location),
++        AttachTile(AttachAction.Notes, Icons.Rounded.EditNote, R.string.plait_attach_notes),
++        AttachTile(AttachAction.Schedule, Icons.Rounded.Schedule, R.string.plait_schedule_title),
++        AttachTile(AttachAction.SelfieGif, Icons.Rounded.Face, R.string.plait_selfie_gif),
++    ).filter { showSchedule || it.action != AttachAction.Schedule }
++    Popup(
++        popupPositionProvider = AboveAnchorFullWidth,
++        onDismissRequest = onDismiss,
++        properties = PopupProperties(
++            flags = WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
++                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
++                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
++        ),
++    ) {
++        Surface(
++            modifier = Modifier.fillMaxWidth(),
++            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
++            color = MaterialTheme.colorScheme.surfaceContainerHigh,
++            shadowElevation = 6.dp,
++        ) {
++            Column(
++                Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp),
++                verticalArrangement = Arrangement.spacedBy(14.dp),
++            ) {
++                Box(
++                    Modifier.align(Alignment.CenterHorizontally).size(width = 36.dp, height = 4.dp)
++                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(2.dp)),
++                )
++                tiles.chunked(4).forEach { row ->
++                    Row(Modifier.fillMaxWidth()) {
++                        row.forEach { tile ->
++                            AttachTileView(
++                                tile = tile,
++                                modifier = Modifier.weight(1f),
++                                onClick = {
++                                    onDismiss()
++                                    onAction(tile.action)
++                                },
++                            )
++                        }
++                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
++                    }
++                }
++            }
++        }
++    }
++}
++
++/** Full window width, bottom edge on the anchor's top (above the compose bar and, with it, the keyboard). */
++private object AboveAnchorFullWidth : PopupPositionProvider {
++    override fun calculatePosition(
++        anchorBounds: IntRect,
++        windowSize: IntSize,
++        layoutDirection: LayoutDirection,
++        popupContentSize: IntSize,
++    ): IntOffset = IntOffset(0, (anchorBounds.top - popupContentSize.height).coerceAtLeast(0))
++}
++
++private class AttachTile(
++    val action: AttachAction,
++    val icon: ImageVector,
++    @StringRes val label: Int,
++    val enabled: Boolean = true,
++)
++
++@Composable
++private fun AttachTileView(tile: AttachTile, modifier: Modifier, onClick: () -> Unit) {
++    val colors = MaterialTheme.colorScheme
++    Column(
++        modifier
++            .testTag(attachTileTestTag(tile.action))
++            .clickable(enabled = tile.enabled, onClick = onClick)
++            .padding(vertical = 4.dp),
++        horizontalAlignment = Alignment.CenterHorizontally,
++        verticalArrangement = Arrangement.spacedBy(7.dp),
++    ) {
++        Box(
++            Modifier.size(width = 64.dp, height = 52.dp)
++                .background(if (tile.enabled) colors.primaryContainer else colors.surfaceContainerHighest, RoundedCornerShape(16.dp)),
++            contentAlignment = Alignment.Center,
++        ) {
++            Icon(
++                tile.icon, contentDescription = null, modifier = Modifier.size(24.dp),
++                tint = if (tile.enabled) colors.onPrimaryContainer else colors.onSurfaceVariant,
++            )
++        }
++        Text(
++            stringResource(tile.label), style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center,
++            color = if (tile.enabled) colors.onSurface else colors.onSurfaceVariant, maxLines = 2,
++        )
++    }
++}
++
++/** The tiles that replace the old menu's items keep their test tags, so the existing tests still find them. */
++internal fun attachTileTestTag(action: AttachAction) = when (action) {
++    AttachAction.Gallery -> CONVERSATION_ATTACHMENT_MEDIA_MENU_ITEM_TEST_TAG
++    AttachAction.Voice -> CONVERSATION_ATTACHMENT_AUDIO_MENU_ITEM_TEST_TAG
++    AttachAction.Contact -> CONVERSATION_ATTACHMENT_CONTACT_MENU_ITEM_TEST_TAG
++    else -> "plait_attach_${action.name.lowercase(Locale.ROOT)}"
++}
++
++// ---------------------------------------------------------------- location and notes (pure parts are unit-tested)
++
++/** A one-time location as text: accuracy, then an OpenStreetMap link any phone can open. No map service is asked. */
++internal fun locationText(latitude: Double, longitude: Double, accuracyMeters: Float?): String {
++    val lat = String.format(Locale.ROOT, "%.5f", latitude)
++    val lon = String.format(Locale.ROOT, "%.5f", longitude)
++    val accuracy = accuracyMeters?.takeIf { it > 0f }?.let { " (±${it.roundToInt()} m)" } ?: ""
++    return "📍 My location$accuracy\nhttps://www.openstreetmap.org/?mlat=$lat&mlon=$lon#map=17/$lat/$lon"
++}
++
++private fun locationText(location: Location) =
++    locationText(location.latitude, location.longitude, if (location.hasAccuracy()) location.accuracy else null)
++
++/** Longest note inserted as text; anything longer is cut at a word boundary (MMS still carries it). */
++internal const val MAX_NOTE_CHARS = 2000
++
++/** A note's text for the message: trimmed, line endings normalised, cut to [MAX_NOTE_CHARS]. */
++internal fun noteText(raw: String): String {
++    val text = raw.replace("\r\n", "\n").replace('\r', '\n').trim()
++    if (text.length <= MAX_NOTE_CHARS) return text
++    val cut = text.substring(0, MAX_NOTE_CHARS)
++    val space = cut.lastIndexOf(' ')
++    return (if (space > MAX_NOTE_CHARS / 2) cut.substring(0, space) else cut).trimEnd() + "…"
++}
++
++private fun hasLocationPermission(context: Context) =
++    context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
++        context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
++
++/** One fresh position from the best enabled provider; null when location is off or nothing answers. */
++private fun currentLocation(context: Context, onResult: (Location?) -> Unit) {
++    val manager = context.getSystemService(LocationManager::class.java)
++    val provider = listOf(LocationManager.FUSED_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
++        .firstOrNull { manager != null && it in manager.allProviders && manager.isProviderEnabled(it) }
++    if (manager == null || provider == null) {
++        onResult(null)
++        return
++    }
++    try {
++        manager.getCurrentLocation(provider, null, context.mainExecutor) { onResult(it) }
++    } catch (e: SecurityException) {
++        onResult(null)
++    }
++}
++
++private fun toast(context: Context, @StringRes message: Int) {
++    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
++}
+diff --git a/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposeBar.kt b/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposeBar.kt
+index 6b35ce3d..bca9a78b 100644
+--- a/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposeBar.kt
++++ b/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposeBar.kt
+@@ -106,6 +106,9 @@ internal fun ConversationComposeBar(
+     messageFieldFocusRequester: FocusRequester? = null,
+     onContactAttachClick: () -> Unit,
+     onMediaPickerClick: () -> Unit,
++    onAttachContentUris: (List<String>) -> Unit = {},
++    onAppendMessageText: (String) -> Unit = {},
++    onScheduleClick: (() -> Unit)? = null,
+     onLockedAudioRecordingStartRequest: () -> Unit,
+     onMessageTextChange: (text: String, textRevision: Int) -> Unit,
+     onAudioRecordingStartRequest: () -> Unit,
+@@ -147,6 +150,9 @@ internal fun ConversationComposeBar(
+             messageFieldFocusRequester = messageFieldFocusRequester,
+             onContactAttachClick = onContactAttachClick,
+             onMediaPickerClick = onMediaPickerClick,
++            onAttachContentUris = onAttachContentUris,
++            onAppendMessageText = onAppendMessageText,
++            onScheduleClick = onScheduleClick,
+             onLockedAudioRecordingStartRequest = onLockedAudioRecordingStartRequest,
+             onMessageTextChange = onMessageTextChange,
+             onAudioRecordingStartRequest = recordingGestureController.onAudioRecordingStartRequest,
+@@ -231,6 +237,9 @@ internal fun ConversationComposeInputContent(
+     messageFieldFocusRequester: FocusRequester?,
+     onContactAttachClick: () -> Unit,
+     onMediaPickerClick: () -> Unit,
++    onAttachContentUris: (List<String>) -> Unit = {},
++    onAppendMessageText: (String) -> Unit = {},
++    onScheduleClick: (() -> Unit)? = null,
+     onLockedAudioRecordingStartRequest: () -> Unit,
+     onMessageTextChange: (text: String, textRevision: Int) -> Unit,
+     onAudioRecordingStartRequest: () -> Unit,
+@@ -275,6 +284,9 @@ internal fun ConversationComposeInputContent(
+                 isAudioRecordActionEnabled = isRecordActionEnabled && isInputActionEnabled,
+                 onContactAttachClick = onContactAttachClick,
+                 onMediaPickerClick = onMediaPickerClick,
++                onAttachContentUris = onAttachContentUris,
++                onAppendMessageText = onAppendMessageText,
++                onScheduleClick = onScheduleClick,
+                 onAudioAttachClick = onLockedAudioRecordingStartRequest,
+             )
+         },
+diff --git a/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposeMessageField.kt b/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposeMessageField.kt
+index c34a67ab..81747dcb 100644
+--- a/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposeMessageField.kt
++++ b/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposeMessageField.kt
+@@ -1,17 +1,9 @@
+ package com.android.messaging.ui.conversation.composer.ui
+ 
+-import android.view.WindowManager
+-import androidx.annotation.StringRes
+ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.padding
+-import androidx.compose.foundation.layout.size
+ import androidx.compose.material.icons.Icons
+ import androidx.compose.material.icons.rounded.AddCircleOutline
+-import androidx.compose.material.icons.rounded.Image
+-import androidx.compose.material.icons.rounded.Mic
+-import androidx.compose.material.icons.rounded.Person
+-import androidx.compose.material3.DropdownMenu
+-import androidx.compose.material3.DropdownMenuItem
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.IconButton
+ import androidx.compose.material3.MaterialTheme
+@@ -22,24 +14,16 @@ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.saveable.rememberSaveable
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Modifier
+-import androidx.compose.ui.graphics.vector.ImageVector
+ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+ import androidx.compose.ui.platform.LocalHapticFeedback
+ import androidx.compose.ui.platform.testTag
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.semantics.clearAndSetSemantics
+ import androidx.compose.ui.semantics.testTag
+-import androidx.compose.ui.tooling.preview.PreviewLightDark
+-import androidx.compose.ui.unit.DpOffset
+ import androidx.compose.ui.unit.dp
+-import androidx.compose.ui.window.PopupProperties
+ import com.android.messaging.R
+ import com.android.messaging.domain.conversation.usecase.draft.model.ConversationDraftSendProtocol
+-import com.android.messaging.ui.conversation.CONVERSATION_ATTACHMENT_AUDIO_MENU_ITEM_TEST_TAG
+-import com.android.messaging.ui.conversation.CONVERSATION_ATTACHMENT_CONTACT_MENU_ITEM_TEST_TAG
+-import com.android.messaging.ui.conversation.CONVERSATION_ATTACHMENT_MEDIA_MENU_ITEM_TEST_TAG
+ import com.android.messaging.ui.conversation.CONVERSATION_MMS_INDICATOR_TEST_TAG
+-import com.android.messaging.ui.core.MessagingPreviewColumn
+ 
+ internal fun conversationComposeMmsSlot(
+     sendProtocol: ConversationDraftSendProtocol,
+@@ -77,16 +61,19 @@ internal fun ConversationComposeAttachmentMenu(
+     onContactAttachClick: () -> Unit,
+     onMediaPickerClick: () -> Unit,
+     onAudioAttachClick: () -> Unit,
++    onAttachContentUris: (List<String>) -> Unit = {},
++    onAppendMessageText: (String) -> Unit = {},
++    onScheduleClick: (() -> Unit)? = null,
+ ) {
+     val hapticFeedback = LocalHapticFeedback.current
+     var isExpanded by rememberSaveable {
+         mutableStateOf(value = false)
+     }
+-
+-    fun closeMenuAndRun(action: () -> Unit) {
+-        isExpanded = false
+-        action()
+-    }
++    // PlaitOS: the pickers' launchers live here, with the button, so their results arrive after the sheet closed
++    val launchers = rememberAttachLaunchers(
++        onAttachContentUris = onAttachContentUris,
++        onAppendMessageText = onAppendMessageText,
++    )
+ 
+     Box(
+         modifier = modifier,
+@@ -107,110 +94,29 @@ internal fun ConversationComposeAttachmentMenu(
+             )
+         }
+ 
+-        DropdownMenu(
+-            expanded = isExpanded,
+-            onDismissRequest = {
+-                isExpanded = false
+-            },
+-            shape = MaterialTheme.shapes.large,
+-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+-            tonalElevation = 3.dp,
+-            shadowElevation = 6.dp,
+-            offset = DpOffset(
+-                x = 0.dp,
+-                y = (-8).dp,
+-            ),
+-            // Raw flags because no combination of the boolean options expresses this. The menu
+-            // has to be focusable, otherwise back (key or gesture) never reaches it and closes the
+-            // conversation instead; ALT_FOCUSABLE_IM then keeps the keyboard up behind the menu,
+-            // which the media picker relies on to know whether to bring it back. NO_LIMITS keeps
+-            // the bottom anchored menu unclipped, WATCH_OUTSIDE_TOUCH keeps tap-to-dismiss.
+-            properties = PopupProperties(
+-                flags = WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
+-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+-            ),
+-        ) {
+-            ConversationComposeAttachmentMenuContent(
++        // PlaitOS: the attach sheet (the unified look's attach grid) in place of the small dropdown menu; inside the box,
++        // so it anchors to the button
++        if (isExpanded) {
++            ConversationAttachSheet(
++                showSchedule = onScheduleClick != null,
+                 isAudioRecordActionEnabled = isAudioRecordActionEnabled,
+-                onMediaPickerClick = {
+-                    closeMenuAndRun(action = onMediaPickerClick)
+-                },
+-                onAudioAttachClick = {
+-                    closeMenuAndRun(action = onAudioAttachClick)
+-                },
+-                onContactAttachClick = {
+-                    closeMenuAndRun(action = onContactAttachClick)
++                onDismiss = { isExpanded = false },
++                onAction = { action ->
++                    when (action) {
++                        AttachAction.Gallery -> onMediaPickerClick()
++                        AttachAction.Camera -> launchers.takePhoto()
++                        AttachAction.Voice -> onAudioAttachClick()
++                        AttachAction.Contact -> onContactAttachClick()
++                        AttachAction.Files -> launchers.pickMedia(arrayOf("image/*", "video/*"))
++                        AttachAction.Gifs -> launchers.selectGif()
++                        AttachAction.Stickers -> launchers.selectSticker()
++                        AttachAction.Location -> launchers.shareLocation()
++                        AttachAction.Notes -> launchers.pickNote()
++                        AttachAction.Schedule -> onScheduleClick?.invoke()
++                        AttachAction.SelfieGif -> launchers.selfieGif()
++                    }
+                 },
+             )
+         }
+     }
+ }
+-
+-@Composable
+-private fun ConversationComposeAttachmentMenuContent(
+-    isAudioRecordActionEnabled: Boolean,
+-    onMediaPickerClick: () -> Unit,
+-    onAudioAttachClick: () -> Unit,
+-    onContactAttachClick: () -> Unit,
+-) {
+-    ConversationComposeAttachmentMenuItem(
+-        modifier = Modifier.testTag(CONVERSATION_ATTACHMENT_MEDIA_MENU_ITEM_TEST_TAG),
+-        imageVector = Icons.Rounded.Image,
+-        textResId = R.string.mediapicker_gallery_title,
+-        onClick = onMediaPickerClick,
+-    )
+-    ConversationComposeAttachmentMenuItem(
+-        modifier = Modifier.testTag(CONVERSATION_ATTACHMENT_AUDIO_MENU_ITEM_TEST_TAG),
+-        imageVector = Icons.Rounded.Mic,
+-        textResId = R.string.mediapicker_audio_title,
+-        enabled = isAudioRecordActionEnabled,
+-        onClick = onAudioAttachClick,
+-    )
+-
+-    ConversationComposeAttachmentMenuItem(
+-        modifier = Modifier.testTag(CONVERSATION_ATTACHMENT_CONTACT_MENU_ITEM_TEST_TAG),
+-        imageVector = Icons.Rounded.Person,
+-        textResId = R.string.mediapicker_contact_title,
+-        onClick = onContactAttachClick,
+-    )
+-}
+-
+-@Composable
+-private fun ConversationComposeAttachmentMenuItem(
+-    modifier: Modifier = Modifier,
+-    imageVector: ImageVector,
+-    @StringRes textResId: Int,
+-    enabled: Boolean = true,
+-    onClick: () -> Unit,
+-) {
+-    DropdownMenuItem(
+-        modifier = modifier,
+-        text = {
+-            Text(text = stringResource(id = textResId))
+-        },
+-        leadingIcon = {
+-            Icon(
+-                imageVector = imageVector,
+-                contentDescription = null,
+-                modifier = Modifier.size(size = 24.dp),
+-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+-            )
+-        },
+-        enabled = enabled,
+-        onClick = onClick,
+-    )
+-}
+-
+-@PreviewLightDark
+-@Composable
+-private fun ConversationComposeAttachmentMenuContentPreview() {
+-    MessagingPreviewColumn {
+-        ConversationComposeAttachmentMenuContent(
+-            isAudioRecordActionEnabled = false,
+-            onMediaPickerClick = {},
+-            onAudioAttachClick = {},
+-            onContactAttachClick = {},
+-        )
+-    }
+-}
+diff --git a/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposerSection.kt b/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposerSection.kt
+index 89c2cec7..f955e91f 100644
+--- a/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposerSection.kt
++++ b/src/com/android/messaging/ui/conversation/composer/ui/ConversationComposerSection.kt
+@@ -31,6 +31,9 @@ internal fun ConversationComposerSection(
+     messageFieldFocusRequester: FocusRequester,
+     onContactAttachClick: () -> Unit,
+     onMediaPickerClick: () -> Unit,
++    onAttachContentUris: (List<String>) -> Unit = {},
++    onAppendMessageText: (String) -> Unit = {},
++    onScheduleClick: (() -> Unit)? = null,
+     onMessageTextChange: (text: String, textRevision: Int) -> Unit,
+     onPendingAttachmentRemove: (String) -> Unit,
+     onResolvedAttachmentClick: (ComposerAttachmentUiModel.Resolved) -> Unit,
+@@ -70,6 +73,9 @@ internal fun ConversationComposerSection(
+             messageFieldFocusRequester = messageFieldFocusRequester,
+             onContactAttachClick = onContactAttachClick,
+             onMediaPickerClick = onMediaPickerClick,
++            onAttachContentUris = onAttachContentUris,
++            onAppendMessageText = onAppendMessageText,
++            onScheduleClick = onScheduleClick,
+             onLockedAudioRecordingStartRequest = onLockedAudioRecordingStartRequest,
+             onMessageTextChange = onMessageTextChange,
+             onAudioRecordingStartRequest = onAudioRecordingStartRequest,
+diff --git a/src/com/android/messaging/ui/conversation/composer/ui/GifPicker.kt b/src/com/android/messaging/ui/conversation/composer/ui/GifPicker.kt
+new file mode 100644
+index 00000000..a2f6bb0c
+--- /dev/null
++++ b/src/com/android/messaging/ui/conversation/composer/ui/GifPicker.kt
+@@ -0,0 +1,92 @@
++package com.android.messaging.ui.conversation.composer.ui
++
++import android.content.ActivityNotFoundException
++import android.content.Context
++import android.content.Intent
++import android.net.Uri
++import android.widget.Toast
++import androidx.activity.compose.rememberLauncherForActivityResult
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.heightIn
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.lazy.grid.GridCells
++import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
++import androidx.compose.foundation.lazy.grid.items
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.remember
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.unit.dp
++import coil3.compose.AsyncImage
++import com.android.messaging.R
++
++@Composable
++internal fun GifPicker(onAttach: (List<String>) -> Unit, onDismiss: () -> Unit) {
++    val context = LocalContext.current
++    val resolver = context.contentResolver
++    val prefs = remember(context) { context.getSharedPreferences("plait_gifs", Context.MODE_PRIVATE) }
++    val recent = remember(context) {
++        val readable = resolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri }.toSet()
++        prefs.getString("recent", "").orEmpty().lineSequence().filter(String::isNotBlank)
++            .map(Uri::parse).filter { it in readable }.take(12).toList()
++    }
++    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
++        if (uri != null) {
++            try {
++                resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
++                val kept = (listOf(uri) + recent).distinct().take(12)
++                (recent - kept.toSet()).forEach {
++                    runCatching { resolver.releasePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
++                }
++                prefs.edit().putString("recent", kept.joinToString("\n")).apply()
++            } catch (e: SecurityException) {
++                // The transient picker grant can still be used for this attachment.
++            }
++            onAttach(listOf(uri.toString()))
++            onDismiss()
++        }
++    }
++
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text(stringResource(R.string.plait_attach_gifs)) },
++        text = {
++            Column {
++                if (recent.isNotEmpty()) {
++                    Text(stringResource(R.string.plait_gif_recent))
++                    LazyVerticalGrid(GridCells.Adaptive(64.dp), Modifier.heightIn(max = 190.dp)) {
++                        items(recent, key = Uri::toString) { uri ->
++                            AsyncImage(
++                                model = uri,
++                                contentDescription = stringResource(R.string.plait_attach_gifs),
++                                modifier = Modifier.size(64.dp).clickable {
++                                    onAttach(listOf(uri.toString()))
++                                    onDismiss()
++                                }.padding(3.dp),
++                            )
++                        }
++                    }
++                }
++                TextButton(onClick = { picker.launch(arrayOf("image/gif")) }) {
++                    Text(stringResource(R.string.plait_gif_local))
++                }
++                Text(stringResource(R.string.plait_gif_external_detail))
++                TextButton(onClick = {
++                    try {
++                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://giphy.com/")))
++                    } catch (e: ActivityNotFoundException) {
++                        Toast.makeText(context, R.string.activity_not_found_message, Toast.LENGTH_SHORT).show()
++                    }
++                }) { Text(stringResource(R.string.plait_gif_external)) }
++            }
++        },
++        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) } },
++    )
++}
+diff --git a/src/com/android/messaging/ui/conversation/composer/ui/LocalStickerPicker.kt b/src/com/android/messaging/ui/conversation/composer/ui/LocalStickerPicker.kt
+new file mode 100644
+index 00000000..5ae72f08
+--- /dev/null
++++ b/src/com/android/messaging/ui/conversation/composer/ui/LocalStickerPicker.kt
+@@ -0,0 +1,122 @@
++package com.android.messaging.ui.conversation.composer.ui
++
++import android.content.Context
++import android.content.Intent
++import android.net.Uri
++import android.provider.DocumentsContract
++import androidx.activity.compose.rememberLauncherForActivityResult
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.heightIn
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.lazy.grid.GridCells
++import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
++import androidx.compose.foundation.lazy.grid.items
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.unit.dp
++import coil3.compose.AsyncImage
++import com.android.messaging.R
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.withContext
++
++private val stickerTypes = setOf("image/png", "image/webp", "image/gif")
++
++@Composable
++internal fun LocalStickerPicker(
++    onPickImage: () -> Unit,
++    onAttach: (List<String>) -> Unit,
++    onDismiss: () -> Unit,
++) {
++    val context = LocalContext.current
++    val prefs = remember(context) { context.getSharedPreferences("plait_stickers", Context.MODE_PRIVATE) }
++    var tree by remember { mutableStateOf(prefs.getString("folder", null)?.let(Uri::parse)) }
++    var stickers by remember { mutableStateOf<List<Sticker>>(emptyList()) }
++    var inaccessible by remember { mutableStateOf(false) }
++    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
++        if (uri != null && uri != tree) {
++            val previous = tree
++            try {
++                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
++                prefs.edit().putString("folder", uri.toString()).apply()
++                tree = uri
++                previous?.let {
++                    runCatching { context.contentResolver.releasePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
++                }
++            } catch (e: SecurityException) {
++                inaccessible = true
++            }
++        }
++    }
++    LaunchedEffect(tree) {
++        val current = tree ?: return@LaunchedEffect
++        val loaded = withContext(Dispatchers.IO) { runCatching { readStickers(context, current) }.getOrNull() }
++        stickers = loaded.orEmpty()
++        inaccessible = loaded == null
++    }
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text(stringResource(R.string.plait_attach_stickers)) },
++        text = {
++            Column {
++                if (stickers.isEmpty()) {
++                    Text(stringResource(if (inaccessible) R.string.plait_sticker_unavailable else R.string.plait_sticker_empty))
++                } else {
++                    LazyVerticalGrid(GridCells.Adaptive(62.dp), Modifier.heightIn(max = 250.dp)) {
++                        items(stickers, key = { it.uri.toString() }) { sticker ->
++                            AsyncImage(
++                                model = sticker.uri,
++                                contentDescription = sticker.name,
++                                modifier = Modifier.size(62.dp).clickable {
++                                    onAttach(listOf(sticker.uri.toString()))
++                                    onDismiss()
++                                }.padding(6.dp),
++                            )
++                        }
++                    }
++                }
++                TextButton(onClick = { folderPicker.launch(tree) }) {
++                    Text(stringResource(R.string.plait_sticker_select_folder))
++                }
++                TextButton(onClick = {
++                    onDismiss()
++                    onPickImage()
++                }) { Text(stringResource(R.string.plait_sticker_select_file)) }
++            }
++        },
++        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) } },
++    )
++}
++
++private data class Sticker(val uri: Uri, val name: String)
++
++private fun readStickers(context: Context, tree: Uri): List<Sticker> {
++    val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
++    val columns = arrayOf(
++        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
++        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
++        DocumentsContract.Document.COLUMN_MIME_TYPE,
++    )
++    return context.contentResolver.query(children, columns, null, null, null)?.use { rows ->
++        buildList {
++            var scanned = 0
++            while (size < 100 && scanned++ < 1000 && rows.moveToNext()) {
++                if (rows.getString(2) in stickerTypes) {
++                    add(Sticker(DocumentsContract.buildDocumentUriUsingTree(tree, rows.getString(0)), rows.getString(1)))
++                }
++            }
++        }
++    }.orEmpty()
++}
+diff --git a/src/com/android/messaging/ui/conversation/composer/ui/SelfieGifDialog.kt b/src/com/android/messaging/ui/conversation/composer/ui/SelfieGifDialog.kt
+new file mode 100644
+index 00000000..03e4857b
+--- /dev/null
++++ b/src/com/android/messaging/ui/conversation/composer/ui/SelfieGifDialog.kt
+@@ -0,0 +1,172 @@
++package com.android.messaging.ui.conversation.composer.ui
++
++import android.graphics.Bitmap
++import android.graphics.Matrix
++import android.widget.Toast
++import androidx.camera.compose.CameraXViewfinder
++import androidx.camera.core.CameraSelector
++import androidx.camera.core.ImageCapture
++import androidx.camera.core.ImageCaptureException
++import androidx.camera.core.ImageProxy
++import androidx.camera.core.Preview
++import androidx.camera.core.SurfaceRequest
++import androidx.camera.lifecycle.ProcessCameraProvider
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.aspectRatio
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.DisposableEffect
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.rememberCoroutineScope
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.res.stringResource
++import androidx.core.content.ContextCompat
++import androidx.lifecycle.compose.LocalLifecycleOwner
++import com.android.messaging.R
++import com.android.messaging.datamodel.MediaScratchFileProvider
++import com.android.messaging.sms.MmsConfig
++import com.android.messaging.util.GifTranscoder
++import java.util.concurrent.Executor
++import kotlin.coroutines.resume
++import kotlin.coroutines.resumeWithException
++import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.suspendCancellableCoroutine
++import kotlinx.coroutines.withContext
++
++private const val GIF_SIZE = 112
++private const val GIF_FRAMES = 10
++
++@Composable
++internal fun SelfieGifDialog(onAttach: (List<String>) -> Unit, onDismiss: () -> Unit) {
++    val context = LocalContext.current
++    val owner = LocalLifecycleOwner.current
++    val main = remember(context) { ContextCompat.getMainExecutor(context) }
++    val scope = rememberCoroutineScope()
++    var surface by remember { mutableStateOf<SurfaceRequest?>(null) }
++    var ready by remember { mutableStateOf(false) }
++    var failed by remember { mutableStateOf(false) }
++    var recording by remember { mutableStateOf(false) }
++    val preview = remember { Preview.Builder().build() }
++    val capture = remember {
++        ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
++            .setTargetResolution(android.util.Size(320, 240)).build()
++    }
++
++    DisposableEffect(owner, context) {
++        var provider: ProcessCameraProvider? = null
++        var disposed = false
++        preview.setSurfaceProvider(main) { surface = it }
++        val future = ProcessCameraProvider.getInstance(context)
++        future.addListener({
++            if (!disposed) {
++                try {
++                    provider = future.get().also {
++                        it.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, preview, capture)
++                    }
++                    ready = true
++                } catch (e: Exception) {
++                    failed = true
++                }
++            }
++        }, main)
++        onDispose {
++            disposed = true
++            provider?.unbind(preview, capture)
++            preview.setSurfaceProvider(null)
++        }
++    }
++
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text(stringResource(R.string.plait_selfie_gif)) },
++        text = {
++            Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
++                if (failed) {
++                    Text(stringResource(R.string.plait_selfie_failed))
++                } else {
++                    surface?.let { CameraXViewfinder(it, Modifier.matchParentSize()) }
++                }
++            }
++        },
++        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) } },
++        confirmButton = {
++            TextButton(enabled = ready && surface != null && !recording, onClick = {
++                recording = true
++                scope.launch {
++                    val uri = MediaScratchFileProvider.buildMediaScratchSpaceUri("gif")
++                    val file = MediaScratchFileProvider.getFileFromUri(uri)
++                    var attached = false
++                    try {
++                        val pixels = IntArray(GIF_SIZE * GIF_SIZE * GIF_FRAMES)
++                        repeat(GIF_FRAMES) { frame ->
++                            capture.readFrame(main, pixels, frame * GIF_SIZE * GIF_SIZE)
++                            if (frame < GIF_FRAMES - 1) delay(100)
++                        }
++                        withContext(Dispatchers.IO) {
++                            check(GifTranscoder.encodeBurst(file.absolutePath, pixels, GIF_SIZE, GIF_FRAMES))
++                            val max = MmsConfig.get(android.telephony.SmsManager.getDefaultSmsSubscriptionId()).maxMessageSize
++                            check(file.length() in 1..(max - 32 * 1024L))
++                        }
++                        onAttach(listOf(uri.toString()))
++                        attached = true
++                        onDismiss()
++                    } catch (e: CancellationException) {
++                        throw e
++                    } catch (e: Exception) {
++                        Toast.makeText(context, R.string.plait_selfie_failed, Toast.LENGTH_SHORT).show()
++                    } finally {
++                        if (!attached) file.delete()
++                        recording = false
++                    }
++                }
++            }) { Text(stringResource(if (recording) R.string.plait_selfie_recording else R.string.plait_selfie_record)) }
++        },
++    )
++}
++
++private suspend fun ImageCapture.readFrame(executor: Executor, dest: IntArray, offset: Int) =
++    suspendCancellableCoroutine<Unit> { continuation ->
++        takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
++            override fun onCaptureSuccess(image: ImageProxy) {
++                try {
++                    if (!continuation.isActive) return
++                    val bitmap = image.toBitmap()
++                    try {
++                        val side = minOf(bitmap.width, bitmap.height)
++                        val transform = Matrix().apply {
++                            postRotate(image.imageInfo.rotationDegrees.toFloat())
++                            postScale(-GIF_SIZE.toFloat() / side, GIF_SIZE.toFloat() / side)
++                        }
++                        val square = Bitmap.createBitmap(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2,
++                            side, side, transform, true)
++                        try {
++                            square.getPixels(dest, offset, GIF_SIZE, 0, 0, GIF_SIZE, GIF_SIZE)
++                        } finally {
++                            if (square !== bitmap) square.recycle()
++                        }
++                    } finally {
++                        bitmap.recycle()
++                    }
++                    continuation.resume(Unit)
++                } catch (e: Exception) {
++                    if (continuation.isActive) continuation.resumeWithException(e)
++                } finally {
++                    image.close()
++                }
++            }
++
++            override fun onError(exception: ImageCaptureException) {
++                if (continuation.isActive) continuation.resumeWithException(exception)
++            }
++        })
++    }
+diff --git a/src/com/android/messaging/ui/conversation/screen/ConversationScreen.kt b/src/com/android/messaging/ui/conversation/screen/ConversationScreen.kt
+index 6522fc5a..e4b28215 100644
+--- a/src/com/android/messaging/ui/conversation/screen/ConversationScreen.kt
++++ b/src/com/android/messaging/ui/conversation/screen/ConversationScreen.kt
+@@ -1,5 +1,6 @@
+ package com.android.messaging.ui.conversation.screen
+ 
++import androidx.compose.foundation.layout.Column
+ import androidx.compose.foundation.layout.fillMaxSize
+ import androidx.compose.material3.Scaffold
+ import androidx.compose.material3.SnackbarHostState
+@@ -163,6 +164,7 @@ internal fun ConversationScreenScaffold(
+         },
+         bottomBar = {
+             ConversationScreenBottomBar(
++                conversationId = conversationId,
+                 uiState = uiState,
+                 isMediaPickerOpen = isMediaPickerOpen,
+                 messageFieldFocusRequester = messageFieldFocusRequester,
+@@ -279,6 +281,7 @@ private fun ConversationScreenTopBar(
+ 
+ @Composable
+ private fun ConversationScreenBottomBar(
++    conversationId: ConversationId?,
+     uiState: ConversationScreenScaffoldUiState,
+     isMediaPickerOpen: Boolean,
+     messageFieldFocusRequester: FocusRequester,
+@@ -299,36 +302,55 @@ private fun ConversationScreenBottomBar(
+         return
+     }
+ 
+-    ConversationComposerSection(
+-        audioRecording = uiState.composer.audioRecording,
+-        attachments = uiState.composer.attachments,
+-        messageText = uiState.composer.messageText,
+-        messageTextRevision = uiState.composer.messageTextRevision,
+-        subjectText = uiState.composer.subjectText,
+-        sendProtocol = uiState.composer.sendProtocol,
+-        segmentCounter = uiState.composer.segmentCounter,
+-        isMessageFieldEnabled = uiState.composer.isMessageFieldEnabled,
+-        isAttachmentActionEnabled = uiState.composer.isAttachmentActionEnabled,
+-        isRecordActionEnabled = uiState.composer.isRecordActionEnabled,
+-        isSendActionEnabled = uiState.composer.isSendEnabled,
+-        shouldShowRecordAction = uiState.composer.shouldShowRecordAction,
+-        messageFieldFocusRequester = messageFieldFocusRequester,
+-        onContactAttachClick = onOpenContactPicker,
+-        onMediaPickerClick = onOpenMediaPicker,
+-        onMessageTextChange = screenModel::onMessageTextChanged,
+-        onPendingAttachmentRemove = screenModel::onRemovePendingAttachment,
+-        onResolvedAttachmentClick = screenModel::onAttachmentClicked,
+-        onResolvedAttachmentRemove = screenModel::onRemoveResolvedAttachment,
+-        onAudioRecordingStartRequest = onAudioRecordingStartRequest,
+-        onLockedAudioRecordingStartRequest = onLockedAudioRecordingStartRequest,
+-        onAudioRecordingFinish = screenModel::onAudioRecordingFinish,
+-        onAudioRecordingLock = screenModel::onAudioRecordingLock,
+-        onAudioRecordingCancel = screenModel::onAudioRecordingCancel,
+-        onSendClick = screenModel::onSendClick,
+-        onSendActionLongClick = onSendActionLongClick,
+-        onSubjectChipClick = screenModel::onShowSubjectFieldClick,
+-        onSubjectChipClear = screenModel::onSubjectChipClear,
+-    )
++    val context = androidx.compose.ui.platform.LocalContext.current
++    val schedule = remember(conversationId) { mutableStateOf(false) }
++    if (schedule.value && conversationId != null) {
++        com.android.messaging.plait.schedule.ScheduleDialog(
++            conversationId = conversationId.value,
++            canSchedule = uiState.composer.isSendEnabled && uiState.composer.attachments.isEmpty(),
++            onSchedule = { screenModel.onScheduleSend(context, it) },
++            onDismiss = { schedule.value = false },
++        )
++    }
++
++    Column {
++        if (conversationId != null) {
++            com.android.messaging.plait.schedule.ScheduledMessagesSummary(conversationId.value) { schedule.value = true }
++        }
++        ConversationComposerSection(
++            audioRecording = uiState.composer.audioRecording,
++            attachments = uiState.composer.attachments,
++            messageText = uiState.composer.messageText,
++            messageTextRevision = uiState.composer.messageTextRevision,
++            subjectText = uiState.composer.subjectText,
++            sendProtocol = uiState.composer.sendProtocol,
++            segmentCounter = uiState.composer.segmentCounter,
++            isMessageFieldEnabled = uiState.composer.isMessageFieldEnabled,
++            isAttachmentActionEnabled = uiState.composer.isAttachmentActionEnabled,
++            isRecordActionEnabled = uiState.composer.isRecordActionEnabled,
++            isSendActionEnabled = uiState.composer.isSendEnabled,
++            shouldShowRecordAction = uiState.composer.shouldShowRecordAction,
++            messageFieldFocusRequester = messageFieldFocusRequester,
++            onContactAttachClick = onOpenContactPicker,
++            onMediaPickerClick = onOpenMediaPicker,
++            onAttachContentUris = screenModel::onPhotoPickerMediaSelected,
++            onAppendMessageText = screenModel::onAppendMessageText,
++            onScheduleClick = if (conversationId != null) ({ schedule.value = true }) else null,
++            onMessageTextChange = screenModel::onMessageTextChanged,
++            onPendingAttachmentRemove = screenModel::onRemovePendingAttachment,
++            onResolvedAttachmentClick = screenModel::onAttachmentClicked,
++            onResolvedAttachmentRemove = screenModel::onRemoveResolvedAttachment,
++            onAudioRecordingStartRequest = onAudioRecordingStartRequest,
++            onLockedAudioRecordingStartRequest = onLockedAudioRecordingStartRequest,
++            onAudioRecordingFinish = screenModel::onAudioRecordingFinish,
++            onAudioRecordingLock = screenModel::onAudioRecordingLock,
++            onAudioRecordingCancel = screenModel::onAudioRecordingCancel,
++            onSendClick = screenModel::onSendClick,
++            onSendActionLongClick = onSendActionLongClick,
++            onSubjectChipClick = screenModel::onShowSubjectFieldClick,
++            onSubjectChipClear = screenModel::onSubjectChipClear,
++        )
++    }
+ }
+ 
+ @Composable
+diff --git a/src/com/android/messaging/ui/conversation/screen/ConversationViewModel.kt b/src/com/android/messaging/ui/conversation/screen/ConversationViewModel.kt
+index ecd8e952..58a7e983 100644
+--- a/src/com/android/messaging/ui/conversation/screen/ConversationViewModel.kt
++++ b/src/com/android/messaging/ui/conversation/screen/ConversationViewModel.kt
+@@ -98,6 +98,9 @@ internal interface ConversationScreenModel :
+     fun onExternalUriClicked(uri: String)
+ 
+     fun onMessageTextChanged(text: String, textRevision: Int)
++
++    /** PlaitOS: adds [text] to the message being written (a location, a note). */
++    fun onAppendMessageText(text: String)
+     fun tryStartAddingAttachment(): Boolean
+     fun onAudioRecordingStart(isLocked: Boolean)
+     fun onAudioRecordingLock(): Boolean
+@@ -108,6 +111,7 @@ internal interface ConversationScreenModel :
+         captionText: String,
+     )
+ 
++    fun onScheduleSend(context: android.content.Context, at: Long) {}
+     fun onSendClick()
+     fun dismissAttachmentLimitWarning()
+     fun sendAnywayAfterAttachmentLimitWarning()
+@@ -570,6 +574,10 @@ internal class ConversationViewModel @Inject constructor(
+         )
+     }
+ 
++    override fun onAppendMessageText(text: String) {
++        conversationDraftDelegate.appendMessageText(text = text)
++    }
++
+     override fun onMessageTextChanged(text: String, textRevision: Int) {
+         conversationDraftDelegate.onMessageTextChanged(
+             messageText = text,
+@@ -633,6 +641,10 @@ internal class ConversationViewModel @Inject constructor(
+         )
+     }
+ 
++    override fun onScheduleSend(context: android.content.Context, at: Long) {
++        conversationDraftDelegate.scheduleSend(context, at)
++    }
++
+     override fun onSendClick() {
+         conversationDraftDelegate.onSendClick()
+     }
+diff --git a/src/com/android/messaging/ui/conversationlist/chats/ConversationListScreen.kt b/src/com/android/messaging/ui/conversationlist/chats/ConversationListScreen.kt
+index d5704cab..0f6e4d92 100644
+--- a/src/com/android/messaging/ui/conversationlist/chats/ConversationListScreen.kt
++++ b/src/com/android/messaging/ui/conversationlist/chats/ConversationListScreen.kt
+@@ -595,7 +595,7 @@ private fun StartChatFab(
+ 
+ @PreviewLightDark
+ @Composable
+-private fun ConversationListScaffoldItemsPreview() {
++internal fun ConversationListScaffoldItemsPreview() {
+     MessagingPreviewTheme {
+         ConversationListScaffold(
+             uiState = State(
+diff --git a/src/com/android/messaging/ui/conversationlist/chats/ConversationListTopAppBar.kt b/src/com/android/messaging/ui/conversationlist/chats/ConversationListTopAppBar.kt
+index 309ecc0a..47bd744f 100644
+--- a/src/com/android/messaging/ui/conversationlist/chats/ConversationListTopAppBar.kt
++++ b/src/com/android/messaging/ui/conversationlist/chats/ConversationListTopAppBar.kt
+@@ -2,6 +2,10 @@ package com.android.messaging.ui.conversationlist.chats
+ 
+ import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.interaction.MutableInteractionSource
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.rounded.Settings
++import androidx.compose.material3.Icon
++import androidx.compose.material3.IconButton
+ import androidx.compose.material3.ExperimentalMaterial3Api
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.Text
+@@ -11,6 +15,7 @@ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.remember
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.text.withStyle
+ import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.tooling.preview.PreviewLightDark
+ import com.android.messaging.R
+@@ -38,7 +43,9 @@ internal fun ConversationListTopAppBar(
+                 ) {
+                     onAction(Action.ScrollToTopClicked)
+                 },
+-                text = stringResource(R.string.app_name),
++                // PlaitOS: the app's name with its installed version after it, smaller and muted, as on every
++                // PlaitOS app's root screen
++                text = appTitleWithVersion(stringResource(R.string.app_name)),
+                 maxLines = 1,
+                 overflow = TextOverflow.Ellipsis,
+             )
+@@ -49,6 +56,9 @@ internal fun ConversationListTopAppBar(
+                 isDebugEnabled = isDebugEnabled,
+                 onAction = onAction,
+             )
++            IconButton(onClick = { onAction(Action.SettingsClicked) }) {
++                Icon(Icons.Rounded.Settings, stringResource(R.string.action_settings))
++            }
+         },
+     )
+ }
+@@ -78,14 +88,6 @@ private fun ConversationListOverflowMenu(
+             )
+         }
+ 
+-        OverflowMenuItem(
+-            labelResId = R.string.action_settings,
+-            onClick = {
+-                onAction(Action.SettingsClicked)
+-                dismiss()
+-            },
+-        )
+-
+         if (isDebugEnabled) {
+             OverflowMenuItem(
+                 labelResId = R.string.action_debug_options,
+@@ -109,3 +111,20 @@ private fun ConversationListTopAppBarPreview() {
+         )
+     }
+ }
++
++@Composable
++private fun appTitleWithVersion(name: String): androidx.compose.ui.text.AnnotatedString {
++    val context = androidx.compose.ui.platform.LocalContext.current
++    val version = remember(context) {
++        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
++    }
++    val muted = MaterialTheme.colorScheme.onSurfaceVariant
++    val small = MaterialTheme.typography.labelMedium.fontSize
++    return androidx.compose.ui.text.buildAnnotatedString {
++        append(name)
++        if (!version.isNullOrBlank()) {
++            append("  ")
++            withStyle(androidx.compose.ui.text.SpanStyle(color = muted, fontSize = small)) { append(version) }
++        }
++    }
++}
+diff --git a/src/com/android/messaging/ui/conversationlist/common/item/ConversationListItemRow.kt b/src/com/android/messaging/ui/conversationlist/common/item/ConversationListItemRow.kt
+index 3a6607e7..b147881a 100644
+--- a/src/com/android/messaging/ui/conversationlist/common/item/ConversationListItemRow.kt
++++ b/src/com/android/messaging/ui/conversationlist/common/item/ConversationListItemRow.kt
+@@ -47,6 +47,7 @@ internal fun ConversationListItemRow(
+     onLongClick: () -> Unit,
+     modifier: Modifier = Modifier,
+     isSelectionMode: Boolean = false,
++    shape: androidx.compose.ui.graphics.Shape? = null,
+     onAvatarMessageClick: () -> Unit = {},
+     onAvatarCallClick: (() -> Unit)? = null,
+     onAvatarContactClick: (() -> Unit)? = null,
+@@ -73,6 +74,7 @@ internal fun ConversationListItemRow(
+         ),
+         onLongClick = onLongClick,
+         color = itemContainerColor(item),
++        shape = shape ?: androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+         contentDescription = conversationListItemContentDescription(item),
+         keepLeadingContentAccessible = true,
+         subtitleContent = {
+@@ -247,8 +249,8 @@ private fun itemContainerColor(item: ConversationListItemUiModel): Color {
+     val isHighlighted = item.isSelected || item.isOpened
+ 
+     return when {
+-        isHighlighted -> MaterialTheme.colorScheme.surfaceContainerLow
+-        else -> MaterialTheme.colorScheme.background
++        isHighlighted -> MaterialTheme.colorScheme.surfaceContainerHighest
++        else -> MaterialTheme.colorScheme.surfaceContainer
+     }
+ }
+ 
+diff --git a/src/com/android/messaging/ui/conversationlist/common/list/ConversationListItems.kt b/src/com/android/messaging/ui/conversationlist/common/list/ConversationListItems.kt
+index 3e930ed7..649a97ba 100644
+--- a/src/com/android/messaging/ui/conversationlist/common/list/ConversationListItems.kt
++++ b/src/com/android/messaging/ui/conversationlist/common/list/ConversationListItems.kt
+@@ -6,11 +6,12 @@ import androidx.compose.animation.core.spring
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.PaddingValues
+ import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.LazyItemScope
+ import androidx.compose.foundation.lazy.LazyListState
+-import androidx.compose.foundation.lazy.items
++import androidx.compose.foundation.lazy.itemsIndexed
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.DisposableEffect
+ import androidx.compose.runtime.SideEffect
+@@ -93,11 +94,11 @@ internal fun ConversationListItems(
+         ),
+         verticalArrangement = Arrangement.spacedBy(ListVerticalSpacing),
+     ) {
+-        items(
++        itemsIndexed(
+             items = items,
+-            key = { item -> item.conversationId.value },
+-            contentType = { CONVERSATION_ROW_CONTENT_TYPE },
+-        ) { item ->
++            key = { _, item -> item.conversationId.value },
++            contentType = { _, _ -> CONVERSATION_ROW_CONTENT_TYPE },
++        ) { index, item ->
+             val appearanceAnimationToken = appearanceTokens.tokenFor(item.conversationId)
+ 
+             ConversationListRow(
+@@ -105,6 +106,12 @@ internal fun ConversationListItems(
+                 listState = listState,
+                 isSelectionMode = isSelectionMode,
+                 horizontalInsets = rowHorizontalInsets,
++                groupShape = RoundedCornerShape(
++                    topStart = if (index == 0) 14.dp else 6.dp,
++                    topEnd = if (index == 0) 14.dp else 6.dp,
++                    bottomStart = if (index == items.lastIndex) 14.dp else 6.dp,
++                    bottomEnd = if (index == items.lastIndex) 14.dp else 6.dp,
++                ),
+                 appearanceAnimationToken = appearanceAnimationToken,
+                 pinAnimationController = pinAnimationController,
+                 onAppearanceAnimationFinished = {
+@@ -128,6 +135,7 @@ private fun LazyItemScope.ConversationListRow(
+     listState: LazyListState,
+     isSelectionMode: Boolean,
+     horizontalInsets: PaddingValues,
++    groupShape: RoundedCornerShape,
+     appearanceAnimationToken: AppearanceAnimationToken?,
+     pinAnimationController: OverlayReorderAnimationController<Model, ConversationId>?,
+     onAppearanceAnimationFinished: () -> Unit,
+@@ -183,6 +191,7 @@ private fun LazyItemScope.ConversationListRow(
+             item = item,
+             isSelectionMode = isSelectionMode,
+             horizontalInsets = horizontalInsets,
++            groupShape = groupShape,
+             onItemEvent = onItemEvent,
+         )
+     }
+@@ -193,6 +202,7 @@ private fun ConversationListItemContent(
+     item: Model,
+     isSelectionMode: Boolean,
+     horizontalInsets: PaddingValues,
++    groupShape: RoundedCornerShape,
+     onItemEvent: (ConversationListItemEvent) -> Unit,
+ ) {
+     val destination = item.avatar.normalizedDestination
+@@ -200,6 +210,7 @@ private fun ConversationListItemContent(
+     ConversationListItemRow(
+         item = item,
+         modifier = Modifier.conversationRowHorizontalPadding(horizontalInsets),
++        shape = groupShape,
+         onClick = {
+             onItemEvent(ConversationListItemEvent.Clicked(item.conversationId))
+         },
+diff --git a/src/com/android/messaging/ui/core/Theme.kt b/src/com/android/messaging/ui/core/Theme.kt
+index d560569a..8fa2905f 100644
+--- a/src/com/android/messaging/ui/core/Theme.kt
++++ b/src/com/android/messaging/ui/core/Theme.kt
+@@ -6,20 +6,42 @@ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material3.ColorScheme
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.Shapes
++import androidx.compose.material3.Typography
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.unit.sp
+ import androidx.compose.material3.dynamicDarkColorScheme
+ import androidx.compose.material3.dynamicLightColorScheme
+ import androidx.compose.runtime.Composable
+ import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.unit.dp
+ 
++// PlaitOS: the shared look of every PlaitOS app ("Graphite, refined", ~/Projects/plait-design): modest corners
++// (10 dp controls, 14 dp groups, 28 dp sheets) and the system font with nothing smaller than 12 sp. Same values as
++// plait-design's PlaitShapes and PlaitTypography; copied rather than depended on, so Messaging keeps building on its
++// own toolchain (plait-design is on an older Gradle/AGP/Kotlin).
+ private val AppShapes = Shapes(
+-    extraSmall = RoundedCornerShape(size = 12.dp),
+-    small = RoundedCornerShape(size = 16.dp),
+-    medium = RoundedCornerShape(size = 20.dp),
+-    large = RoundedCornerShape(size = 28.dp),
+-    extraLarge = RoundedCornerShape(size = 36.dp),
++    extraSmall = RoundedCornerShape(size = 6.dp),
++    small = RoundedCornerShape(size = 8.dp),
++    medium = RoundedCornerShape(size = 10.dp),
++    large = RoundedCornerShape(size = 14.dp),
++    extraLarge = RoundedCornerShape(size = 28.dp),
+ )
+ 
++private val AppTypography = Typography().let { d ->
++    d.copy(
++        headlineSmall = d.headlineSmall.copy(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold),
++        titleLarge = d.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
++        titleMedium = d.titleMedium.copy(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
++        titleSmall = d.titleSmall.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
++        bodyLarge = d.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
++        bodyMedium = d.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
++        bodySmall = d.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
++        labelLarge = d.labelLarge.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
++        labelMedium = d.labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
++        labelSmall = d.labelSmall.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
++    )
++}
++
+ @Composable
+ fun AppTheme(
+     content: @Composable () -> Unit,
+@@ -32,6 +54,7 @@ fun AppTheme(
+     MaterialTheme(
+         colorScheme = colorScheme,
+         shapes = AppShapes,
++        typography = AppTypography,
+         content = content,
+     )
+ }
+diff --git a/src/com/android/messaging/util/GifTranscoder.java b/src/com/android/messaging/util/GifTranscoder.java
+index 76ea7888..4982303a 100644
+--- a/src/com/android/messaging/util/GifTranscoder.java
++++ b/src/com/android/messaging/util/GifTranscoder.java
+@@ -65,6 +65,8 @@ public class GifTranscoder {
+         return success;
+     }
+ 
++    public static native boolean encodeBurst(String path, int[] pixels, int size, int frameCount);
++
+     private static native boolean transcodeInternal(String filePath, String outFilePath);
+ 
+     /**
+-- 
+2.56.1
+

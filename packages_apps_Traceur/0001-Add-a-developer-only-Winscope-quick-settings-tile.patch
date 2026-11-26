@@ -1,0 +1,232 @@
+From 13e9e05277deb134e03649280541c7590e2c50b1 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 13:30:42 -0600
+Subject: [PATCH] Add a developer-only Winscope quick settings tile
+
+Change-Id: Id9ff8205a99a5a58bbd3208db146ceb28cf72b30
+---
+ AndroidManifest.xml                           | 13 +++++++
+ res/values/strings.xml                        |  2 +
+ res/xml/main.xml                              |  4 ++
+ src/com/android/traceur/MainFragment.java     |  5 +++
+ src/com/android/traceur/Receiver.java         | 17 +++++++-
+ src/com/android/traceur/TracingQsService.java | 39 ++++++++++++++-----
+ 6 files changed, 70 insertions(+), 10 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index b441633..ea732da 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -176,6 +176,19 @@
+                        android:value="true" />
+         </service>
+ 
++        <service android:name=".TracingQsService$Winscope"
++             android:enabled="false"
++             android:icon="@drawable/bugfood_icon"
++             android:label="@string/plait_winscope_trace"
++             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
++             android:exported="true">
++            <intent-filter>
++                <action android:name="android.service.quicksettings.action.QS_TILE"/>
++            </intent-filter>
++            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE"
++                       android:value="true" />
++        </service>
++
+         <service android:name=".StackSamplingQsService"
+              android:enabled="false"
+              android:icon="@drawable/bugfood_icon"
+diff --git a/res/values/strings.xml b/res/values/strings.xml
+index 15d410d..f3964eb 100644
+--- a/res/values/strings.xml
++++ b/res/values/strings.xml
+@@ -226,4 +226,6 @@
+     <string name="pref_category_misc">Miscellaneous</string>
+     <!-- This is the title for the list of settings related to heap dumps. -->
+     <string name="pref_category_heap_dump_settings">Heap dump settings</string>
++    <string name="plait_winscope_trace">Winscope trace</string>
++    <string name="plait_show_winscope_tile">Show Winscope Quick Settings tile</string>
+ </resources>
+diff --git a/res/xml/main.xml b/res/xml/main.xml
+index 2487e03..bc7a83d 100644
+--- a/res/xml/main.xml
++++ b/res/xml/main.xml
+@@ -142,5 +142,9 @@
+             android:key="@string/pref_key_tracing_quick_setting"
+             android:title="@string/show_quick_settings_tile"
+             android:defaultValue="false" />
++        <androidx.preference.SwitchPreference
++            android:key="plait_winscope_quick_setting"
++            android:title="@string/plait_show_winscope_tile"
++            android:defaultValue="false" />
+     </androidx.preference.PreferenceCategory>
+ </androidx.preference.PreferenceScreen>
+diff --git a/src/com/android/traceur/MainFragment.java b/src/com/android/traceur/MainFragment.java
+index 5ddbfd3..5009daf 100644
+--- a/src/com/android/traceur/MainFragment.java
++++ b/src/com/android/traceur/MainFragment.java
+@@ -209,6 +209,11 @@ public class MainFragment extends PreferenceFragment {
+                     }
+                 });
+ 
++        findPreference(TracingQsService.WINSCOPE_TILE_SETTING).setOnPreferenceClickListener(preference -> {
++            Receiver.updateWinscopeQuickSettings(getContext());
++            return true;
++        });
++
+         findPreference(getString(R.string.pref_key_tracing_quick_setting))
+             .setOnPreferenceClickListener(
+                 new Preference.OnPreferenceClickListener() {
+diff --git a/src/com/android/traceur/Receiver.java b/src/com/android/traceur/Receiver.java
+index ba43b19..62a96aa 100644
+--- a/src/com/android/traceur/Receiver.java
++++ b/src/com/android/traceur/Receiver.java
+@@ -119,6 +119,10 @@ public class Receiver extends BroadcastReceiver {
+     }
+ 
+     public static void updateTracing(Context context, boolean assumeTracingIsOff) {
++        updateTracing(context, assumeTracingIsOff, false);
++    }
++
++    static void updateTracing(Context context, boolean assumeTracingIsOff, boolean includeWinscope) {
+         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+         boolean prefsTracingOn =
+                 prefs.getBoolean(context.getString(R.string.pref_key_tracing_on), false);
+@@ -167,7 +171,7 @@ public class Receiver extends BroadcastReceiver {
+                     prefs.getString(context.getString(R.string.pref_key_buffer_size),
+                         context.getString(R.string.default_buffer_size)));
+ 
+-                boolean winscopeTracing = prefs.getBoolean(
++                boolean winscopeTracing = includeWinscope || prefs.getBoolean(
+                     context.getString(R.string.pref_key_winscope),
+                         false);
+                 boolean appTracing = prefs.getBoolean(context.getString(R.string.pref_key_apps), true);
+@@ -181,6 +185,8 @@ public class Receiver extends BroadcastReceiver {
+                     prefs.getString(context.getString(R.string.pref_key_max_long_trace_duration),
+                         context.getString(R.string.default_long_trace_duration)));
+ 
++                prefs.edit().putBoolean(TracingQsService.RECORDING_INCLUDES_WINSCOPE,
++                        winscopeTracing).apply();
+                 TraceService.startTracing(context, activeAvailableTags, bufferSize, winscopeTracing,
+                     appTracing, longTrace, maxLongTraceSize, maxLongTraceDuration);
+             } else {
+@@ -240,6 +246,13 @@ public class Receiver extends BroadcastReceiver {
+         updateQuickSettingsPanel(context, stackSamplingQsEnabled, StackSamplingQsService.class);
+     }
+ 
++    static void updateWinscopeQuickSettings(Context context) {
++        boolean enabled = isTraceurAllowed(context)
++                && PreferenceManager.getDefaultSharedPreferences(context)
++                        .getBoolean(TracingQsService.WINSCOPE_TILE_SETTING, false);
++        updateQuickSettingsPanel(context, enabled, TracingQsService.Winscope.class);
++    }
++
+     private static void removeQuickSettingsTiles(Context context) {
+         SharedPreferences prefs =
+             PreferenceManager.getDefaultSharedPreferences(context);
+@@ -250,8 +263,10 @@ public class Receiver extends BroadcastReceiver {
+             context.getString(
+                 R.string.pref_key_stack_sampling_quick_setting), false)
+             .commit();
++        prefs.edit().remove(TracingQsService.WINSCOPE_TILE_SETTING).apply();
+         updateTracingQuickSettings(context);
+         updateStackSamplingQuickSettings(context);
++        updateWinscopeQuickSettings(context);
+     }
+ 
+     /*
+diff --git a/src/com/android/traceur/TracingQsService.java b/src/com/android/traceur/TracingQsService.java
+index cc4dded..114a51e 100644
+--- a/src/com/android/traceur/TracingQsService.java
++++ b/src/com/android/traceur/TracingQsService.java
+@@ -21,32 +21,44 @@ import android.graphics.drawable.Icon;
+ import android.preference.PreferenceManager;
+ import android.service.quicksettings.Tile;
+ import android.service.quicksettings.TileService;
++import android.util.ArraySet;
+ import android.util.Log;
+ 
+ public class TracingQsService extends TileService {
+ 
+     private static final String TAG = "Traceur";
+-    private static TracingQsService sListeningInstance;
++    static final String WINSCOPE_TILE_SETTING = "plait_winscope_quick_setting";
++    static final String RECORDING_INCLUDES_WINSCOPE = "plait_recording_includes_winscope";
++    private static final ArraySet<TracingQsService> sListeningInstances = new ArraySet<>();
+ 
+     public static void updateTile() {
+-        if (sListeningInstance != null) {
+-            sListeningInstance.update();
++        for (TracingQsService service : new ArraySet<>(sListeningInstances)) {
++            service.update();
+         }
+     }
+ 
+     @Override
+     public void onStartListening() {
+-        sListeningInstance = this;
++        sListeningInstances.add(this);
+         update();
+     }
+ 
+     @Override
+     public void onStopListening() {
+-        if (sListeningInstance == this) {
+-            sListeningInstance = null;
++        sListeningInstances.remove(this);
++    }
++
++    public static final class Winscope extends TracingQsService {
++        @Override
++        protected boolean includesWinscope() {
++            return true;
+         }
+     }
+ 
++    protected boolean includesWinscope() {
++        return false;
++    }
++
+     private void update() {
+         Receiver.updateDeveloperOptionsWatcher(this, /* fromBootIntent */ false);
+         if (getQsTile() == null) {
+@@ -61,12 +73,16 @@ public class TracingQsService extends TileService {
+         boolean heapDumpOn = prefs.getBoolean(
+                 getString(R.string.pref_key_heap_dump_on), false);
+ 
+-        String titleString = getString(tracingOn ? R.string.stop_tracing: R.string.record_trace);
++        boolean traceIncludesWinscope = prefs.getBoolean(RECORDING_INCLUDES_WINSCOPE, false);
++        String titleString = getString(includesWinscope() ? R.string.plait_winscope_trace
++                : (tracingOn ? R.string.stop_tracing : R.string.record_trace));
+ 
+         getQsTile().setIcon(Icon.createWithResource(this, R.drawable.bugfood_icon));
+         // If stack samples or heap dumps are being recorded, this tile is made uninteractable.
+         // Otherwise, it reflects the current trace state (active vs. inactive).
+-        getQsTile().setState((stackSamplingOn || heapDumpOn) ? Tile.STATE_UNAVAILABLE :
++        getQsTile().setState((!Receiver.isTraceurAllowed(this) || stackSamplingOn || heapDumpOn
++                || (includesWinscope() && tracingOn && !traceIncludesWinscope))
++                ? Tile.STATE_UNAVAILABLE :
+                 (tracingOn ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE));
+         getQsTile().setLabel(titleString);
+         getQsTile().updateTile();
+@@ -76,10 +92,15 @@ public class TracingQsService extends TileService {
+      *  If tracing is being turned off, dump and offer to share. */
+     @Override
+     public void onClick() {
++        if (!Receiver.isTraceurAllowed(this) || (includesWinscope() && isLocked())
++                || getQsTile() == null
++                || getQsTile().getState() == Tile.STATE_UNAVAILABLE) {
++            return;
++        }
+         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+         boolean newState = !prefs.getBoolean(getString(R.string.pref_key_tracing_on), false);
+         prefs.edit().putBoolean(getString(R.string.pref_key_tracing_on), newState).commit();
+ 
+-        Receiver.updateTracing(this);
++        Receiver.updateTracing(this, false, includesWinscope());
+     }
+ }
+-- 
+2.56.1
+

@@ -147,6 +147,49 @@ class SystemBackend private constructor(private val context: Context, private va
         return digest.digest().joinToString("") { "%02x".format(it) } to count
     }
 
+    /** Verify the shared-storage archive without staging data or opening a restore grant. */
+    fun verifyStoredArchive(pkg: String, userId: Int, passphrase: CharArray?): String {
+        val kind = Personal.of(pkg)
+        require(kind != null || Layout.isSafePackage(pkg)) { "Invalid archive name" }
+        val dir = if (kind == null) appDir(pkg, userId) else personalDir(kind, userId)
+        val files = dir.listFiles() ?: error("Archive could not be opened")
+        val indexed = files.associateBy { it.name.removeSuffix(ArchiveCrypto.SUFFIX) }
+        require(indexed.size == files.size && files.all { it.isFile && it.name.matches(SAFE_NAME) }) {
+            "Unexpected or duplicate archive entries"
+        }
+        val typedKeys = ExtraKeys(ArchiveCrypto::derive).apply { use(passphrase) }
+        val keyFor: (ByteArray, Int) -> ArchiveCrypto.Key? = { salt, iterations ->
+            if (passphrase == null) KeyRing.keyFor(context, salt, iterations)
+            else typedKeys.keyFor(salt, iterations)
+        }
+        fun metadata(name: String): String {
+            val file = indexed[name] ?: error("Missing signed archive metadata")
+            val limit = if (name == ArchiveCheck.MANIFEST) 16 * 1024 * 1024 else 65536
+            val sink = object : java.io.ByteArrayOutputStream() {
+                override fun write(b: Int) {
+                    require(size() < limit) { "Archive metadata is too large" }
+                    super.write(b)
+                }
+                override fun write(b: ByteArray, off: Int, len: Int) {
+                    require(len <= limit - size()) { "Archive metadata is too large" }
+                    super.write(b, off, len)
+                }
+            }
+            decryptTo(file, sink, keyFor)
+            return sink.toString(Charsets.UTF_8.name())
+        }
+        val payload = indexed - ArchiveCheck.MANIFEST_FILES
+        val discard = object : OutputStream() {
+            override fun write(b: Int) {}
+            override fun write(b: ByteArray, off: Int, len: Int) {}
+        }
+        return ArchiveCheck.verifyStored(pkg, userId, metadata(ArchiveCheck.MANIFEST),
+            metadata(ArchiveCheck.SIGNATURE).trim(), metadata(ArchiveCheck.KEY).trim(),
+            ArchiveSigner::existingPublicKeyB64, ArchiveSigner::verify) {
+            payload.mapValues { decryptTo(it.value, discard, keyFor) }
+        }
+    }
+
     // ---- restore ----
 
     override fun restoreApp(
@@ -288,15 +331,23 @@ class SystemBackend private constructor(private val context: Context, private va
     }
 
     /** Decrypts [f] (or copies it, for an archive made without encryption) into [sink]; the plaintext SHA-256 (hex). */
-    private fun decryptTo(f: File, sink: OutputStream): String {
+    private fun decryptTo(
+        f: File, sink: OutputStream,
+        keyFor: (ByteArray, Int) -> ArchiveCrypto.Key? = { salt, iterations -> KeyRing.keyFor(context, salt, iterations) },
+    ): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        f.inputStream().buffered(BUF).use { input -> decryptStream(f, input, java.security.DigestOutputStream(sink, digest)) }
+        f.inputStream().buffered(BUF).use { input ->
+            decryptStream(f, input, java.security.DigestOutputStream(sink, digest), keyFor)
+        }
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun decryptStream(f: File, input: InputStream, out: OutputStream) {
+    private fun decryptStream(
+        f: File, input: InputStream, out: OutputStream,
+        keyFor: (ByteArray, Int) -> ArchiveCrypto.Key? = { salt, iterations -> KeyRing.keyFor(context, salt, iterations) },
+    ) {
         if (f.name.endsWith(ArchiveCrypto.SUFFIX)) {
-            ArchiveCrypto.decrypt(input, out) { salt, it -> KeyRing.keyFor(context, salt, it) }
+            ArchiveCrypto.decrypt(input, out, keyFor)
         } else {
             input.copyTo(out, BUF)
         }
@@ -474,6 +525,15 @@ class SystemBackend private constructor(private val context: Context, private va
         }
     }
 
+    override fun deleteArchive(pkg: String, userId: Int, log: (String) -> Unit): Boolean {
+        val rel = Layout.archiveRelative(pkg, userId) ?: return false.also { log("Refused: $pkg is not a backup") }
+        val dir = File(ROOT, rel)
+        if (!dir.exists()) return true
+        if (!dir.deleteRecursively()) return false.also { log("Could not delete the backup of $pkg") }
+        dir.parentFile?.takeIf { it.list()?.isEmpty() == true }?.delete()   // the app's folder, once no user's backup is left
+        return true
+    }
+
     private val Part.code: Int
         get() = when (this) {
             Part.USER -> 1
@@ -574,6 +634,15 @@ class SystemBackend private constructor(private val context: Context, private va
                 it.writeString(selection); it.writeStringArray(args); it.writeString(sort); fd(it, out)
             }) {}
 
+        private fun personalQueryPipe(grant: String, userId: Int, uri: String, projection: Array<String>?,
+                                      selection: String?, args: Array<String>?, sort: String?): ParcelFileDescriptor =
+            call(TX_PERSONAL_QUERY_PIPE, {
+                it.writeString(grant); it.writeInt(userId); it.writeString(uri); it.writeStringArray(projection)
+                it.writeString(selection); it.writeStringArray(args); it.writeString(sort)
+            }) {
+                if (it.readInt() != 0) ParcelFileDescriptor.CREATOR.createFromParcel(it) else error("no query pipe")
+            }
+
         fun personalInsert(grant: String, userId: Int, uri: String, values: ContentValues): String? =
             call(TX_PERSONAL_INSERT, {
                 it.writeString(grant); it.writeInt(userId); it.writeString(uri); it.writeInt(1); values.writeToParcel(it, 0)
@@ -591,7 +660,15 @@ class SystemBackend private constructor(private val context: Context, private va
         fun store(grant: String, userId: Int): PersonalStore = object : PersonalStore {
             override fun query(uri: String, projection: Array<String>?, selection: String?, args: Array<String>?, sort: String?): Rows {
                 val text = java.io.ByteArrayOutputStream()
-                stream(text) { pfd -> personalQuery(grant, userId, uri, projection, selection, args, sort, pfd) }
+                try {
+                    val pipe = personalQueryPipe(grant, userId, uri, projection, selection, args, sort)
+                    ParcelFileDescriptor.AutoCloseInputStream(pipe).use { input ->
+                        input.copyTo(text)
+                        pipe.checkError()
+                    }
+                } catch (_: ServiceTooOld) {
+                    stream(text) { pfd -> personalQuery(grant, userId, uri, projection, selection, args, sort, pfd) }
+                }
                 val lines = text.toString(Charsets.UTF_8.name()).lineSequence().filter { it.isNotEmpty() }.toList()
                 val columns = lines.firstOrNull()?.let { head ->
                     val a = org.json.JSONObject(head).getJSONArray("columns")
@@ -712,6 +789,7 @@ class SystemBackend private constructor(private val context: Context, private va
             const val TX_INSTALL_APKS_AS = IBinder.FIRST_CALL_TRANSACTION + 10
             const val TX_RESTORE_PART_STAGE = IBinder.FIRST_CALL_TRANSACTION + 11
             const val TX_RESTORE_FINISH = IBinder.FIRST_CALL_TRANSACTION + 12
+            const val TX_PERSONAL_QUERY_PIPE = IBinder.FIRST_CALL_TRANSACTION + 13
 
             /** ServiceManager is hidden but allowed for apps (unsupported app usage); checkService doesn't wait. */
             fun connect(): Service? = runCatching {

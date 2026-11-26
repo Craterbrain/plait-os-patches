@@ -3,11 +3,9 @@ package app.plait.shield
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
- * Downloads the chosen blocklists and merges them into one hosts file: every name once, as `0.0.0.0 name`, minus the
+ * Merges the chosen blocklists into one hosts file: every name once, as `0.0.0.0 name`, minus the
  * names you never want blocked (and their subdomains). Accepts hosts files and plain domain lists.
  */
 object Merge {
@@ -38,21 +36,12 @@ object Merge {
         }
     }
 
-    /** Downloads [lists], reporting progress, and returns the merged names. */
-    fun download(lists: List<Blocklist>, allow: Set<String>, progress: (String) -> Unit): Set<String> {
-        val all = HashSet<String>(lists.sumOf { it.approxEntries } * 4 / 3)
-        for (l in lists) {
-            progress("Downloading ${l.name}…")
-            val c = URL(l.url).openConnection() as HttpURLConnection
-            c.connectTimeout = 20_000
-            c.readTimeout = 60_000
-            try {
-                if (c.responseCode != 200) throw IllegalStateException("${l.name}: HTTP ${c.responseCode}")
-                BufferedReader(InputStreamReader(c.inputStream, Charsets.UTF_8), 64 * 1024).useLines { lines ->
-                    lines.forEach { line -> names(line).forEach { if (!allowed(it, allow)) all.add(it) } }
-                }
-            } finally {
-                c.disconnect()
+    /** Merges the (cached) list files into one set of names, minus [allow] and its subdomains. */
+    fun merge(fetched: List<ListCache.Fetched>, allow: Set<String>): Set<String> {
+        val all = HashSet<String>(fetched.sumOf { it.list.approxEntries } * 4 / 3)
+        for (f in fetched) {
+            BufferedReader(InputStreamReader(f.file.inputStream(), Charsets.UTF_8), 64 * 1024).useLines { lines ->
+                lines.forEach { line -> names(line).forEach { if (!allowed(it, allow)) all.add(it) } }
             }
         }
         return all

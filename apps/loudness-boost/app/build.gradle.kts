@@ -11,11 +11,17 @@ android {
     // DynamicsProcessing is API 28+
     minSdk = 28
     targetSdk = 35
-    versionCode = 5
-    versionName = "1.4"
+    versionCode = 6
+    versionName = "1.5"
   }
 
   buildTypes {
+        create("screenshot") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".screenshot"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
+        }
     release {
       isMinifyEnabled = true
       isShrinkResources = true

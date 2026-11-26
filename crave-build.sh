@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds UNSIGNED PlaitOS target files in the cloud (Crave) and nothing else. The release keys never leave your
 # computer: download the two zips this prints, then sign them locally with
-#   scripts/build-rom.sh --from-target-files husky-target_files.zip --otatools husky-otatools.zip
+#   scripts/build-rom.sh --from-target-files husky-target_files.zip --otatools husky-otatools.zip --target-files-sha256 HASH --otatools-sha256 HASH
 #
 # Run it from the root of a synced GrapheneOS tree (tag 2026100600, the one the patches were made on):
 #   crave run --no-patch -- "bash <(curl -fsSL https://raw.githubusercontent.com/Craterbrain/plait-os-patches/main/crave-build.sh)"
@@ -53,4 +53,4 @@ mkdir -p "$ROOT/plait-out"
 cp "$TF" "$ROOT/plait-out/husky-target_files.zip"
 cp "$OT" "$ROOT/plait-out/husky-otatools.zip"
 ( cd "$ROOT/plait-out" && sha256sum ./*.zip | tee SHA256SUMS )
-echo "Download plait-out/*.zip and sign them locally (scripts/build-rom.sh --from-target-files ...). Compare SHA256SUMS."
+echo "Download plait-out/*.zip and sign them locally (scripts/build-rom.sh --from-target-files ...). Use both digests from the authenticated build record."

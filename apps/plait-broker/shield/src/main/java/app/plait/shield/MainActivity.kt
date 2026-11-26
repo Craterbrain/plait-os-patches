@@ -1,6 +1,11 @@
 package app.plait.shield
 
+import app.plait.design.PlaitCard
+import app.plait.design.SettingsGroup
 import app.plait.design.PlaitSwitch
+import app.plait.design.PlaitTopBar
+import app.plait.design.SectionLabel
+import app.plait.design.TonalTile
 import app.plait.design.StateChip
 import app.plait.design.Tone
 import app.plait.design.PlaitTonalButton
@@ -10,16 +15,15 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.DnsResolver
 import android.net.NetworkCapabilities
-import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
+import android.text.format.DateUtils
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -31,27 +35,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
 import app.plait.design.PlaitTheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,17 +62,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -107,39 +103,58 @@ fun ShieldTheme(content: @Composable () -> Unit) = PlaitTheme(content = content)
 
 private const val PREFS = "shield"
 
+internal data class ShieldFixture(val dns: PrivateDns, val hostsLines: Int)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ShieldApp(tick: Int) {
+internal fun ShieldApp(tick: Int, fixture: ShieldFixture? = null) {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    val prefs = remember { if (fixture == null) context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) else null }
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
-    var running by remember { mutableStateOf(false) }
-    var allowed by remember { mutableStateOf(false) }
-    var dns by remember { mutableStateOf<PrivateDns?>(null) }
-    var hostsLines by remember { mutableStateOf<Int?>(null) }
+    var running by remember { mutableStateOf(fixture != null) }
+    var allowed by remember { mutableStateOf(fixture != null) }
+    var dns by remember { mutableStateOf(fixture?.dns) }
+    var hostsLines by remember { mutableStateOf(fixture?.hostsLines) }
     var busy by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var selected by remember {
-        mutableStateOf(prefs.getStringSet("lists", null) ?: BLOCKLISTS.filter { it.onByDefault }.map { it.id }.toSet())
+        mutableStateOf(prefs?.getStringSet("lists", null) ?: BLOCKLISTS.filter { it.onByDefault }.map { it.id }.toSet())
     }
-    var allowText by remember { mutableStateOf(prefs.getString("allow", "").orEmpty()) }
+    var allowText by remember { mutableStateOf(prefs?.getString("allow", "").orEmpty()) }
     var custom by remember { mutableStateOf("") }
+    var active by remember { mutableStateOf((fixture != null || prefs?.getBoolean(Updater.ACTIVE, false) == true)) }
+    var checkedAt by remember { mutableStateOf(prefs?.getLong(Updater.CHECKED_AT, 0L) ?: 0L) }
+    var lastResult by remember { mutableStateOf(prefs?.getString(Updater.RESULT, null)) }
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
+        if (prefs == null) return@withContext
         running = Broker.running()
         allowed = Broker.allowed()
         if (allowed) {
             dns = runCatching { PrivateDns.read() }.getOrNull()
-            hostsLines = runCatching { Broker.run("wc", "-l", "/system/etc/hosts").out.trim().substringBefore(' ').toInt() }.getOrNull()
+            hostsLines = Updater.hostsLines()
+            // Blocklists applied by a Shield from before daily updates: take the current choice as what is applied
+            if (!prefs.contains(Updater.ACTIVE) && (hostsLines ?: 0) > 3) {
+                prefs.edit().putBoolean(Updater.ACTIVE, true).putStringSet(Updater.APPLIED_LISTS, selected)
+                    .putString(Updater.APPLIED_ALLOW, allowText).apply()
+            }
         }
+        active = prefs.getBoolean(Updater.ACTIVE, false)
+        checkedAt = prefs.getLong(Updater.CHECKED_AT, 0L)
+        lastResult = prefs.getString(Updater.RESULT, null)
+        if (active) UpdateJob.schedule(context) else UpdateJob.cancel(context)
     }
 
     LaunchedEffect(tick) { refresh() }
     LaunchedEffect(lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { refresh() } }
 
     fun setDns(mode: String, host: String?) {
+        if (fixture != null) {
+            dns = PrivateDns(mode, host)
+            return
+        }
         scope.launch {
             busy = "Switching DNS…"
             message = withContext(Dispatchers.IO) {
@@ -151,66 +166,68 @@ private fun ShieldApp(tick: Int) {
     }
 
     fun applyLists(off: Boolean) {
+        if (fixture != null) return
         scope.launch {
-            val lists = if (off) emptyList() else BLOCKLISTS.filter { it.id in selected }
+            busy = if (off) "Turning off…" else "Checking lists…"
             message = withContext(Dispatchers.IO) {
                 runCatching {
-                    val allow = allowText.split(',', '\n', ' ').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
-                    val names = Merge.download(lists, allow) { busy = it }
-                    busy = "Writing ${"%,d".format(names.size)} names…"
-                    val r = Broker.run("dd", "of=/system/etc/hosts") { out -> Merge.write(names, lists, out) }
-                    if (r.ok) (if (off) "Blocklist turned off" else "Blocking ${"%,d".format(names.size)} names")
-                    else "Not written: ${r.err.removePrefix("plait-broker: ")}"
+                    if (off) Updater.turnOff(context)
+                    // Apply always writes (force); unchanged lists come from the saved copies, so it is quick
+                    else Updater.apply(context, BLOCKLISTS.filter { it.id in selected }, allowText, force = true) { busy = it }
                 }.getOrElse { "Failed: ${it.message}" }
             }
             busy = null
-            refresh()
+            refresh()                                       // schedules or cancels the daily update to match
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Shield") }) }) { padding ->
+    Scaffold(topBar = { PlaitTopBar("Shield", Modifier.statusBarsPadding(), showAppVersion = true) }) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(bottom = 32.dp),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                StatusCard(running, allowed, dns, hostsLines, busy, message) { Broker.requestAccess() }
+                StatusCard(running, allowed, dns, hostsLines, busy, message) { if (fixture == null) Broker.requestAccess() }
             }
             if (!allowed) return@LazyColumn
 
-            item { Header("DNS provider") }
+            item { SectionLabel("DNS provider") }
             item {
                 Text(
-                    "Private DNS for every app. Tags were checked against each provider. If the phone cannot reach the " +
-                        "provider (some networks block encrypted DNS), Shield puts your previous setting back.",
+                    "Private DNS for every app. If the phone cannot reach a provider, Shield restores your previous setting.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    modifier = Modifier.padding(horizontal = 8.dp)
                 )
             }
             item {
                 DnsPicker(dns, custom, { custom = it }) { mode, host -> setDns(mode, host) }
             }
 
-            item { Header("Blocklists") }
+            item { SectionLabel("Blocklists") }
             item {
                 Text(
-                    "Merged into the phone's hosts file through Broker, which keeps only blocking entries. " +
-                        "Works with any DNS provider above.",
+                    "Shield merges selected blocklists into the phone’s hosts file through Broker. " +
+                        "They work with any DNS provider.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    modifier = Modifier.padding(horizontal = 8.dp)
                 )
             }
-            BLOCKLISTS.forEach { l ->
-                item(key = l.id) {
-                    ListCard(l, l.id in selected) { on ->
-                        selected = if (on) selected + l.id else selected - l.id
-                        prefs.edit().putStringSet("lists", selected).apply()
+            item(key = "blocklists") {
+                // One group, as every Plait list: rows with hairlines instead of a card per list
+                SettingsGroup(inset = 14.dp, sidePadding = 0.dp) {
+                    BLOCKLISTS.forEach { l ->
+                        row {
+                            ListToggleRow(l, l.id in selected) { on ->
+                                selected = if (on) selected + l.id else selected - l.id
+                                prefs?.edit()?.putStringSet("lists", selected)?.apply()
+                            }
+                        }
                     }
                 }
             }
             item {
-                Card(selected = false) {
+                PlaitCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Text("Never block", style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -218,17 +235,32 @@ private fun ShieldApp(tick: Int) {
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         OutlinedTextField(
-                            allowText, { allowText = it; prefs.edit().putString("allow", it).apply() },
+                            allowText, { allowText = it; prefs?.edit()?.putString("allow", it)?.apply() },
                             modifier = Modifier.fillMaxWidth(), minLines = 2, placeholder = { Text("example.com") }
                         )
                     }
                 }
             }
             item {
-                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PlaitFilledButton(onClick = { applyLists(false) }, enabled = busy == null && selected.isNotEmpty()) { Text("Apply blocklists") }
                     PlaitTonalButton(onClick = { applyLists(true) }, enabled = busy == null) { Text("Turn off") }
                 }
+            }
+            item {
+                Text(
+                    if (!active) "Applied lists are saved on the phone and updated daily on Wi-Fi."
+                    else buildString {
+                        append("Updated daily on Wi-Fi from saved copies; only changed lists are downloaded.")
+                        if (checkedAt > 0) {
+                            append("\nLast check ")
+                            append(DateUtils.getRelativeTimeSpanString(checkedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS))
+                            lastResult?.let { append(": ").append(it) }
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
             }
         }
     }
@@ -285,37 +317,10 @@ private suspend fun freshLookup(context: Context): Boolean {
 // ------------------------------------------------------------------ pieces
 
 @Composable
-private fun Header(title: String, small: Boolean = false) {
-    Text(
-        if (small) title else title.uppercase(),
-        style = if (small) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = if (small) 8.dp else 20.dp, bottom = 2.dp)
-    )
-}
-
-/** The rounded card style Plait Broker uses: an accent edge on top when it is the active choice. */
-@Composable
-private fun Card(selected: Boolean, onClick: (() -> Unit)? = null, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    val accent = MaterialTheme.colorScheme.primary
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp)
-    ) {
-        Column(
-            Modifier
-                .drawWithContent { drawContent(); if (selected) drawRect(accent, size = Size(size.width, 3.dp.toPx())) }
-                .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-        ) { content() }
-    }
-}
-
-@Composable
 private fun StatusCard(
     running: Boolean, allowed: Boolean, dns: PrivateDns?, hostsLines: Int?, busy: String?, message: String?, onConnect: () -> Unit
 ) {
-    Card(selected = allowed) {
+    PlaitCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             when {
                 !running -> {
@@ -382,11 +387,13 @@ private fun DnsPicker(dns: PrivateDns?, custom: String, onCustom: (String) -> Un
     Column {
       // The standard exposed drop-down: opens right under the card, as wide as the card, scrolls when it is long
       ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
-        Card(
-            selected = dns != null && dns.mode != "off",
-            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
-        ) {
-            Row(Modifier.padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        PlaitCard(Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)) {
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TonalTile(PlaitIcon.Shield)
                 Column(Modifier.weight(1f)) {
                     when {
                         dns == null -> Text("…", style = MaterialTheme.typography.titleMedium)
@@ -417,7 +424,7 @@ private fun DnsPicker(dns: PrivateDns?, custom: String, onCustom: (String) -> Un
                         }
                     }
                 }
-                PlaitIcon(PlaitIcon.ArrowDropDown, contentDescription = "Choose a provider", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                PlaitIcon(PlaitIcon.ChevronRight, contentDescription = "Choose a provider", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         ExposedDropdownMenu(
@@ -452,7 +459,7 @@ private fun DnsPicker(dns: PrivateDns?, custom: String, onCustom: (String) -> Un
         }
       }
         if (customOpen) {
-            Card(selected = false) {
+            PlaitCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     OutlinedTextField(custom, { onCustom(it.trim()) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("dns.example.com") })
@@ -493,12 +500,13 @@ private fun Tag(text: String, good: Boolean? = null, compact: Boolean = false) {
 }
 
 @Composable
-private fun ListCard(l: Blocklist, on: Boolean, onToggle: (Boolean) -> Unit) {
-    Card(on, { onToggle(!on) }) {
-        Row(Modifier.padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun ListToggleRow(l: Blocklist, on: Boolean, onToggle: (Boolean) -> Unit) {
+    // The whole row toggles, as a SwitchRow does
+    Box(Modifier.fillMaxWidth().clickable { onToggle(!on) }) {
+        Row(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(l.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                    Text(l.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false))
                     Spacer(Modifier.width(8.dp))
                     Tag(l.tag)
                 }

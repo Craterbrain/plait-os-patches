@@ -41,22 +41,38 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun ProcessingScreen(vm: BackupViewModel, onDone: () -> Unit) {
-    val total = vm.jobItems.size
-    val finished = vm.jobItems.count { it.state == ItemState.DONE || it.state == ItemState.FAILED }
-    val failed = vm.jobItems.count { it.state == ItemState.FAILED }
+    ProcessingContent(vm.jobFlow, vm.running, vm.phase, vm.phaseDetail, vm.jobItems, vm.log, onDone) {
+        AppIcon(it.packageName, vm, 40.dp)
+    }
+}
+
+@Composable
+internal fun ProcessingContent(
+    flow: Flow,
+    running: Boolean,
+    phase: String,
+    phaseDetail: String,
+    jobItems: List<JobItem>,
+    log: List<String>,
+    onDone: () -> Unit,
+    icon: @Composable (JobItem) -> Unit,
+) {
+    val total = jobItems.size
+    val finished = jobItems.count { it.state == ItemState.DONE || it.state == ItemState.FAILED }
+    val failed = jobItems.count { it.state == ItemState.FAILED }
     var showLog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             Column {
-                BackTopBar(vm.jobFlow.title, onBack = { if (!vm.running) onDone() })
+                BackTopBar(flow.title, onBack = { if (!running) onDone() })
                 LinearProgressIndicator(progress = { if (total == 0) 0f else finished / total.toFloat() }, modifier = Modifier.fillMaxWidth(),
                     strokeCap = StrokeCap.Round)
             }
         },
         bottomBar = {
             Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
-                Button(onClick = onDone, enabled = !vm.running, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                Button(onClick = onDone, enabled = !running, modifier = Modifier.fillMaxWidth().height(56.dp)) {
                     Text("Continue", style = MaterialTheme.typography.titleMedium)
                 }
             }
@@ -73,7 +89,7 @@ fun ProcessingScreen(vm: BackupViewModel, onDone: () -> Unit) {
                     )
                     Box(Modifier.size(126.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer), Alignment.Center) {
                         val icon = when {
-                            vm.running -> PlaitIcon.Hourglass
+                            running -> PlaitIcon.Hourglass
                             failed > 0 -> PlaitIcon.Error
                             else -> PlaitIcon.CheckCircle
                         }
@@ -81,17 +97,17 @@ fun ProcessingScreen(vm: BackupViewModel, onDone: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(20.dp))
-                Text(vm.phase, style = MaterialTheme.typography.headlineSmall)
-                Text(vm.phaseDetail, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (vm.log.isNotEmpty()) TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide log" else "Show log") }
+                Text(phase, style = MaterialTheme.typography.headlineSmall)
+                Text(phaseDetail, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (log.isNotEmpty()) TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide log" else "Show log") }
             }
             Surface(shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.padding(horizontal = 24.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (showLog) items(vm.log) { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    else items(vm.jobItems, key = { it.packageName }) { item ->
+                    if (showLog) items(log) { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    else items(jobItems, key = { it.packageName }) { item ->
                         Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AppIcon(item.packageName, vm, 40.dp)
+                            icon(item)
                             Spacer(Modifier.width(20.dp))
                             Text(item.label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                             when (item.state) {

@@ -214,6 +214,7 @@ class ConfirmActivity : ComponentActivity() {
             val data = Bundle().apply {
                 putBoolean(ShizukuApiConstants.REQUEST_PERMISSION_REPLY_ALLOWED, allowed)
                 putBoolean(ShizukuApiConstants.REQUEST_PERMISSION_REPLY_IS_ONETIME, false)
+                putString("permissionToken", intent.getStringExtra("permissionToken"))
                 putString("plait:mode", mode)
                 if (allowed) putStringArray("plait:declared", declared.map { it.type + "\n" + it.key }.toTypedArray())
             }

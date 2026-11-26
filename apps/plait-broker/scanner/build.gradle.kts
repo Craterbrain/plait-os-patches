@@ -10,10 +10,16 @@ android {
         applicationId = "app.plait.scan"
         minSdk = 31
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.5"
+        versionCode = 7
+        versionName = "0.7"
     }
     buildTypes {
+      create("screenshot") {
+        initWith(getByName("debug"))
+        applicationIdSuffix = ".screenshot"
+        signingConfig = signingConfigs.getByName("debug")
+        matchingFallbacks += listOf("debug")
+      }
         release {
             // the icon set is huge; shrinking keeps only the icons the app names
             isMinifyEnabled = true

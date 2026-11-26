@@ -1,0 +1,581 @@
+From 14282fc38b5f7b4f1e5d2d164819d0a86aabfccf Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 07:54:46 -0600
+Subject: [PATCH] PlaitOS: protect restore staging and recover interrupted
+ replacements
+
+---
+ cmds/installd/InstalldNativeService.cpp |  59 +++--
+ cmds/installd/PlaitBackup.cpp           | 317 +++++++++++++++---------
+ cmds/installd/PlaitBackup.h             |  18 +-
+ cmds/installd/utils.cpp                 |   5 +-
+ cmds/installd/utils.h                   |   3 +-
+ 5 files changed, 255 insertions(+), 147 deletions(-)
+
+diff --git a/cmds/installd/InstalldNativeService.cpp b/cmds/installd/InstalldNativeService.cpp
+index 4752f8d..2e3b1fc 100644
+--- a/cmds/installd/InstalldNativeService.cpp
++++ b/cmds/installd/InstalldNativeService.cpp
+@@ -2131,18 +2131,18 @@ binder::Status InstalldNativeService::plaitRestoreAppData(const std::optional<st
+     }
+     uid_t uid = multiuser_get_uid(userId, appId);
+     gid_t gid = p.gid ? p.gid : uid;
++    auto relabel = [&]() {
++        if (p.external) {
++            const auto path = p.parent + "/" + packageName;
++            return selinux_android_restorecon(path.c_str(), SELINUX_ANDROID_RESTORECON_RECURSE) == 0;
++        }
++        const int flag = part == android::os::IInstalld::PLAIT_PART_CE ? FLAG_STORAGE_CE : FLAG_STORAGE_DE;
++        return restoreconAppDataLocked(uuid, packageName, userId, flag, appId, seInfo).isOk();
++    };
+     std::string err;
+     int r = plait::extractTreeTarZst(source.get(), p.parent, packageName, uid, gid, p.newDirMode,
+-                                     /* skipCaches= */ true, p.external, &err);
++                                     /* skipCaches= */ true, p.external, relabel, &err);
+     if (r != 0) return error(-r, "restore of " + packageName + " failed: " + err);
+-    if (!p.external) {
+-        int flag = part == android::os::IInstalld::PLAIT_PART_CE ? FLAG_STORAGE_CE : FLAG_STORAGE_DE;
+-        return restoreconAppDataLocked(uuid, packageName, userId, flag, appId, seInfo);
+-    }
+-    auto path = p.parent + "/" + packageName;
+-    if (selinux_android_restorecon(path.c_str(), SELINUX_ANDROID_RESTORECON_RECURSE) < 0) {
+-        return error("restorecon failed for " + path);
+-    }
+     return ok();
+ }
+ 
+@@ -2188,23 +2188,25 @@ binder::Status InstalldNativeService::plaitRestoreAppDataFinish(const std::optio
+         return error("unknown backup part " + std::to_string(part));
+     }
+     if (!commit) {
+-        plait::abortStage(p.parent, packageName);
++        plait::abortStage(p.parent, packageName, /* skipCaches= */ true);
+         return ok();
+     }
++    auto relabel = [&]() {
++        if (p.external) {
++            const auto path = p.parent + "/" + packageName;
++            return selinux_android_restorecon(path.c_str(), SELINUX_ANDROID_RESTORECON_RECURSE) == 0;
++        }
++        const int flag = part == android::os::IInstalld::PLAIT_PART_CE ? FLAG_STORAGE_CE : FLAG_STORAGE_DE;
++        return restoreconAppDataLocked(uuid, packageName, userId, flag, appId, seInfo).isOk();
++    };
+     std::string err;
+-    int r = plait::commitStage(p.parent, packageName, /* skipCaches= */ true, &err);
++    uid_t uid = multiuser_get_uid(userId, appId);
++    int r = plait::commitStage(p.parent, packageName, uid, p.gid ? p.gid : uid, p.newDirMode,
++                               /* skipCaches= */ true, relabel, &err);
+     if (r != 0) {
+-        plait::abortStage(p.parent, packageName);
++        plait::abortStage(p.parent, packageName, /* skipCaches= */ true);
+         return error(-r, "restore of " + packageName + " failed: " + err);
+     }
+-    if (!p.external) {
+-        int flag = part == android::os::IInstalld::PLAIT_PART_CE ? FLAG_STORAGE_CE : FLAG_STORAGE_DE;
+-        return restoreconAppDataLocked(uuid, packageName, userId, flag, appId, seInfo);
+-    }
+-    auto path = p.parent + "/" + packageName;
+-    if (selinux_android_restorecon(path.c_str(), SELINUX_ANDROID_RESTORECON_RECURSE) < 0) {
+-        return error("restorecon failed for " + path);
+-    }
+     return ok();
+ }
+ 
+@@ -4655,12 +4657,24 @@ binder::Status InstalldNativeService::migrateLegacyObbData() {
+ 
+ binder::Status InstalldNativeService::cleanupInvalidPackageDirs(
+         const std::optional<std::string>& uuid, int32_t userId, int32_t flags) {
++    ENFORCE_UID(AID_SYSTEM);
+     ENFORCE_VALID_USER(userId);
++    LOCK_USER();
+     const char* uuid_cstr = uuid ? uuid->c_str() : nullptr;
++    const auto recover = [](const std::string& path) {
++        if (int r = plait::recoverRestoreJournals(path); r != 0) {
++            LOG(ERROR) << "Plait restore journal retained in " << path << ": " << strerror(-r);
++        }
++    };
+ 
+     if (flags & FLAG_STORAGE_CE) {
+         auto ce_path = create_data_user_ce_path(uuid_cstr, userId);
+-        cleanup_invalid_package_dirs_under_path(ce_path);
++        recover(ce_path);
++        cleanup_invalid_package_dirs_under_path(ce_path, plait::isProtectedRestoreDirectory);
++        if (!uuid) {
++            const auto external = create_data_media_path(nullptr, userId) + "/Android/";
++            for (const char* part : {"data", "obb", "media"}) recover(external + part);
++        }
+         auto sdksandbox_ce_path =
+                 create_data_misc_sdk_sandbox_path(uuid_cstr, /*isCeData=*/true, userId);
+         cleanup_invalid_package_dirs_under_path(sdksandbox_ce_path);
+@@ -4668,7 +4682,8 @@ binder::Status InstalldNativeService::cleanupInvalidPackageDirs(
+ 
+     if (flags & FLAG_STORAGE_DE) {
+         auto de_path = create_data_user_de_path(uuid_cstr, userId);
+-        cleanup_invalid_package_dirs_under_path(de_path);
++        recover(de_path);
++        cleanup_invalid_package_dirs_under_path(de_path, plait::isProtectedRestoreDirectory);
+         auto sdksandbox_de_path =
+                 create_data_misc_sdk_sandbox_path(uuid_cstr, /*isCeData=*/false, userId);
+         cleanup_invalid_package_dirs_under_path(sdksandbox_de_path);
+diff --git a/cmds/installd/PlaitBackup.cpp b/cmds/installd/PlaitBackup.cpp
+index 4c65100..dd2e3e4 100644
+--- a/cmds/installd/PlaitBackup.cpp
++++ b/cmds/installd/PlaitBackup.cpp
+@@ -511,52 +511,122 @@ class Extractor {
+     unique_fd mCachedFd;
+ };
+ 
+-// Restores are extracted here (inside the app's own dir, so the dir and its inode stay) and only moved into
+-// place once the whole archive has arrived intact.
++// A sibling owned by installd. The target app cannot modify the staged tree or its journal.
+ constexpr const char* kStage = ".plait_restore";
+-// Written when the archive has been extracted completely: holds the root dir's mode for the swap. Without it a
+-// staged restore is never swapped in (a crash or kill mid-extract leaves a stage that the next restore removes).
+ constexpr const char* kDone = ".plait_restore_done";
++constexpr const char* kIncoming = "incoming";
++constexpr const char* kPrevious = "previous";
++constexpr const char* kInstalling = "installing";
++constexpr const char* kCommitted = "committed";
++constexpr const char* kIdentity = "identity";
++constexpr const char* kCleanupPrefix = ".plait_restore_cleanup.";
++
++std::string stageName(const std::string& name) {
++    return std::string(kStage) + "." + name;
++}
++
++unique_fd openDirectory(int parentFd, const std::string& name) {
++    return unique_fd(openat(parentFd, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
++}
+ 
+-void removeStage(int rootFd) {
+-    unlinkat(rootFd, kDone, 0);
++unique_fd openPrivateDirectory(int parentFd, const std::string& name) {
++    unique_fd fd = openDirectory(parentFd, name);
++    if (fd < 0) return fd;
+     struct stat st;
+-    if (fstatat(rootFd, kStage, &st, AT_SYMLINK_NOFOLLOW) != 0) return;
+-    if (S_ISDIR(st.st_mode)) {
+-        delete_dir_contents_fd(rootFd, kStage);
+-        unlinkat(rootFd, kStage, AT_REMOVEDIR);
+-    } else {
+-        unlinkat(rootFd, kStage, 0);
++    if (fstat(fd.get(), &st) || st.st_uid != geteuid() || (st.st_mode & 0777) != 0700) {
++        errno = EPERM;
++        return unique_fd();
+     }
++    return fd;
+ }
+ 
+-// Deletes everything in the dir except (when skipCaches) its cache and code_cache, and the staging dir.
+-int clearTree(int rootFd, bool skipCaches) {
+-    int dupFd = fcntl(rootFd, F_DUPFD_CLOEXEC, 0);
+-    if (dupFd < 0) return -errno;
+-    std::unique_ptr<DIR, decltype(&closedir)> dir(fdopendir(dupFd), closedir);
+-    if (!dir) {
+-        close(dupFd);
+-        return -errno;
++int writeMarker(int fd, const char* name) {
++    unique_fd marker(openat(fd, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600));
++    if (marker < 0 || fsync(marker.get()) != 0 || fsync(fd) != 0) return -errno;
++    return 0;
++}
++
++bool journalTarget(int stageFd, int liveFd, bool create) {
++    struct stat st;
++    if (fstat(liveFd, &st) != 0) return false;
++    const auto identity = std::to_string(st.st_dev) + ":" + std::to_string(st.st_ino);
++    if (create) {
++        unique_fd file(openat(stageFd, kIdentity, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600));
++        return file >= 0 && writeAll(file.get(), identity.data(), identity.size()) &&
++                fsync(file.get()) == 0 && fsync(stageFd) == 0;
++    }
++    unique_fd file(openat(stageFd, kIdentity, O_RDONLY | O_NOFOLLOW | O_CLOEXEC));
++    char bytes[64];
++    const ssize_t n = file < 0 ? -1 : TEMP_FAILURE_RETRY(read(file.get(), bytes, sizeof(bytes)));
++    return n == static_cast<ssize_t>(identity.size()) && !memcmp(bytes, identity.data(), identity.size());
++}
++
++int listEntries(int fd, bool skipCaches, std::vector<std::string>* entries) {
++    unique_fd separate = openDirectory(fd, ".");
++    if (separate < 0) return -errno;
++    DIR* raw = fdopendir(separate.get());
++    if (!raw) return -errno;
++    (void) separate.release();
++    std::unique_ptr<DIR, decltype(&closedir)> dir(raw, closedir);
++    for (;;) {
++        errno = 0;
++        const struct dirent* entry = readdir(dir.get());
++        if (!entry) return -errno;
++        const char* name = entry->d_name;
++        if (!strcmp(name, ".") || !strcmp(name, "..") || (skipCaches && isCacheName(name))) continue;
++        entries->emplace_back(name);
+     }
+-    std::vector<std::pair<std::string, bool>> entries;
+-    while (struct dirent* de = readdir(dir.get())) {
+-        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+-        if (skipCaches && isCacheName(de->d_name)) continue;
+-        if (strcmp(de->d_name, kStage) == 0 || strcmp(de->d_name, kDone) == 0) continue;
+-        struct stat st;
+-        if (fstatat(rootFd, de->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) continue;
+-        entries.emplace_back(de->d_name, S_ISDIR(st.st_mode));
+-    }
+-    for (const auto& [name, isDir] : entries) {
+-        if (isDir) {
+-            if (delete_dir_contents_fd(rootFd, name.c_str()) != 0) return -EIO;
+-            if (unlinkat(rootFd, name.c_str(), AT_REMOVEDIR) != 0) return -errno;
+-        } else if (unlinkat(rootFd, name.c_str(), 0) != 0) {
++}
++
++int moveEntries(int from, int to, bool skipCaches) {
++    std::vector<std::string> entries;
++    if (int r = listEntries(from, skipCaches, &entries); r != 0) return r;
++    for (const auto& entry : entries) {
++        if (renameat(from, entry.c_str(), to, entry.c_str()) != 0) return -errno;
++    }
++    if (fsync(from) != 0 || fsync(to) != 0) return -errno;
++    return 0;
++}
++
++int removePrivateDirectory(int parentFd, const std::string& name) {
++    auto dir = openPrivateDirectory(parentFd, name);
++    if (dir < 0) return errno == ENOENT ? 0 : -errno;
++    if (delete_dir_contents_fd(parentFd, name.c_str()) != 0) return -EIO;
++    return unlinkat(parentFd, name.c_str(), AT_REMOVEDIR) == 0 ? 0 : -errno;
++}
++
++// Recover an interrupted replacement before using this target again. The phase is made durable
++// before touching the next set of entries. Keep the journal if recovery itself fails.
++int discardOrRecoverStage(int parentFd, const std::string& name, bool skipCaches) {
++    unique_fd stage = openPrivateDirectory(parentFd, stageName(name));
++    if (stage < 0) return errno == ENOENT ? 0 : -errno;
++    const bool committed = faccessat(stage.get(), kCommitted, F_OK, 0) == 0;
++    if (!committed) {
++        unique_fd previous = openDirectory(stage.get(), kPrevious);
++        if (previous >= 0) {
++            unique_fd live = openDirectory(parentFd, name);
++            if (live < 0) return -errno;
++            if (!journalTarget(stage.get(), live.get(), false)) return -ESTALE;
++            if (faccessat(stage.get(), kInstalling, F_OK, 0) == 0) {
++                // The old directory was emptied. Move any newly installed files aside before rollback.
++                unique_fd incoming = openDirectory(stage.get(), kIncoming);
++                if (incoming < 0) return -errno;
++                if (int r = moveEntries(live.get(), incoming.get(), skipCaches); r != 0) return r;
++                if (unlinkat(stage.get(), kInstalling, 0) != 0 || fsync(stage.get()) != 0) return -errno;
++            }
++            if (int r = moveEntries(previous.get(), live.get(), false); r != 0) return r;
++        } else if (errno != ENOENT) {
+             return -errno;
+         }
+     }
+-    return 0;
++    const auto path = stageName(name);
++    // Detach the journal before deleting its entries. A crash during cleanup must not
++    // leave a directory that looks like an uncommitted journal.
++    const auto trash = std::string(kCleanupPrefix) + name;
++    if (int r = removePrivateDirectory(parentFd, trash); r != 0) return r;
++    if (renameat(parentFd, path.c_str(), parentFd, trash.c_str()) != 0 ||
++        fsync(parentFd) != 0) return -errno;
++    return removePrivateDirectory(parentFd, trash);
+ }
+ 
+ }  // namespace
+@@ -628,109 +698,116 @@ int stageTreeTarZst(int inFd, const std::string& parent, const std::string& name
+         *err = StringPrintf("open %s: %s", parent.c_str(), strerror(errno));
+         return -errno;
+     }
+-    Extractor ex(parentFd.get(), uid, gid, newDirMode);
+-    unique_fd root = ex.openDir(parentFd.get(), name);
+-    if (root < 0) {
+-        *err = StringPrintf("open %s/%s: %s", parent.c_str(), name.c_str(), strerror(errno));
+-        return -EIO;
++    if (int r = discardOrRecoverStage(parentFd.get(), name, skipCaches); r != 0) {
++        *err = "could not recover the previous restore";
++        return r;
+     }
+-    // Extract into the staging dir; the app's current data stays untouched until commitStage
+-    removeStage(root.get());
+-    unique_fd stage = ex.openDir(root.get(), kStage);
+-    if (stage < 0) {
+-        *err = "could not create the staging dir";
+-        return -EIO;
++    if (mkdirat(parentFd.get(), stageName(name).c_str(), 0700) != 0) {
++        *err = "could not create protected restore staging";
++        return -errno;
+     }
+-    ex.mRoot = stage.get();
++    unique_fd stage = openPrivateDirectory(parentFd.get(), stageName(name));
++    if (stage < 0 || mkdirat(stage.get(), kIncoming, 0700) != 0 || fsync(parentFd.get()) != 0) {
++        *err = "could not open protected restore staging";
++        return -errno;
++    }
++    unique_fd incoming = openDirectory(stage.get(), kIncoming);
++    if (incoming < 0) {
++        *err = "could not open the staged data directory";
++        return -errno;
++    }
++    Extractor ex(incoming.get(), uid, gid, newDirMode);
+     mode_t rootMode = 0;
+     int r = extractEntries(inFd, &ex, name, uid, gid, skipCaches, external, &rootMode, err);
+-    if (r == 0) {
+-        std::string mode = std::to_string(static_cast<unsigned>(rootMode));
+-        unique_fd done(openat(root.get(), kDone, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600));
+-        if (done < 0 || !writeAll(done.get(), mode.data(), mode.size())) {
+-            *err = "could not mark the staged restore complete";
+-            r = -EIO;
+-        }
+-    }
+-    if (r != 0) {
+-        stage.reset();
+-        removeStage(root.get());
++    if (r == 0 && (fsync(incoming.get()) != 0 || writeMarker(stage.get(), kDone) != 0)) {
++        *err = "could not mark the staged restore complete";
++        r = -EIO;
+     }
++    if (r != 0) discardOrRecoverStage(parentFd.get(), name, skipCaches);
+     return r;
+ }
+ 
+-int commitStage(const std::string& parent, const std::string& name, bool skipCaches, std::string* err) {
++int commitStage(const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
++                mode_t newDirMode, bool skipCaches, const std::function<bool()>& relabel,
++                std::string* err) {
+     unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+-    if (parentFd < 0) {
+-        *err = StringPrintf("open %s: %s", parent.c_str(), strerror(errno));
+-        return -errno;
+-    }
+-    unique_fd root(openat(parentFd.get(), name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+-    if (root < 0) {
+-        *err = StringPrintf("open %s/%s: %s", parent.c_str(), name.c_str(), strerror(errno));
+-        return -errno;
+-    }
+-    // Only a restore that was extracted completely (the marker is written last) is swapped in
+-    mode_t rootMode = 0;
+-    {
+-        unique_fd done(openat(root.get(), kDone, O_RDONLY | O_NOFOLLOW | O_CLOEXEC));
+-        char buf[16] = {};
+-        ssize_t n = done < 0 ? -1 : TEMP_FAILURE_RETRY(read(done.get(), buf, sizeof(buf) - 1));
+-        if (n <= 0) {
+-            *err = "there is no complete staged restore";
+-            return -ENOENT;
+-        }
+-        rootMode = static_cast<mode_t>(strtoul(buf, nullptr, 10)) & 07777;
+-    }
+-    unique_fd stage(openat(root.get(), kStage, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+-    if (stage < 0) {
+-        *err = "there is no staged restore";
++    if (parentFd < 0) return -errno;
++    unique_fd stage = openPrivateDirectory(parentFd.get(), stageName(name));
++    if (stage < 0 || faccessat(stage.get(), kDone, F_OK, 0) != 0 ||
++        faccessat(stage.get(), kPrevious, F_OK, 0) == 0) {
++        *err = "there is no complete staged restore";
+         return -ENOENT;
+     }
+-    // Complete and intact: swap the old data for the new
+-    if (int c = clearTree(root.get(), skipCaches); c != 0) {
+-        *err = "could not clear the old data";
+-        return c;
+-    }
+-    std::vector<std::string> staged;
+-    {
+-        int dupFd = fcntl(stage.get(), F_DUPFD_CLOEXEC, 0);
+-        std::unique_ptr<DIR, decltype(&closedir)> d(dupFd >= 0 ? fdopendir(dupFd) : nullptr, closedir);
+-        if (!d) {
+-            if (dupFd >= 0) close(dupFd);
+-            *err = "could not read the staging dir";
+-            return -EIO;
+-        }
+-        while (struct dirent* de = readdir(d.get())) {
+-            if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0) staged.emplace_back(de->d_name);
+-        }
+-    }
+-    for (const auto& n : staged) {
+-        if (renameat(stage.get(), n.c_str(), root.get(), n.c_str()) != 0) {
+-            *err = StringPrintf("could not move %s into place: %s", n.c_str(), strerror(errno));
+-            return -errno;
+-        }
+-    }
+-    stage.reset();
+-    removeStage(root.get());
+-    if (rootMode != 0) fchmod(root.get(), rootMode);
++    unique_fd incoming = openDirectory(stage.get(), kIncoming);
++    if (incoming < 0) return -errno;
++    Extractor ex(parentFd.get(), uid, gid, newDirMode);
++    unique_fd live = ex.openDir(parentFd.get(), name);
++    if (live < 0) return -errno;
++    if (!journalTarget(stage.get(), live.get(), true)) return -EIO;
++    if (mkdirat(stage.get(), kPrevious, 0700) != 0 || fsync(stage.get()) != 0) return -errno;
++    unique_fd previous = openDirectory(stage.get(), kPrevious);
++    if (previous < 0) return -errno;
++
++    int r = moveEntries(live.get(), previous.get(), skipCaches);
++    if (r == 0) r = writeMarker(stage.get(), kInstalling);
++    if (r == 0) r = moveEntries(incoming.get(), live.get(), false);
++    if (r == 0 && !relabel()) r = -EIO;
++    if (r == 0) r = writeMarker(stage.get(), kCommitted);
++    if (r != 0) {
++        // A marker whose directory sync failed is not a durable commit.
++        unlinkat(stage.get(), kCommitted, 0);
++        const int recovery = discardOrRecoverStage(parentFd.get(), name, skipCaches);
++        *err = recovery == 0 ? "commit failed; original data restored"
++                             : "commit failed; original data retained in the restore journal";
++        return r;
++    }
++    // The original app directory and inode stay in place. Its ownership and mode are never
++    // taken from the archive. Clean up only after the replacement is committed.
++    discardOrRecoverStage(parentFd.get(), name, skipCaches);
+     return 0;
+ }
+ 
+-void abortStage(const std::string& parent, const std::string& name) {
++void abortStage(const std::string& parent, const std::string& name, bool skipCaches) {
+     unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+-    if (parentFd < 0) return;
+-    unique_fd root(openat(parentFd.get(), name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+-    if (root < 0) return;
+-    removeStage(root.get());
++    if (parentFd >= 0) discardOrRecoverStage(parentFd.get(), name, skipCaches);
++}
++
++bool isProtectedRestoreDirectory(int parentFd, const std::string& name) {
++    const std::string prefix = std::string(kStage) + ".";
++    if (name.compare(0, prefix.size(), prefix) != 0 &&
++        name.compare(0, strlen(kCleanupPrefix), kCleanupPrefix) != 0) return false;
++    return openPrivateDirectory(parentFd, name) >= 0;
++}
++
++int recoverRestoreJournals(const std::string& parent) {
++    unique_fd parentFd(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
++    if (parentFd < 0) return errno == ENOENT ? 0 : -errno;
++    std::vector<std::string> entries;
++    if (int r = listEntries(parentFd.get(), false, &entries); r != 0) return r;
++    const std::string prefix = std::string(kStage) + ".";
++    int result = 0;
++    for (const auto& name : entries) {
++        if (!isProtectedRestoreDirectory(parentFd.get(), name)) continue;
++        int r = 0;
++        if (name.compare(0, prefix.size(), prefix) == 0) {
++            const auto package = name.substr(prefix.size());
++            if (!is_valid_package_name(package)) continue;
++            r = discardOrRecoverStage(parentFd.get(), package, /* skipCaches= */ true);
++        } else {
++            r = removePrivateDirectory(parentFd.get(), name);
++        }
++        if (r != 0) result = r;
++    }
++    return result;
+ }
+ 
+ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
+-                      mode_t newDirMode, bool skipCaches, bool external, std::string* err) {
++                      mode_t newDirMode, bool skipCaches, bool external,
++                      const std::function<bool()>& relabel, std::string* err) {
+     int r = stageTreeTarZst(inFd, parent, name, uid, gid, newDirMode, skipCaches, external, err);
+     if (r != 0) return r;
+-    r = commitStage(parent, name, skipCaches, err);
+-    if (r != 0) abortStage(parent, name);
++    r = commitStage(parent, name, uid, gid, newDirMode, skipCaches, relabel, err);
++    if (r != 0) abortStage(parent, name, skipCaches);
+     return r;
+ }
+ 
+@@ -857,6 +934,10 @@ static int extractEntries(int inFd, Extractor* exPtr, const std::string& name, u
+                 return -EIO;
+             }
+             futimens(f.get(), times);
++            if (fsync(f.get()) != 0) {
++                *err = "could not sync " + path.substr(0, 200);
++                return -EIO;
++            }
+         } else if (type == '2' && external) {
+             // Android never makes links in shared storage, and its files are served by MediaProvider: not restored
+             continue;
+diff --git a/cmds/installd/PlaitBackup.h b/cmds/installd/PlaitBackup.h
+index a3d229a..b540fc9 100644
+--- a/cmds/installd/PlaitBackup.h
++++ b/cmds/installd/PlaitBackup.h
+@@ -7,6 +7,7 @@
+ 
+ #include <sys/types.h>
+ 
++#include <functional>
+ #include <string>
+ 
+ namespace android {
+@@ -18,7 +19,7 @@ namespace plait {
+  * Android-DataBackup uses (entries "<pkg>/..." relative to the parent dir, cache and code_cache left out), so
+  * archives move between Plait Backup's rooted-phone backend and PlaitOS.
+  *
+- * Restores only ever write inside <parent>/<name>: every path is walked one component at a time with openat and
++ * Restores stage under installd control and replace the data inside <parent>/<name>: every path is walked one component at a time with openat and
+  * O_NOFOLLOW (a symlink in the app's data can never redirect a write), only regular files, directories and symlinks
+  * are created, and everything is owned by the given uid:gid with permission bits only (no setuid/setgid files).
+  * The tar's own owners are ignored. Labels are fixed afterwards by the caller (restorecon).
+@@ -34,16 +35,23 @@ int writeApksTarZst(int outFd, const std::string& dir, std::string* err);
+ // Replaces the contents of <parent>/<name> (except cache and code_cache when skipCaches) with the archive's.
+ // external: shared storage (Android/data, obb, media), where symbolic links are never restored.
+ int extractTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
+-                      mode_t newDirMode, bool skipCaches, bool external, std::string* err);
++                      mode_t newDirMode, bool skipCaches, bool external,
++                      const std::function<bool()>& relabel, std::string* err);
+ 
+ // The same in two steps, for a restore whose archive can only be checked once it has all been read (its signed
+-// hash): stageTreeTarZst extracts into a staging dir inside <parent>/<name> and leaves the app's data alone;
++// hash): stageTreeTarZst extracts into a private sibling of <parent>/<name> and leaves the app's data alone;
+ // commitStage swaps it in (-ENOENT if there is no complete staged restore); abortStage throws it away (always
+ // safe, also when nothing is staged). A stage left by a crash is removed by the next stage or abort.
+ int stageTreeTarZst(int inFd, const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
+                     mode_t newDirMode, bool skipCaches, bool external, std::string* err);
+-int commitStage(const std::string& parent, const std::string& name, bool skipCaches, std::string* err);
+-void abortStage(const std::string& parent, const std::string& name);
++int commitStage(const std::string& parent, const std::string& name, uid_t uid, gid_t gid,
++                mode_t newDirMode, bool skipCaches, const std::function<bool()>& relabel,
++                std::string* err);
++void abortStage(const std::string& parent, const std::string& name, bool skipCaches);
++
++// Recover journaled moves before Package Manager reconciles the user's storage.
++int recoverRestoreJournals(const std::string& parent);
++bool isProtectedRestoreDirectory(int parentFd, const std::string& name);
+ 
+ // Plain zstd decompression from one fd to another (APK archives, which system_server unpacks itself).
+ int zstdDecompress(int inFd, int outFd, std::string* err);
+diff --git a/cmds/installd/utils.cpp b/cmds/installd/utils.cpp
+index 2490683..beb00d3 100644
+--- a/cmds/installd/utils.cpp
++++ b/cmds/installd/utils.cpp
+@@ -797,7 +797,8 @@ int foreach_subdir(const std::string& pathname, const std::function<void(const s
+     return 0;
+ }
+ 
+-void cleanup_invalid_package_dirs_under_path(const std::string& pathname) {
++void cleanup_invalid_package_dirs_under_path(const std::string& pathname,
++        bool (*keep)(int, const std::string&)) {
+     auto dir = open_dir(pathname.c_str());
+     if (!dir) {
+         return;
+@@ -820,6 +821,8 @@ void cleanup_invalid_package_dirs_under_path(const std::string& pathname) {
+             continue;
+         }
+ 
++        if (keep && keep(dfd, name)) continue;
++
+         if (is_renamed_deleted_dir(name) || !is_valid_filename(name) ||
+             !is_valid_package_name(name)) {
+             ALOGI("Deleting renamed or invalid data directory: %s\n", name.c_str());
+diff --git a/cmds/installd/utils.h b/cmds/installd/utils.h
+index 227fa7f..c0d4e61 100644
+--- a/cmds/installd/utils.h
++++ b/cmds/installd/utils.h
+@@ -138,7 +138,8 @@ int rename_delete_dir_contents_and_dir(const std::string& pathname, bool ignore_
+ 
+ int foreach_subdir(const std::string& pathname, std::function<void(const std::string&)> fn);
+ 
+-void cleanup_invalid_package_dirs_under_path(const std::string& pathname);
++void cleanup_invalid_package_dirs_under_path(const std::string& pathname,
++        bool (*keep)(int, const std::string&) = nullptr);
+ 
+ int delete_dir_contents(const char *pathname,
+                         int also_delete_dir,
+-- 
+2.56.1
+

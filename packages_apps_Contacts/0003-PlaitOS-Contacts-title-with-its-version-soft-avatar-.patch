@@ -1,0 +1,312 @@
+From a8230859195893d5e8c4710918ad55d5467fc4d6 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 13:18:05 -0600
+Subject: [PATCH] PlaitOS: Contacts title with its version; soft avatar tones;
+ the shared FAB
+
+The main list's title shows the installed version after "Contacts", muted,
+as on every Plait app's root screen (PeopleActivity.setTitle, PlaitTitle).
+Letter tiles use plait-design's three soft avatar tones; the contact page
+header keeps the strong colours (plait_header_colors) for its white title.
+The add button is the shared floating button: 16 dp corners on the
+primary container, with a matching ripple and shadow outline.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ res/drawable/floating_action_button.xml       |  4 +-
+ res/drawable/plait_fab_background.xml         |  6 +++
+ res/layout/floating_action_button.xml         |  4 +-
+ res/values-night/colors.xml                   | 22 ++++++--
+ res/values/colors.xml                         | 28 +++++++---
+ .../contacts/activities/PeopleActivity.java   | 10 ++++
+ .../contacts/util/MaterialColorMapUtils.java  |  3 +-
+ src/com/android/contacts/util/PlaitTitle.java | 52 +++++++++++++++++++
+ src/com/android/contacts/util/ViewUtil.java   |  4 +-
+ 9 files changed, 115 insertions(+), 18 deletions(-)
+ create mode 100644 res/drawable/plait_fab_background.xml
+ create mode 100644 src/com/android/contacts/util/PlaitTitle.java
+
+diff --git a/res/drawable/floating_action_button.xml b/res/drawable/floating_action_button.xml
+index 3d88ffc..cf35e0e 100644
+--- a/res/drawable/floating_action_button.xml
++++ b/res/drawable/floating_action_button.xml
+@@ -17,8 +17,10 @@
+ <ripple xmlns:android="http://schemas.android.com/apk/res/android"
+         android:color="@color/contacts_accent_color">
+      <item android:id="@android:id/mask">
+-          <shape android:shape="oval">
++          <!-- PlaitOS: the ripple keeps to the button's rounded shape -->
++          <shape android:shape="rectangle">
+                <solid android:color="?android:attr/colorPrimary" />
++               <corners android:radius="16dp" />
+           </shape>
+      </item>
+ </ripple>
+\ No newline at end of file
+diff --git a/res/drawable/plait_fab_background.xml b/res/drawable/plait_fab_background.xml
+new file mode 100644
+index 0000000..27d31d7
+--- /dev/null
++++ b/res/drawable/plait_fab_background.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the floating button of every Plait app (plait-design PlaitFab): 16 dp corners on the primary container. -->
++<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
++    <solid android:color="@color/plait_fab"/>
++    <corners android:radius="16dp"/>
++</shape>
+diff --git a/res/layout/floating_action_button.xml b/res/layout/floating_action_button.xml
+index a31512f..0f4cc87 100644
+--- a/res/layout/floating_action_button.xml
++++ b/res/layout/floating_action_button.xml
+@@ -26,7 +26,7 @@
+     android:layout_gravity="bottom|end"
+     android:layout_marginBottom="@dimen/floating_action_button_margin_bottom"
+     android:layout_marginEnd="@dimen/floating_action_button_margin_right"
+-    android:background="@drawable/fab_pink"
++    android:background="@drawable/plait_fab_background"
+     android:elevation="@dimen/design_fab_elevation"
+     app:layout_dodgeInsetEdges="bottom" >
+ 
+@@ -37,5 +37,5 @@
+         android:background="@drawable/floating_action_button"
+         android:contentDescription="@string/action_menu_add_new_contact_button"
+         android:src="@drawable/quantum_ic_add_vd_theme_24"
+-        android:tint="@color/floating_action_button_icon_color"/>
++        android:tint="@color/plait_on_fab"/>
+ </FrameLayout>
+\ No newline at end of file
+diff --git a/res/values-night/colors.xml b/res/values-night/colors.xml
+index aacbbf4..3cec028 100644
+--- a/res/values-night/colors.xml
++++ b/res/values-night/colors.xml
+@@ -106,13 +106,12 @@
+ 
+         These colors are also used by MaterialColorMapUtils to generate primary activity colors.
+     -->
++    <!-- PlaitOS: the three avatar tones of plait-design's PlaitAvatar (primary container, secondary container, a
++         quiet tertiary), soft rather than saturated; the same person keeps the same tone. -->
+     <array name="letter_tile_colors">
+         <item>@android:color/system_accent1_700</item>
+         <item>@android:color/system_accent2_700</item>
+-        <item>@android:color/system_accent3_700</item>
+-        <item>@android:color/system_accent1_600</item>
+-        <item>@android:color/system_accent2_600</item>
+-        <item>@android:color/system_accent3_600</item>
++        <item>@android:color/system_accent3_800</item>
+     </array>
+ 
+     <!-- Darker versions of letter_tile_colors, two shades darker. These colors are used
+@@ -125,6 +124,16 @@
+         <item>@android:color/system_accent2_700</item>
+         <item>@android:color/system_accent3_700</item>
+     </array>
++    <!-- PlaitOS: the contact page's header keeps the strong colours (white title on it), while the avatars use
++         the soft tones above; MaterialColorMapUtils picks the closest of these for a contact without a photo. -->
++    <array name="plait_header_colors">
++        <item>@android:color/system_accent1_700</item>
++        <item>@android:color/system_accent2_700</item>
++        <item>@android:color/system_accent3_700</item>
++        <item>@android:color/system_accent1_600</item>
++        <item>@android:color/system_accent2_600</item>
++        <item>@android:color/system_accent3_600</item>
++    </array>
+ 
+     <!-- The default color used for tinting photos when no color can be extracted via Palette,
+             this is Blue Grey 500 -->
+@@ -136,7 +145,7 @@
+ 
+     <color name="letter_tile_default_color">@android:color/system_neutral2_700</color>
+ 
+-    <color name="letter_tile_font_color">@android:color/system_accent1_100</color>
++    <color name="letter_tile_font_color">@android:color/system_neutral1_100</color>
+ 
+     <!-- Color of the title to the Frequently Contacted section -->
+     <color name="frequently_contacted_title_color">@color/actionbar_background_color</color>
+@@ -204,4 +213,7 @@
+ 
+     <color name="sold_background_color">@android:color/black</color>
+     <color name="navigation_bar_color">@color/background_primary</color>
++    <!-- PlaitOS: the floating button, as plait-design's PlaitFab -->
++    <color name="plait_fab">@android:color/system_accent1_700</color>
++    <color name="plait_on_fab">@android:color/system_accent1_100</color>
+ </resources>
+diff --git a/res/values/colors.xml b/res/values/colors.xml
+index 506455e..7cc535f 100644
+--- a/res/values/colors.xml
++++ b/res/values/colors.xml
+@@ -116,13 +116,12 @@
+ 
+         These colors are also used by MaterialColorMapUtils to generate primary activity colors.
+     -->
++    <!-- PlaitOS: the three avatar tones of plait-design's PlaitAvatar (primary container, secondary container, a
++         quiet tertiary), soft rather than saturated; the same person keeps the same tone. -->
+     <array name="letter_tile_colors">
+-        <item>@android:color/system_accent1_600</item>
+-        <item>@android:color/system_accent2_600</item>
+-        <item>@android:color/system_accent3_600</item>
+-        <item>@android:color/system_accent1_500</item>
+-        <item>@android:color/system_accent2_500</item>
+-        <item>@android:color/system_accent3_500</item>
++        <item>@android:color/system_accent1_100</item>
++        <item>@android:color/system_accent2_100</item>
++        <item>@android:color/system_accent3_100</item>
+     </array>
+ 
+     <!-- Darker versions of letter_tile_colors, two shades darker. These colors are used
+@@ -135,6 +134,16 @@
+         <item>@android:color/system_accent2_600</item>
+         <item>@android:color/system_accent3_600</item>
+     </array>
++    <!-- PlaitOS: the contact page's header keeps the strong colours (white title on it), while the avatars use
++         the soft tones above; MaterialColorMapUtils picks the closest of these for a contact without a photo. -->
++    <array name="plait_header_colors">
++        <item>@android:color/system_accent1_600</item>
++        <item>@android:color/system_accent2_600</item>
++        <item>@android:color/system_accent3_600</item>
++        <item>@android:color/system_accent1_500</item>
++        <item>@android:color/system_accent2_500</item>
++        <item>@android:color/system_accent3_500</item>
++    </array>
+ 
+     <!-- The default color used for tinting photos when no color can be extracted via Palette,
+             this is Blue Grey 500 -->
+@@ -144,9 +153,9 @@
+     <color name="quickcontact_default_photo_tint_color_dark">@android:color/system_accent2_700</color>
+ 
+ 
+-    <color name="letter_tile_default_color">@android:color/system_neutral2_400</color>
++    <color name="letter_tile_default_color">@android:color/system_neutral2_100</color>
+ 
+-    <color name="letter_tile_font_color">#ffffff</color>
++    <color name="letter_tile_font_color">@android:color/system_neutral1_900</color>
+ 
+     <!-- Color for icons in the actionbar -->
+     <color name="actionbar_icon_color">#ffffff</color>
+@@ -225,4 +234,7 @@
+     <color name="icon_fill_color">@android:color/white</color>
+     <color name="sold_background_color">@android:color/white</color>
+     <color name="navigation_bar_color">@android:color/transparent</color>
++    <!-- PlaitOS: the floating button, as plait-design's PlaitFab -->
++    <color name="plait_fab">@android:color/system_accent1_100</color>
++    <color name="plait_on_fab">@android:color/system_accent1_900</color>
+ </resources>
+diff --git a/src/com/android/contacts/activities/PeopleActivity.java b/src/com/android/contacts/activities/PeopleActivity.java
+index acf24f8..a2ec81c 100644
+--- a/src/com/android/contacts/activities/PeopleActivity.java
++++ b/src/com/android/contacts/activities/PeopleActivity.java
+@@ -32,6 +32,7 @@ import android.content.res.Configuration;
+ import android.graphics.Color;
+ import android.net.Uri;
+ import android.os.Bundle;
++import android.text.TextUtils;
+ import android.os.Handler;
+ import android.provider.ContactsContract;
+ import android.provider.ContactsContract.Intents;
+@@ -1037,6 +1038,15 @@ public class PeopleActivity extends AppCompatContactsActivity implements
+         showFabWithAnimation(/* showFab */ false);
+     }
+ 
++    /** PlaitOS: the main list shows the app's version after its name, as every Plait app's root screen does. */
++    @Override
++    public void setTitle(CharSequence title) {
++        if (title != null && TextUtils.equals(title.toString(), getString(R.string.contactsList))) {
++            title = com.android.contacts.util.PlaitTitle.withVersion(this, title);
++        }
++        super.setTitle(title);
++    }
++
+     public void switchToAllContacts() {
+         popSecondLevel();
+         mShouldSwitchToAllContacts = false;
+diff --git a/src/com/android/contacts/util/MaterialColorMapUtils.java b/src/com/android/contacts/util/MaterialColorMapUtils.java
+index c1616ce..5f8c50c 100644
+--- a/src/com/android/contacts/util/MaterialColorMapUtils.java
++++ b/src/com/android/contacts/util/MaterialColorMapUtils.java
+@@ -32,8 +32,9 @@ public class MaterialColorMapUtils {
+     private final TypedArray sSecondaryColors;
+ 
+     public MaterialColorMapUtils(Resources resources) {
++        // PlaitOS: the strong header colours; the letter tiles themselves are now soft (see plait_header_colors)
+         sPrimaryColors = resources.obtainTypedArray(
+-                com.android.contacts.R.array.letter_tile_colors);
++                com.android.contacts.R.array.plait_header_colors);
+         sSecondaryColors = resources.obtainTypedArray(
+                 com.android.contacts.R.array.letter_tile_colors_dark);
+     }
+diff --git a/src/com/android/contacts/util/PlaitTitle.java b/src/com/android/contacts/util/PlaitTitle.java
+new file mode 100644
+index 0000000..b055373
+--- /dev/null
++++ b/src/com/android/contacts/util/PlaitTitle.java
+@@ -0,0 +1,52 @@
++/*
++ * Copyright (C) 2026 PlaitOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.android.contacts.util;
++
++import android.content.Context;
++import android.content.pm.PackageManager;
++import android.content.res.TypedArray;
++import android.text.SpannableString;
++import android.text.Spanned;
++import android.text.style.ForegroundColorSpan;
++import android.text.style.RelativeSizeSpan;
++
++/** PlaitOS: a root screen's title with the installed version after it, smaller and muted, as on every Plait app. */
++public final class PlaitTitle {
++    private PlaitTitle() {}
++
++    public static CharSequence withVersion(Context context, CharSequence title) {
++        String version = null;
++        try {
++            version = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName;
++        } catch (PackageManager.NameNotFoundException e) {
++            // Our own package always exists; leave the version out if not
++        }
++        if (version == null || version.isEmpty()) return title;
++        String text = title + "  " + version;
++        SpannableString s = new SpannableString(text);
++        int start = title.length() + 2;
++        s.setSpan(new RelativeSizeSpan(0.6f), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        TypedArray a = context.obtainStyledAttributes(new int[] {android.R.attr.textColorSecondary});
++        try {
++            if (a.hasValue(0)) {
++                s.setSpan(new ForegroundColorSpan(a.getColor(0, 0)), start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++            }
++        } finally {
++            a.recycle();
++        }
++        return s;
++    }
++}
+diff --git a/src/com/android/contacts/util/ViewUtil.java b/src/com/android/contacts/util/ViewUtil.java
+index ccb8a82..721df6e 100644
+--- a/src/com/android/contacts/util/ViewUtil.java
++++ b/src/com/android/contacts/util/ViewUtil.java
+@@ -63,7 +63,9 @@ public class ViewUtil {
+             OVAL_OUTLINE_PROVIDER = new ViewOutlineProvider() {
+                 @Override
+                 public void getOutline(View view, Outline outline) {
+-                    outline.setOval(0, 0, view.getWidth(), view.getHeight());
++                    // PlaitOS: the floating button has 16 dp corners (plait-design PlaitFab), so its shadow does too
++                    float radius = 16 * view.getResources().getDisplayMetrics().density;
++                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+                 }
+             };
+         } else {
+-- 
+2.56.1
+

@@ -4,7 +4,11 @@ import org.json.JSONObject
 
 data class Cap(val type: String, val key: String, val allowed: Boolean, val uses: Int, val blocked: Int, val last: Long)
 
-data class AppEntry(val uid: Int, val pkg: String, val mode: String, val caps: List<Cap>, val note: String? = null)
+data class AppEntry(
+    val uid: Int, val pkg: String, val mode: String, val caps: List<Cap>, val note: String? = null,
+    /** Whether the app sees the Shizuku placeholder while it is allowed (the "Show Shizuku" switch). */
+    val shizukuVisible: Boolean = true,
+)
 
 data class Snapshot(
     val entries: List<AppEntry>,
@@ -28,7 +32,7 @@ fun parseSnapshot(json: String): Snapshot {
             }
             AppEntry(
                 e.getInt("uid"), if (pkgs.length() > 0) pkgs.getString(0) else "uid ${e.getInt("uid")}", e.getString("mode"), caps,
-                e.optString("note").ifEmpty { null }
+                e.optString("note").ifEmpty { null }, !e.optBoolean("shizukuHidden")
             )
         }
     }

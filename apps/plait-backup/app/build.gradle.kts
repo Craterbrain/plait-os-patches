@@ -18,8 +18,8 @@ android {
     applicationId = "app.plait.backup"
     minSdk = 31
     targetSdk = 35
-    versionCode = 44
-    versionName = "0.42"
+    versionCode = 48
+    versionName = "0.46"
     // The ROM build (-PplaitRom=true, scripts/stage-plait-backup.sh in plait-os) has no root fallback at all: it only
     // talks to the plait_backup system service, and R8 drops the `su` code. Other builds keep the root dev backend.
     buildConfigField("boolean", "ROOT_FALLBACK", if (project.hasProperty("plaitRom")) "false" else "true")
@@ -37,6 +37,12 @@ android {
   }
 
   buildTypes {
+    create("screenshot") {
+      initWith(getByName("debug"))
+      applicationIdSuffix = ".screenshot"
+      signingConfig = signingConfigs.getByName("debug")
+      matchingFallbacks += listOf("debug")
+    }
     debug { signingConfigs.findByName("plait")?.let { signingConfig = it } }
     release {
       isMinifyEnabled = true

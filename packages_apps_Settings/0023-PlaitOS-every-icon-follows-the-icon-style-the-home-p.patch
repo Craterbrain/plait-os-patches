@@ -1,0 +1,92 @@
+From 18dd431bbc7ebd994fc852d03fe2bc140b9c7ade Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 16:34:56 -0600
+Subject: [PATCH] PlaitOS: every icon follows the icon style, the home page
+ included
+
+The chosen style (PlaitOS tonal by default) only reached the PlaitOS rows
+and plain symbols:
+- The home page has its own adapter (HighlightableTopLevelPreferenceAdapter),
+  which never ran the bind-time styling; it does now.
+- Android 17's built-in colored tiles (the home page and pages such as
+  Accessibility) were left stock in every style but tonal, and were missed
+  entirely when their icon was set after the page loaded. In every style
+  their symbol is now put on the style's own tile, when the page loads and
+  when the row is bound.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../android/settings/plait/PlaitIconStyler.kt | 28 +++++++++++++------
+ ...ighlightableTopLevelPreferenceAdapter.java |  2 ++
+ 2 files changed, 22 insertions(+), 8 deletions(-)
+
+diff --git a/src/com/android/settings/plait/PlaitIconStyler.kt b/src/com/android/settings/plait/PlaitIconStyler.kt
+index a4d74c0..df2ec6a 100644
+--- a/src/com/android/settings/plait/PlaitIconStyler.kt
++++ b/src/com/android/settings/plait/PlaitIconStyler.kt
+@@ -137,10 +137,9 @@ object PlaitIconStyler {
+         val color = colorFor(preference.key, context)
+         val accent = accent(context)
+         if (isExpressiveTile(icon)) {
+-            // The other styles leave the home tiles as stock draws them; the tonal look puts their symbol on its tile
+-            if (style != Style.TONAL) return
+-            val symbol = (icon as LayerDrawable).getDrawable(icon.numberOfLayers - 1) ?: return
+-            val copy = (symbol.constantState?.newDrawable(context.resources) ?: return).mutate()
++            // Android 17's own colored tiles (the home page and some pages, e.g. Accessibility): their symbol goes on
++            // the chosen style's tile, so every icon follows the setting. Restyling the whole tile painted it white.
++            val copy = expressiveSymbol(icon, context) ?: return
+             preference.icon = styled(copy, style, color, accent, context)
+             return
+         }
+@@ -159,11 +158,17 @@ object PlaitIconStyler {
+         val style = style(context)
+         if (style == Style.STOCK || preference == null) return
+         val icon = preference.icon ?: return
+-        if (!isLateSymbol(preference, icon)) return
++        if (icon is StyledIcon) return // already styled when the page loaded
+         val view = holder.findViewById(android.R.id.icon) as? ImageView ?: return
+-        val copy = (icon.constantState?.newDrawable(context.resources) ?: return).mutate()
+-        copy.level = icon.level
+-        copy.state = icon.state
++        val copy: Drawable
++        if (isExpressiveTile(icon)) {
++            copy = expressiveSymbol(icon, context) ?: return
++        } else {
++            if (!isLateSymbol(preference, icon)) return
++            copy = (icon.constantState?.newDrawable(context.resources) ?: return).mutate()
++            copy.level = icon.level
++            copy.state = icon.state
++        }
+         // A row is bound again on every scroll: keep its color stable even with random colors on
+         view.setImageDrawable(styled(copy, style, colorFor(preference.key, context, stable = true), accent(context), context))
+     }
+@@ -181,6 +186,13 @@ object PlaitIconStyler {
+             icon.javaClass.simpleName.contains("Signal")
+     }
+ 
++    /** A copy of the symbol on top of one of Android 17's colored tiles. */
++    private fun expressiveSymbol(icon: Drawable, context: Context): Drawable? {
++        val layers = icon as LayerDrawable
++        val symbol = layers.getDrawable(layers.numberOfLayers - 1) ?: return null
++        return (symbol.constantState?.newDrawable(context.resources) ?: return null).mutate()
++    }
++
+     /**
+      * Android 17's expressive home tiles: already a colored shape (AdaptiveIconShapeDrawable) under the symbol, drawn by
+      * the stock design. They stay exactly as stock draws them; restyling them painted them white, then off-size.
+diff --git a/src/com/android/settings/widget/HighlightableTopLevelPreferenceAdapter.java b/src/com/android/settings/widget/HighlightableTopLevelPreferenceAdapter.java
+index c528825..2dfca8a 100644
+--- a/src/com/android/settings/widget/HighlightableTopLevelPreferenceAdapter.java
++++ b/src/com/android/settings/widget/HighlightableTopLevelPreferenceAdapter.java
+@@ -70,6 +70,8 @@ public class HighlightableTopLevelPreferenceAdapter extends RoundCornerPreferenc
+     @Override
+     public void onBindViewHolder(PreferenceViewHolder holder, int position) {
+         super.onBindViewHolder(holder, position);
++        // PlaitOS: the home page's tiles follow the chosen icon style too
++        com.android.settings.plait.PlaitIconStyler.styleBoundIcon(holder, getItem(position));
+         mViewHolders.put(position, holder);
+         updateBackground(holder, position);
+     }
+-- 
+2.56.1
+

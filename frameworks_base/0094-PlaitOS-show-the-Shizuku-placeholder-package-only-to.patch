@@ -1,0 +1,154 @@
+From 5fc1129a05e7948b559faac02c2fa58cba02ce55 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 07:23:31 -0600
+Subject: [PATCH] PlaitOS: show the Shizuku placeholder package only to apps
+ authorized in Plait Broker
+
+Apps such as Aurora Store offer their Shizuku features only when moe.shizuku.privileged.api is installed. PlaitOS ships a
+code-less placeholder with that name; PlaitShizukuVisibility hides it from every app except the app ids Plait Broker writes
+to the global setting plait_shizuku_visible (system uids always see it). A missing or unreadable setting hides it from all.
+---
+ .../com/android/server/pm/AppsFilterBase.java |   3 +
+ .../server/pm/PackageManagerService.java      |   2 +
+ .../server/pm/PlaitShizukuVisibility.java     | 102 ++++++++++++++++++
+ 3 files changed, 107 insertions(+)
+ create mode 100644 services/core/java/com/android/server/pm/PlaitShizukuVisibility.java
+
+diff --git a/services/core/java/com/android/server/pm/AppsFilterBase.java b/services/core/java/com/android/server/pm/AppsFilterBase.java
+index 5e3d5a265..562c6413b 100644
+--- a/services/core/java/com/android/server/pm/AppsFilterBase.java
++++ b/services/core/java/com/android/server/pm/AppsFilterBase.java
+@@ -340,6 +340,9 @@ public abstract class AppsFilterBase implements AppsFilterSnapshot {
+                     || targetPkgSetting.getAppId() < Process.FIRST_APPLICATION_UID
+                     || callingAppId == targetPkgSetting.getAppId()) {
+                 return false;
++            } else if (PlaitShizukuVisibility.hides(callingAppId, targetPkgSetting)) {
++                // The Shizuku placeholder package: only the apps authorized in Plait Broker may see it
++                return true;
+             } else if (Process.isSdkSandboxUid(callingAppId)) {
+                 final int targetAppId = targetPkgSetting.getAppId();
+                 final int targetUid = UserHandle.getUid(userId, targetAppId);
+diff --git a/services/core/java/com/android/server/pm/PackageManagerService.java b/services/core/java/com/android/server/pm/PackageManagerService.java
+index 8c080c51a..2584f6b77 100644
+--- a/services/core/java/com/android/server/pm/PackageManagerService.java
++++ b/services/core/java/com/android/server/pm/PackageManagerService.java
+@@ -4534,6 +4534,8 @@ public class PackageManagerService implements PackageSender, TestUtilityService
+         plaitDowngradeTimeout.systemReady();
+         mPlaitDowngradeTimeout = plaitDowngradeTimeout;
+ 
++        new PlaitShizukuVisibility(mContext, mHandler).systemReady();
++
+         // Initialize Application Shared Memory isDeviceUpgrading flag.
+         if (isDeviceUpgradingUsesSharedMemory()) {
+             ApplicationSharedMemory.getInstance().setIsDeviceUpgrading(isDeviceUpgrading());
+diff --git a/services/core/java/com/android/server/pm/PlaitShizukuVisibility.java b/services/core/java/com/android/server/pm/PlaitShizukuVisibility.java
+new file mode 100644
+index 000000000..0fceb19dd
+--- /dev/null
++++ b/services/core/java/com/android/server/pm/PlaitShizukuVisibility.java
+@@ -0,0 +1,102 @@
++/*
++ * Copyright (C) 2026 PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++package com.android.server.pm;
++
++import android.content.ContentResolver;
++import android.content.Context;
++import android.database.ContentObserver;
++import android.os.Handler;
++import android.os.UserHandle;
++import android.provider.Settings;
++import android.util.Slog;
++
++import com.android.server.pm.pkg.PackageStateInternal;
++
++import java.util.Arrays;
++
++/**
++ * PlaitOS ships a code-less placeholder package named moe.shizuku.privileged.api: apps such as Aurora Store only offer their Shizuku
++ * features when Shizuku's own package is installed. The placeholder is hidden from every app except the ones Plait Broker authorized:
++ * the broker writes their app ids (comma separated) to the global setting plait_shizuku_visible. System apps (below the first
++ * application uid) always see it, like any package.
++ *
++ * Fails closed: a missing or unreadable setting means nobody sees the placeholder, and nothing else about package visibility changes.
++ */
++final class PlaitShizukuVisibility {
++    private static final String TAG = "PlaitShizukuVisibility";
++    static final String PACKAGE = "moe.shizuku.privileged.api";
++    private static final String SETTING = "plait_shizuku_visible";
++    private static final int[] NONE = new int[0];
++
++    /** Sorted app ids; replaced as a whole, so readers need no lock. */
++    private static volatile int[] sVisibleTo = NONE;
++
++    private final Context mContext;
++    private final Handler mHandler;
++
++    PlaitShizukuVisibility(Context context, Handler handler) {
++        mContext = context;
++        mHandler = handler;
++    }
++
++    /** True when the app with this app id must not see the target package. Cheap: a name check first. */
++    static boolean hides(int callingAppId, PackageStateInternal target) {
++        return PACKAGE.equals(target.getPackageName())
++                && Arrays.binarySearch(sVisibleTo, callingAppId) < 0;
++    }
++
++    void systemReady() {
++        final ContentResolver resolver = mContext.getContentResolver();
++        resolver.registerContentObserver(Settings.Global.getUriFor(SETTING), false,
++                new ContentObserver(mHandler) {
++                    @Override
++                    public void onChange(boolean selfChange) {
++                        reload(resolver, true);
++                    }
++                }, UserHandle.USER_ALL);
++        reload(resolver, false);
++    }
++
++    private static void reload(ContentResolver resolver, boolean invalidate) {
++        try {
++            final int[] ids = parse(Settings.Global.getString(resolver, SETTING));
++            if (Arrays.equals(ids, sVisibleTo)) {
++                return;
++            }
++            sVisibleTo = ids;
++            if (invalidate) {
++                // Apps and the system cache what getPackageInfo and friends answered; those answers just changed
++                final int reason = PackageMetrics.INVALIDATION_REASON_APP_FILTER_CHANGE;
++                PackageManagerService.invalidatePackageInfoCache(reason);
++                PackageManagerService.invalidateGetPackagesForUidCache(reason);
++                android.app.ApplicationPackageManager.invalidateQueryIntentActivitiesCache();
++            }
++        } catch (RuntimeException e) {
++            Slog.w(TAG, "could not read " + SETTING + "; the placeholder stays hidden", e);
++            sVisibleTo = NONE;
++        }
++    }
++
++    /** "10234,10240" -> [10234, 10240]; anything that is not a number (the broker writes "-" for none) is ignored. */
++    static int[] parse(String value) {
++        if (value == null || value.isEmpty()) {
++            return NONE;
++        }
++        final String[] parts = value.split(",");
++        final int[] ids = new int[parts.length];
++        int n = 0;
++        for (String part : parts) {
++            try {
++                ids[n] = Integer.parseInt(part.trim());
++                n++;
++            } catch (NumberFormatException ignored) {
++                // skip
++            }
++        }
++        final int[] out = Arrays.copyOf(ids, n);
++        Arrays.sort(out);
++        return out;
++    }
++}
+-- 
+2.56.1
+

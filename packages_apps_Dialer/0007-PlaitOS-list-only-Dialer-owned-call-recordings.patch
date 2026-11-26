@@ -1,0 +1,42 @@
+From cd21a8c57993b7c61a8d7f2669e3d9fa417add86 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 09:41:23 -0600
+Subject: [PATCH] PlaitOS: list only Dialer-owned call recordings
+
+Require the recorder's exact MediaStore directory and Dialer's package ownership when listing recordings. This keeps imported or independently created audio from being attributed to callers based on its filename.
+---
+ .../android/dialer/main/impl/RecordingsFragment.java  | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/java/com/android/dialer/main/impl/RecordingsFragment.java b/java/com/android/dialer/main/impl/RecordingsFragment.java
+index d3177a3..373917b 100644
+--- a/java/com/android/dialer/main/impl/RecordingsFragment.java
++++ b/java/com/android/dialer/main/impl/RecordingsFragment.java
+@@ -45,8 +45,8 @@ import java.util.concurrent.Executors;
+ 
+ /**
+  * PlaitOS: the Recordings tab. The call recorder saves each recording through MediaStore under
+- * Recordings/CallRecordings; an app can always read the files it created itself, so this needs no extra permission.
+- * One row per recording with its caller, when and how long; tap plays or pauses, the overflow shares or deletes.
++ * Recordings/CallRecordings. The tab lists only Dialer-owned recordings in that directory. Tap
++ * a row to play or pause it, or use the overflow menu to share or delete it.
+  */
+ public class RecordingsFragment extends Fragment {
+ 
+@@ -118,8 +118,11 @@ public class RecordingsFragment extends Fragment {
+                         MediaStore.Audio.Media.DATE_ADDED,
+                         MediaStore.Audio.Media.DURATION
+                       },
+-                      MediaStore.Audio.Media.RELATIVE_PATH + " LIKE ?",
+-                      new String[] {RECORDINGS_PATH + "%"},
++                      MediaStore.Audio.Media.RELATIVE_PATH
++                          + " = ? AND "
++                          + MediaStore.MediaColumns.OWNER_PACKAGE_NAME
++                          + " = ?",
++                      new String[] {RECORDINGS_PATH, context.getPackageName()},
+                       MediaStore.Audio.Media.DATE_TAKEN + " DESC")) {
+             while (c != null && c.moveToNext()) {
+               Recording r = new Recording();
+-- 
+2.56.1
+

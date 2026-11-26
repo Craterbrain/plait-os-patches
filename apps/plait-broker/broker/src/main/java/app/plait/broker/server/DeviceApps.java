@@ -17,6 +17,15 @@ final class DeviceApps implements Classifier.Apps {
     }
 
     @Override
+    public int currentUserId() {
+        try {
+            return (Integer) Class.forName("android.app.ActivityManager").getMethod("getCurrentUser").invoke(null);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return -1;
+        }
+    }
+
+    @Override
     public int userId() {
         return userId;
     }

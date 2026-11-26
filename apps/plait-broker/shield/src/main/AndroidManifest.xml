@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Everything privileged goes through Plait Broker (a Shizuku-compatible server) -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <!-- Keeps the daily blocklist update scheduled across reboots (a persisted job) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="false"
@@ -28,6 +30,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The daily blocklist update, on unmetered Wi-Fi -->
+        <service
+            android:name=".UpdateJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <!-- Standard Shizuku client wiring: the broker pushes its Binder here -->
         <provider

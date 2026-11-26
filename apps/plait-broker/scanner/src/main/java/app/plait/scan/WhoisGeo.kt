@@ -13,7 +13,7 @@ object Whois {
         s.connect(InetSocketAddress(server, 43), timeoutMs)
         s.soTimeout = timeoutMs
         s.getOutputStream().apply { write("$query\r\n".toByteArray()); flush() }
-        s.getInputStream().readNBytes(256 * 1024).toString(Charsets.UTF_8)
+        s.getInputStream().readUpTo(256 * 1024).toString(Charsets.UTF_8)
     }
 
     /** The server a WHOIS answer points to: IANA's "refer:", or a registry's "Registrar WHOIS Server:". */
@@ -44,7 +44,7 @@ object Rdap {
         c.connectTimeout = timeoutMs; c.readTimeout = timeoutMs; c.instanceFollowRedirects = true
         c.setRequestProperty("Accept", "application/rdap+json, application/json")
         if (c.responseCode !in 200..299) throw java.io.IOException("RDAP answered ${c.responseCode}")
-        return JSONObject(c.inputStream.use { it.readNBytes(1024 * 1024) }.toString(Charsets.UTF_8))
+        return JSONObject(c.inputStream.use { it.readUpTo(1024 * 1024) }.toString(Charsets.UTF_8))
     }
 
     private fun vcardName(entity: JSONObject): String? {

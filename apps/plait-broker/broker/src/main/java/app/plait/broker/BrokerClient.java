@@ -10,7 +10,7 @@ import rikka.shizuku.ShizukuApiConstants;
 /** Manager-side helper: custom transactions on the daemon's Binder (manager app only). */
 final class BrokerClient {
     static final int TX_DUMP = 10010, TX_SET_MODE = 10011, TX_SET_CAP = 10012, TX_REMOVE = 10013, TX_ANSWER = 10014, TX_SET_GATES = 10015,
-            TX_RESET_HOSTS = 10016;
+            TX_RESET_HOSTS = 10016, TX_SET_SHIZUKU_VISIBLE = 10017;
 
     private BrokerClient() {}
 
@@ -52,6 +52,11 @@ final class BrokerClient {
 
     static void setCap(int uid, String type, String key, boolean allowed) throws RemoteException {
         call(TX_SET_CAP, uid, type, key, allowed ? 1 : 0).recycle();
+    }
+
+    /** Whether this app sees the Shizuku placeholder (moe.shizuku.privileged.api) while it is allowed. */
+    static void setShizukuVisible(int uid, boolean visible) throws RemoteException {
+        call(TX_SET_SHIZUKU_VISIBLE, uid, visible ? 1 : 0).recycle();
     }
 
     static void remove(int uid) throws RemoteException {

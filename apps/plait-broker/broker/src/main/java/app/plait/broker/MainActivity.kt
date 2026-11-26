@@ -1,6 +1,11 @@
 package app.plait.broker
 
 import app.plait.design.PlaitSwitch
+import app.plait.design.ListRow
+import app.plait.design.PlaitNavItem
+import app.plait.design.PlaitNavigationBar
+import app.plait.design.PlaitSearchField
+import app.plait.design.PlaitAppTitle
 import app.plait.design.PlaitFilterChip
 import androidx.compose.ui.graphics.compositeOver
 import app.plait.design.PlaitIcon
@@ -23,11 +28,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
@@ -38,7 +45,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -107,15 +114,14 @@ private enum class Page { LIST, ACTIVITY, SETTINGS }
 /** App Ops style manager: a searchable list of apps with their mode, a detail page with one switch per capability. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BrokerApp(openUid: MutableIntState) {
-    var alive by remember { mutableStateOf(false) }
-    var snapshot by remember { mutableStateOf<Snapshot?>(null) }
+internal fun BrokerApp(openUid: MutableIntState, fixture: Snapshot? = null) {
+    var alive by remember { mutableStateOf(fixture != null) }
+    var snapshot by remember { mutableStateOf(fixture) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedUid by remember { mutableStateOf<Int?>(null) }
     var page by remember { mutableStateOf(Page.LIST) }
     var query by remember { mutableStateOf("") }
-    var searching by remember { mutableStateOf(false) }
-    var modeFilter by remember { mutableStateOf<String?>(null) }
+    var adding by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
@@ -135,7 +141,7 @@ private fun BrokerApp(openUid: MutableIntState) {
     }
 
     // keep the data fresh only while the screen is visible
-    LaunchedEffect(lifecycle) {
+    if (fixture == null) LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
                 refresh()
@@ -145,6 +151,7 @@ private fun BrokerApp(openUid: MutableIntState) {
     }
 
     fun act(block: () -> Unit) {
+        if (fixture != null) return
         scope.launch {
             withContext(Dispatchers.IO) { runCatching(block).onFailure { e ->
                 error = e.message
@@ -165,11 +172,10 @@ private fun BrokerApp(openUid: MutableIntState) {
     }
 
     val selected = snapshot?.entries?.firstOrNull { it.uid == selectedUid }
-    BackHandler(enabled = selectedUid != null || page != Page.LIST || searching) {
+    BackHandler(enabled = selectedUid != null || page != Page.LIST) {
         when {
             selectedUid != null -> selectedUid = null
             page != Page.LIST -> page = Page.LIST
-            else -> { searching = false; query = "" }
         }
     }
 
@@ -181,33 +187,38 @@ private fun BrokerApp(openUid: MutableIntState) {
                         selected != null -> Text(appLabel(selected.pkg), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         page == Page.ACTIVITY -> Text("Activity")
                         page == Page.SETTINGS -> Text("Settings")
-                        searching -> OutlinedTextField(
-                            value = query, onValueChange = { query = it }, singleLine = true,
-                            placeholder = { Text("Search apps") }, modifier = Modifier.fillMaxWidth()
-                        )
-                        else -> Text("Broker")
+                        else -> PlaitAppTitle("Broker")
                     }
                 },
                 navigationIcon = {
-                    if (selected != null || page != Page.LIST) {
-                        IconButton(onClick = { if (selected != null) selectedUid = null else page = Page.LIST }) {
+                    if (selected != null || page == Page.SETTINGS) {
+                        IconButton(onClick = {
+                            if (selected != null) selectedUid = null else page = Page.LIST
+                        }) {
                             PlaitIcon(PlaitIcon.Back, contentDescription = "Back")
                         }
                     }
                 },
                 actions = {
-                    if (selected == null && page == Page.LIST) {
-                        if (searching) {
-                            IconButton(onClick = { searching = false; query = "" }) { PlaitIcon(PlaitIcon.Close, contentDescription = "Close search") }
-                        } else {
-                            IconButton(onClick = { searching = true }) { PlaitIcon(PlaitIcon.Search, contentDescription = "Search") }
-                            TextButton(onClick = { page = Page.ACTIVITY }) { Text("Activity") }
-                            IconButton(onClick = { page = Page.SETTINGS }) { PlaitIcon(PlaitIcon.Settings, contentDescription = "Settings") }
+                    if (selected == null && page == Page.LIST && alive) {
+                        IconButton(onClick = { if (fixture == null) adding = true }) {
+                            PlaitIcon(PlaitIcon.Add, contentDescription = "Add an app")
                         }
                     }
-                }
+                    if (selected == null && page != Page.SETTINGS) {
+                        IconButton(onClick = { if (fixture == null) page = Page.SETTINGS }) {
+                            PlaitIcon(PlaitIcon.Settings, contentDescription = "Settings")
+                        }
+                    }
+                },
             )
-        }
+        },
+        bottomBar = {
+            PlaitNavigationBar {
+                PlaitNavItem(page == Page.LIST, { selectedUid = null; page = Page.LIST }, PlaitIcon.Apps, "Apps")
+                PlaitNavItem(page == Page.ACTIVITY, { selectedUid = null; page = Page.ACTIVITY }, PlaitIcon.History, "Activity")
+            }
+        },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             val snap = snapshot
@@ -220,6 +231,7 @@ private fun BrokerApp(openUid: MutableIntState) {
                     onCap = { c, on -> act { BrokerClient.setCap(selected.uid, c.type, c.key, on) } },
                     onCaps = { cs, on -> act { cs.forEach { c -> BrokerClient.setCap(selected.uid, c.type, c.key, on) } } },
                     onBundle = { b, on -> act { b.keys.forEach { k -> BrokerClient.setCap(selected.uid, b.type, k, on) } } },
+                    onShizuku = { on -> act { BrokerClient.setShizukuVisible(selected.uid, on) } },
                     onForget = { act { BrokerClient.remove(selected.uid) }; selectedUid = null }
                 )
                 page == Page.ACTIVITY -> ActivityLog(snap.audit, snap.entries) { uid -> selectedUid = uid; page = Page.LIST }
@@ -233,8 +245,7 @@ private fun BrokerApp(openUid: MutableIntState) {
                 else -> AppList(
                     entries = snap.entries,
                     query = query,
-                    modeFilter = modeFilter,
-                    onFilter = { modeFilter = if (modeFilter == it) null else it },
+                    onQuery = { query = it },
                     onOpen = { selectedUid = it.uid }
                 )
             }
@@ -243,6 +254,54 @@ private fun BrokerApp(openUid: MutableIntState) {
             }
         }
     }
+    if (adding) {
+        val known = snapshot?.entries?.map { it.uid }.orEmpty().toSet()
+        AddAppDialog(
+            known = known,
+            onDismiss = { adding = false },
+            onPick = { uid, pkg ->
+                adding = false
+                // Some apps (Aurora Store, ...) only show their Shizuku features once Shizuku is already authorized, and never ask.
+                // The same Restricted start as an app that asked: default commands only, everything else one switch away.
+                act { BrokerClient.setMode(uid, pkg, MODE_RESTRICTED) }
+                selectedUid = uid
+            },
+        )
+    }
+}
+
+/** Authorize an app that never asks: pick it from the installed apps; it starts Restricted, like any app that requested access. */
+@Composable
+private fun AddAppDialog(known: Set<Int>, onDismiss: () -> Unit, onPick: (Int, String) -> Unit) {
+    val context = LocalContext.current
+    val pm = context.packageManager
+    var term by remember { mutableStateOf("") }
+    val apps = remember(known, pm) {
+        pm.getInstalledApplications(0)
+            .filter { it.uid !in known && it.packageName != context.packageName && pm.getLaunchIntentForPackage(it.packageName) != null }
+            .map { Triple(it.uid, it.packageName, it.loadLabel(pm).toString()) }
+            .sortedBy { it.third.lowercase() }
+    }
+    val shown = apps.filter { term.isBlank() || it.third.contains(term.trim(), true) || it.second.contains(term.trim(), true) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add an app") },
+        text = {
+            Column {
+                Text("For apps that only show Shizuku features once it is already authorized. They start Restricted.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                PlaitSearchField(term, { term = it }, "Search apps", Modifier.padding(vertical = 8.dp))
+                LazyColumn(Modifier.height(320.dp)) {
+                    if (shown.isEmpty()) item { Text("No apps match.", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    items(shown, key = { it.first }) { (uid, pkg, label) ->
+                        ListRow(label, subtitle = pkg, lead = { AppIcon(pkg, size = 40) }, onClick = { onPick(uid, pkg) })
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 /** Settings. Rarely needed and discouraged options sit under Advanced, collapsed. */
@@ -376,13 +435,6 @@ private fun modeTitle(mode: String) = when (mode) {
 }
 
 @Composable
-private fun modeColor(mode: String) = when (mode) {
-    MODE_PERMISSIVE -> MaterialTheme.colorScheme.tertiary
-    MODE_RESTRICTED -> MaterialTheme.colorScheme.primary
-    else -> MaterialTheme.colorScheme.error
-}
-
-@Composable
 private fun SectionHeader(title: String) {
     Text(
         title.uppercase(),
@@ -408,59 +460,67 @@ private fun NotRunning(onRetry: () -> Unit) {
 }
 
 @Composable
-private fun AppList(entries: List<AppEntry>, query: String, modeFilter: String?, onFilter: (String) -> Unit, onOpen: (AppEntry) -> Unit) {
+private fun AppList(
+    entries: List<AppEntry>,
+    query: String,
+    onQuery: (String) -> Unit,
+    onOpen: (AppEntry) -> Unit,
+) {
     val pm = LocalContext.current.packageManager
-    val shown = remember(entries, query, modeFilter) {
-        entries.filter { e ->
-            (modeFilter == null || e.mode == modeFilter) &&
-                (query.isBlank() || e.pkg.contains(query, true) ||
-                    runCatching { pm.getApplicationInfo(e.pkg, 0).loadLabel(pm).toString().contains(query, true) }.getOrDefault(false))
-        }.sortedWith(compareBy({ when (it.mode) { MODE_PERMISSIVE -> 0; MODE_RESTRICTED -> 1; else -> 2 } }, { it.pkg }))
+    val shown = remember(entries, query, pm) {
+        val term = query.trim()
+        entries.filter { entry ->
+            term.isBlank() || entry.pkg.contains(term, true) ||
+                runCatching { pm.getApplicationInfo(entry.pkg, 0).loadLabel(pm).toString().contains(term, true) }.getOrDefault(false)
+        }.sortedBy { it.pkg }
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(MODE_PERMISSIVE, MODE_RESTRICTED, MODE_DENIED).forEach { m ->
-                    PlaitFilterChip(modeTitle(m), modeFilter == m, { onFilter(m) })
-                }
-            }
-        }
-        if (shown.isEmpty()) {
-            item {
+    val accessModes = listOf(MODE_PERMISSIVE, MODE_RESTRICTED, MODE_DENIED, MODE_BLOCKED)
+    val groups = shown.groupBy { if (it.mode in accessModes) it.mode else MODE_DENIED }
+    Column(Modifier.fillMaxSize()) {
+        PlaitSearchField(query, onQuery, "Search apps", Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+        LazyColumn(contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp)) {
+            if (shown.isEmpty()) item {
                 Text(
-                    if (entries.isEmpty()) "No app has asked for access yet. Apps that use Shizuku will appear here once they request it."
+                    if (entries.isEmpty()) "No app has asked for access yet. Apps that use Shizuku appear here once they request it, or add one with the + button."
                     else "No apps match.",
-                    modifier = Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant
+                    modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-        items(shown, key = { it.uid }) { e ->
-            val accent = MaterialTheme.colorScheme.primary
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-            Row(
-                Modifier.fillMaxWidth()
-                    // The accent marks apps that may use the broker
-                    .drawWithContent { drawContent(); if (e.mode == MODE_PERMISSIVE || e.mode == MODE_RESTRICTED) drawRect(accent, size = androidx.compose.ui.geometry.Size(size.width, 3.dp.toPx())) }
-                    .clickable { onOpen(e) }.padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AppIcon(e.pkg)
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(appLabel(e.pkg), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(e.pkg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val on = e.caps.count { it.allowed }
-                    Text(
-                        "${on} allowed" + if (e.caps.size > on) ", ${e.caps.size - on} off" else "",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            accessModes.forEach { mode ->
+                val members = groups[mode].orEmpty()
+                if (members.isNotEmpty()) item(key = mode) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 12.dp, bottom = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(modeTitle(mode), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(members.size.toString(), style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                Text(modeTitle(e.mode), style = MaterialTheme.typography.labelLarge, color = modeColor(e.mode))
-            }
+                itemsIndexed(members, key = { _, entry -> entry.uid }) { index, entry ->
+                    val top = if (index == 0) 16.dp else 0.dp
+                    val bottom = if (index == members.lastIndex) 16.dp else 0.dp
+                    // One group per mode, drawn row by row so the list stays lazy; the hairline lines up with the title
+                    Surface(
+                        shape = RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                    ) {
+                        Column {
+                            if (index > 0) HorizontalDivider(Modifier.padding(start = 68.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            val allowed = entry.caps.count { it.allowed }
+                            val off = entry.caps.size - allowed
+                            ListRow(
+                                appLabel(entry.pkg), subtitle = entry.pkg,
+                                lead = { AppIcon(entry.pkg, size = 40) },
+                                meta = "$allowed on" + if (off > 0) ", $off off" else "",
+                                onClick = { onOpen(entry) },
+                                trailing = { PlaitIcon(PlaitIcon.ChevronRight, null, Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant) },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -473,6 +533,7 @@ private fun AppDetail(
     onCap: (Cap, Boolean) -> Unit,
     onCaps: (List<Cap>, Boolean) -> Unit,
     onBundle: (Bundles.Bundle, Boolean) -> Unit,
+    onShizuku: (Boolean) -> Unit,
     onForget: () -> Unit
 ) {
     var expanded by remember(entry.uid) { mutableStateOf(setOf<String>()) }
@@ -515,6 +576,15 @@ private fun AppDetail(
             )
         }
         if (entry.mode != MODE_DENIED && entry.mode != MODE_BLOCKED) {
+            item(key = "shizuku") {
+                SettingCard(
+                    title = "Show Shizuku",
+                    subtitle = "Lets ${appLabel(entry.pkg)} see Shizuku as installed. Apps such as Aurora Store offer their Shizuku " +
+                        "features (installing without asking each time) only when they can see it.",
+                    checked = entry.shizukuVisible,
+                    onToggle = onShizuku,
+                )
+            }
             if (declared.isNotEmpty()) {
                 item(key = "declared") {
                     val members = declared.map { d -> entry.caps.firstOrNull { it.type == d.type && it.key == d.key } ?: Cap(d.type, d.key, false, 0, 0, 0) }

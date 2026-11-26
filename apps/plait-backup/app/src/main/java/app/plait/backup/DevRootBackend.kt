@@ -183,6 +183,18 @@ class DevRootBackend(private val context: android.content.Context) : Backend {
     override fun listArchives(): List<ArchiveApp> =
         parseList(RootShell.run(listScript(ROOT_DIR), timeoutMinutes = 2).out)
 
+    /** Archives here were written as root, so they are deleted as root; the parent goes only when it is empty. */
+    override fun deleteArchive(pkg: String, userId: Int, log: (String) -> Unit): Boolean {
+        val rel = Layout.archiveRelative(pkg, userId) ?: return false.also { log("Refused: $pkg is not a backup") }
+        val dir = "$ROOT_DIR/$rel"
+        val parent = dir.substringBeforeLast('/')
+        val r = RootShell.run(
+            "rm -rf -- ${RootShell.quote(dir)}; rmdir -- ${RootShell.quote(parent)} 2>/dev/null; [ ! -e ${RootShell.quote(dir)} ]",
+            timeoutMinutes = 5,
+        )
+        return r.ok.also { if (!it) log("Could not delete the backup of $pkg${r.err.takeIf(String::isNotBlank)?.let { e -> ": $e" } ?: ""}") }
+    }
+
     // ---- phone data: backed up here, restored on PlaitOS ----
 
     override val supportsPersonal get() = true

@@ -43,7 +43,11 @@ object ArchiveSigner {
 
     fun publicKeyB64(): String {
         privateKey()
-        return Base64.getEncoder().encodeToString(keyStore().getCertificate(ALIAS).publicKey.encoded)
+        return checkNotNull(existingPublicKeyB64())
+    }
+
+    fun existingPublicKeyB64(): String? = keyStore().getCertificate(ALIAS)?.publicKey?.encoded?.let {
+        Base64.getEncoder().encodeToString(it)
     }
 
     fun sign(data: ByteArray): String =

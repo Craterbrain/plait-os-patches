@@ -13,10 +13,16 @@ android {
         applicationId = "app.plait.broker"
         minSdk = 31
         targetSdk = 36
-        versionCode = 36
-        versionName = "0.36"
+        versionCode = 42
+        versionName = "0.42"
     }
     buildTypes {
+        create("screenshot") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".screenshot"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")

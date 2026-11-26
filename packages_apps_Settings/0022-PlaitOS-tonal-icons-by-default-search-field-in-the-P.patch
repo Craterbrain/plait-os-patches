@@ -1,0 +1,209 @@
+From 1293295c10ce5642fb0f5548e48d927410235a40 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 15:36:06 -0600
+Subject: [PATCH] PlaitOS: tonal icons by default, search field in the PlaitOS
+ look
+
+- New icon style "PlaitOS (tonal)" (Style.TONAL, value 7, first in the
+  list): every icon, the home page tiles included, on one tile in the
+  wallpaper's primary container with the on-primary-container symbol
+  colour, 12 dp corners on the 40 dp tile. It is the default (and what Reset
+  PlaitOS settings returns to); the other styles stay selectable. Icon shape
+  defaults to the rounded square, and rounded squares use 12 dp corners.
+- The home page search field: 48 dp, 14 dp corners, the raised tonal
+  surface, no outline.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ res/layout/search_bar.xml                     |  6 +--
+ res/values/plait_arrays.xml                   |  5 +-
+ res/values/styles.xml                         |  7 +--
+ .../android/settings/plait/PlaitIconStyler.kt | 47 ++++++++++++++++---
+ .../android/settings/plait/PlaitSettings.kt   |  4 +-
+ 5 files changed, 52 insertions(+), 17 deletions(-)
+
+diff --git a/res/layout/search_bar.xml b/res/layout/search_bar.xml
+index 45bb582..5522986 100644
+--- a/res/layout/search_bar.xml
++++ b/res/layout/search_bar.xml
+@@ -25,11 +25,11 @@
+         android:id="@+id/search_action_bar"
+         android:layout_width="match_parent"
+         android:layout_height="wrap_content"
+-        android:minHeight="72dp"
++        android:minHeight="48dp"
+         android:gravity="center_vertical"
+         android:orientation="horizontal"
+-        android:paddingStart="24dp"
+-        android:paddingEnd="24dp"
++        android:paddingStart="16dp"
++        android:paddingEnd="16dp"
+         android:focusedByDefault="true"
+         android:background="@drawable/search_bar_selected_background">
+ 
+diff --git a/res/values/plait_arrays.xml b/res/values/plait_arrays.xml
+index 8ccf7ec..e828707 100644
+--- a/res/values/plait_arrays.xml
++++ b/res/values/plait_arrays.xml
+@@ -99,8 +99,9 @@
+         <item>1000</item><item>2000</item><item>3000</item><item>5000</item><item>8000</item><item>10000</item>
+     </string-array>
+ 
+-    <!-- Settings icon style (PlaitIconStyler.Style order) -->
++    <!-- Settings icon style (values are PlaitIconStyler.Style ordinals; PlaitOS (tonal) = 7, listed first) -->
+     <string-array name="plait_settings_icon_style_entries">
++        <item>PlaitOS (tonal)</item>
+         <item>Material expressive (stock)</item>
+         <item>Colored background, white icon</item>
+         <item>Gradient background, white icon</item>
+@@ -110,7 +111,7 @@
+         <item>Accent icon only</item>
+     </string-array>
+     <string-array name="plait_settings_icon_style_values" translatable="false">
+-        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item><item>5</item><item>6</item>
++        <item>7</item><item>0</item><item>1</item><item>2</item><item>3</item><item>4</item><item>5</item><item>6</item>
+     </string-array>
+     <string-array name="plait_settings_icon_corner_entries">
+         <item>Circle</item><item>Rounded square</item>
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index 4f105e9..dd2efa4 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -589,12 +589,13 @@
+         <item name="cardElevation">0dp</item>
+     </style>
+ 
++    <!-- PlaitOS: plait-design's search field, a raised tonal surface with 14 dp corners and no outline -->
+     <style name="SearchBarStyle_v2">
+         <item name="android:theme">@style/Theme.MaterialComponents.DayNight</item>
+-        <item name="cardCornerRadius">40dp</item>
++        <item name="cardCornerRadius">14dp</item>
+         <item name="cardElevation">0dp</item>
+-        <item name="strokeWidth">1dp</item>
+-        <item name="strokeColor">@color/settingslib_materialColorOutlineVariant</item>
++        <item name="strokeWidth">0dp</item>
++        <item name="cardBackgroundColor">@color/settingslib_materialColorSurfaceContainerHigh</item>
+     </style>
+ 
+     <style name="ConditionCardBorderlessButton"
+diff --git a/src/com/android/settings/plait/PlaitIconStyler.kt b/src/com/android/settings/plait/PlaitIconStyler.kt
+index 7fd62de..a4d74c0 100644
+--- a/src/com/android/settings/plait/PlaitIconStyler.kt
++++ b/src/com/android/settings/plait/PlaitIconStyler.kt
+@@ -29,8 +29,8 @@ import kotlin.random.Random
+  * random colors). Applied to the rows of every Settings page and to the home page tiles. The
+  * default is [DEFAULT_STYLE]; style 0 leaves Settings exactly as stock.
+  *
+- * Settings.System keys (written from the PlaitOS page): plait_settings_icon_style (0-6, see
+- * [Style]), plait_settings_icon_corner_style (0 circle, 1 rounded square),
++ * Settings.System keys (written from the PlaitOS page): plait_settings_icon_style (0-7, see
++ * [Style]), plait_settings_icon_corner_style (0 circle, 1 rounded square, the default),
+  * plait_settings_icon_random_colors (0/1).
+  */
+ object PlaitIconStyler {
+@@ -43,14 +43,22 @@ object PlaitIconStyler {
+         COLORED_OUTLINE,
+         COLORED_ICON,
+         ACCENT_ICON,
++        /**
++         * The PlaitOS look (plait-design's TonalTile): every icon, the home tiles included, on one tile in the
++         * wallpaper's primary container with the matching symbol color; 12 dp corners on the 40 dp tile.
++         */
++        TONAL,
+     }
+ 
+     const val KEY_STYLE = "plait_settings_icon_style"
+     const val KEY_CORNER = "plait_settings_icon_corner_style"
+     const val KEY_RANDOM = "plait_settings_icon_random_colors"
+ 
+-    /** By default every page's icons look like Android 17's home page tiles: a light colored shape, dark symbol. */
+-    @JvmField val DEFAULT_STYLE = Style.COLORED_BACKGROUND
++    /** By default every icon is a tonal tile, as in the Plait apps; the other styles stay selectable. */
++    @JvmField val DEFAULT_STYLE = Style.TONAL
++
++    /** Rounded squares unless circles are chosen. */
++    private const val DEFAULT_CORNER = 1
+ 
+     /** Material 3 tones that read on light and dark backgrounds with a white symbol. */
+     private val PALETTE =
+@@ -128,7 +136,14 @@ object PlaitIconStyler {
+         if (icon is StyledIcon || icon is BitmapDrawable || icon is AdaptiveIconDrawable) return
+         val color = colorFor(preference.key, context)
+         val accent = accent(context)
+-        if (isExpressiveTile(icon)) return
++        if (isExpressiveTile(icon)) {
++            // The other styles leave the home tiles as stock draws them; the tonal look puts their symbol on its tile
++            if (style != Style.TONAL) return
++            val symbol = (icon as LayerDrawable).getDrawable(icon.numberOfLayers - 1) ?: return
++            val copy = (symbol.constantState?.newDrawable(context.resources) ?: return).mutate()
++            preference.icon = styled(copy, style, color, accent, context)
++            return
++        }
+         preference.icon = styled(icon.mutate(), style, color, accent, context)
+     }
+ 
+@@ -179,12 +194,12 @@ object PlaitIconStyler {
+         // The home page tile's measurements (40dp shape, 24dp symbol), so every page matches it
+         val size = context.resources.getDimensionPixelSize(R.dimen.dashboard_tile_image_size)
+         val inset = context.resources.getDimensionPixelSize(R.dimen.dashboard_tile_foreground_image_inset)
+-        val circle = Settings.System.getIntForUser(context.contentResolver, KEY_CORNER, 0,
++        val circle = Settings.System.getIntForUser(context.contentResolver, KEY_CORNER, DEFAULT_CORNER,
+             UserHandle.USER_CURRENT) == 0
+         fun shape() =
+             GradientDrawable().apply {
+                 if (circle) shape = GradientDrawable.OVAL
+-                else cornerRadius = size * 0.28f
++                else cornerRadius = size * 0.3f // 12 dp on the 40 dp tile (plait-design's TonalTile)
+                 setSize(size, size)
+             }
+         return when (style) {
+@@ -226,6 +241,11 @@ object PlaitIconStyler {
+                 }
+                 layered(bg, icon, size, inset)
+             }
++            Style.TONAL -> {
++                val (bg, fg) = tonalPair(context)
++                icon.setTint(fg)
++                layered(shape().apply { setColor(bg) }, icon, size, inset)
++            }
+             Style.COLORED_ICON -> icon.apply { setTint(color) }
+             Style.ACCENT_ICON -> icon.apply { setTint(accent) }
+         }
+@@ -239,6 +259,19 @@ object PlaitIconStyler {
+             setLayerGravity(1, android.view.Gravity.CENTER)
+         }
+ 
++    /** The wallpaper's primary container and the symbol color on it (Material You), for the current dark/light mode. */
++    private fun tonalPair(context: Context): Pair<Int, Int> {
++        val night = (context.resources.configuration.uiMode and
++            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
++        return if (night) {
++            context.getColor(android.R.color.system_primary_container_dark) to
++                context.getColor(android.R.color.system_on_primary_container_dark)
++        } else {
++            context.getColor(android.R.color.system_primary_container_light) to
++                context.getColor(android.R.color.system_on_primary_container_light)
++        }
++    }
++
+     /** The home page's light/dark color pair (background, symbol) for a [PALETTE] hue. */
+     private fun tilePair(color: Int, context: Context): Pair<Int, Int> {
+         val (bg, fg) =
+diff --git a/src/com/android/settings/plait/PlaitSettings.kt b/src/com/android/settings/plait/PlaitSettings.kt
+index b57406d..8c3bca8 100644
+--- a/src/com/android/settings/plait/PlaitSettings.kt
++++ b/src/com/android/settings/plait/PlaitSettings.kt
+@@ -100,8 +100,8 @@ object PlaitSettings {
+             "plait_charge_limit" to Key(SYSTEM, 80),
+             "plait_charge_limit_by_alarm" to Key(SYSTEM, 0),
+             // Settings style (PlaitIconStyler)
+-            "plait_settings_icon_style" to Key(SYSTEM, 1), // PlaitIconStyler.DEFAULT_STYLE
+-            "plait_settings_icon_corner_style" to Key(SYSTEM, 0),
++            "plait_settings_icon_style" to Key(SYSTEM, 7), // PlaitIconStyler.DEFAULT_STYLE (TONAL)
++            "plait_settings_icon_corner_style" to Key(SYSTEM, 1), // rounded square
+             "plait_settings_icon_random_colors" to Key(SYSTEM, 0),
+         )
+ 
+-- 
+2.56.1
+

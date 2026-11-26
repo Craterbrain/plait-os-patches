@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -30,11 +31,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -72,17 +75,37 @@ fun TonalTile(
     }
 }
 
+/** App name and installed version for the root screen. */
+@Composable
+fun PlaitAppTitle(title: String) {
+    val context = LocalContext.current
+    val version = remember(context) {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.headlineSmall,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (!version.isNullOrBlank()) {
+            androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
+            Text(version, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 /** A screen's title (and a line under it), with room for actions on the right. */
 @Composable
 fun PlaitTopBar(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    showAppVersion: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+            if (showAppVersion) PlaitAppTitle(title)
+            else Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -108,18 +131,27 @@ class SettingsGroupScope {
     fun row(content: @Composable () -> Unit) { rows += content }
 }
 
-/** One rounded card of rows, separated by hairlines inset past the icon. */
+/**
+ * One rounded card of rows, separated by hairlines inset past the icon ([inset]: 68 dp lines up with a row's title
+ * after a 40 dp icon; 14 dp for rows that have none). [sidePadding] is the group's own margin from the screen edges;
+ * 0 when it sits in a list that already has its 12 dp content padding.
+ */
 @Composable
-fun SettingsGroup(modifier: Modifier = Modifier, content: SettingsGroupScope.() -> Unit) {
+fun SettingsGroup(
+    modifier: Modifier = Modifier,
+    inset: Dp = 68.dp,
+    sidePadding: Dp = 12.dp,
+    content: SettingsGroupScope.() -> Unit,
+) {
     val rows = SettingsGroupScope().apply(content).rows
     Surface(
-        modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        modifier.fillMaxWidth().padding(horizontal = sidePadding),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column {
             rows.forEachIndexed { i, row ->
-                if (i > 0) HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                if (i > 0) HorizontalDivider(Modifier.padding(start = inset), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 row()
             }
         }

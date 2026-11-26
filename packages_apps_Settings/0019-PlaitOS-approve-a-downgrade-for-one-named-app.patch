@@ -1,0 +1,105 @@
+From 4cea44189c19c885b05dd441ae8e97d9d3128793 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 08:26:46 -0600
+Subject: [PATCH] PlaitOS: approve a downgrade for one named app
+
+---
+ res/values/plait_strings.xml                  |  4 ++--
+ res/xml/plait_misc.xml                        |  9 +++++---
+ .../settings/plait/PlaitControllers.kt        | 21 +++++++++++++++++++
+ .../android/settings/plait/PlaitSettings.kt   |  2 +-
+ 4 files changed, 30 insertions(+), 6 deletions(-)
+
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+index 039d7dc..3dac11b 100644
+--- a/res/values/plait_strings.xml
++++ b/res/values/plait_strings.xml
+@@ -118,8 +118,8 @@
+     <string name="plait_charge_limit_level_title">Charging limit</string>
+     <string name="plait_charge_limit_alarm_title">Full before my alarm</string>
+     <string name="plait_charge_limit_alarm_summary">From nine hours before your next alarm, charges slowly so the battery reaches 100% when it rings, then returns to the limit</string>
+-    <string name="plait_downgrade_title">Allow app downgrades</string>
+-    <string name="plait_downgrade_summary">Lets an older version of an app install over a newer one. Turns itself off after one downgrade, after an hour, or at restart</string>
++    <string name="plait_downgrade_title">Approve one app downgrade</string>
++    <string name="plait_downgrade_summary">Enter an installed app’s package name to allow one downgrade explicitly requested through ADB for the owner. Leave blank to cancel. Approval expires after an hour or at restart.</string>
+     <string name="plait_tuner_title">System UI Tuner</string>
+     <string name="plait_tuner_summary">More status bar and system UI options</string>
+ 
+diff --git a/res/xml/plait_misc.xml b/res/xml/plait_misc.xml
+index acca63c..314df9d 100644
+--- a/res/xml/plait_misc.xml
++++ b/res/xml/plait_misc.xml
+@@ -5,12 +5,15 @@
+     xmlns:settings="http://schemas.android.com/apk/res-auto"
+     android:key="plait_misc"
+     android:title="@string/plait_tab_misc">
+-    <SwitchPreferenceCompat
+-        android:key="plait_pm_downgrade_allowed"
++    <EditTextPreference
++        android:key="plait_pm_downgrade_approval"
++        android:persistent="false"
++        android:dialogTitle="@string/plait_downgrade_title"
++        android:dialogMessage="@string/plait_downgrade_summary"
+         android:icon="@drawable/ic_plait_download"
+         android:title="@string/plait_downgrade_title"
+         android:summary="@string/plait_downgrade_summary"
+-        settings:controller="com.android.settings.plait.PlaitPrimaryUserSwitchController" />
++        settings:controller="com.android.settings.plait.PlaitDowngradeController" />
+     <PreferenceCategory android:key="plait_charging_category" android:title="@string/plait_charging_category">
+         <SwitchPreferenceCompat
+             android:key="plait_charge_limit_enabled"
+diff --git a/src/com/android/settings/plait/PlaitControllers.kt b/src/com/android/settings/plait/PlaitControllers.kt
+index 6195c1f..3e74b5e 100644
+--- a/src/com/android/settings/plait/PlaitControllers.kt
++++ b/src/com/android/settings/plait/PlaitControllers.kt
+@@ -71,6 +71,27 @@ open class PlaitListController(context: Context, key: String) :
+     protected open fun onValueChanged(value: Int) {}
+ }
+ 
++/** An owner approval names an installed app and lasts for one explicitly requested ADB downgrade. */
++class PlaitDowngradeController(context: Context, key: String) :
++    BasePreferenceController(context, key), Preference.OnPreferenceChangeListener {
++
++    override fun getAvailabilityStatus() =
++        if (UserHandle.myUserId() == UserHandle.USER_SYSTEM) AVAILABLE else DISABLED_FOR_USER
++
++    override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
++        if (getAvailabilityStatus() != AVAILABLE) return false
++        val pkg = (newValue as? String)?.trim() ?: return false
++        val approval = if (pkg.isEmpty()) null else {
++            val installed = runCatching { mContext.packageManager.getApplicationInfo(pkg, 0) }.getOrNull()
++                ?: return false
++            if (installed.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0) return false
++            val expires = android.os.SystemClock.elapsedRealtime() + 60 * 60 * 1000L
++            "$pkg:$expires:${java.util.UUID.randomUUID()}"
++        }
++        return Settings.Global.putString(mContext.contentResolver, preferenceKey, approval)
++    }
++}
++
+ /** Switches only the main user may change (they act on the whole device). */
+ class PlaitPrimaryUserSwitchController(context: Context, key: String) :
+     PlaitSwitchController(context, key) {
+diff --git a/src/com/android/settings/plait/PlaitSettings.kt b/src/com/android/settings/plait/PlaitSettings.kt
+index 20a9de4..b57406d 100644
+--- a/src/com/android/settings/plait/PlaitSettings.kt
++++ b/src/com/android/settings/plait/PlaitSettings.kt
+@@ -99,7 +99,6 @@ object PlaitSettings {
+             "plait_charge_limit_enabled" to Key(SYSTEM, 0),
+             "plait_charge_limit" to Key(SYSTEM, 80),
+             "plait_charge_limit_by_alarm" to Key(SYSTEM, 0),
+-            "plait_pm_downgrade_allowed" to Key(GLOBAL, 0),
+             // Settings style (PlaitIconStyler)
+             "plait_settings_icon_style" to Key(SYSTEM, 1), // PlaitIconStyler.DEFAULT_STYLE
+             "plait_settings_icon_corner_style" to Key(SYSTEM, 0),
+@@ -121,6 +120,7 @@ object PlaitSettings {
+     val STRING_KEYS: Map<String, PlaitTable> =
+         mapOf(
+             "plait_power_menu_actions" to SECURE,
++            "plait_pm_downgrade_approval" to GLOBAL,
+             "plait_doze_always_on_auto_time" to SECURE,
+         )
+ 
+-- 
+2.56.1
+

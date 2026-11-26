@@ -168,7 +168,7 @@ final class HostsFile {
      * Replaces the blocklist with [in], filtered. Written to a staging file first, then copied into the overlay file in
      * place (the bind mount follows the file, not its name), so readers never see a half-filtered list for long.
      */
-    static synchronized Filtered write(InputStream in) throws IOException {
+    static synchronized Filtered write(InputStream in, java.util.function.BooleanSupplier allowed) throws IOException {
         File staged = new File(DIR, "hosts.new");
         Filtered f;
         try (Reader r = new InputStreamReader(in, StandardCharsets.UTF_8);
@@ -179,6 +179,7 @@ final class HostsFile {
             throw e;
         }
         try {
+            if (!allowed.getAsBoolean()) throw new IOException("Broker access was revoked");
             copyInPlace(staged);
         } finally {
             staged.delete();
@@ -220,10 +221,10 @@ final class HostsFile {
         return countedEntries;
     }
 
-    static Filtered write(File source) throws IOException {
+    static Filtered write(File source, java.util.function.BooleanSupplier allowed) throws IOException {
         if (source.length() > MAX_BYTES) throw new IOException("larger than " + (MAX_BYTES >> 20) + " MB");
         try (InputStream in = new FileInputStream(source)) {
-            return write(in);
+            return write(in, allowed);
         }
     }
 
@@ -253,7 +254,7 @@ final class HostsFile {
      * A process for {@code tee /system/etc/hosts} or {@code dd of=/system/etc/hosts}: what the app writes to its stdin
      * becomes the new blocklist when it closes the stream. [onDone] logs the result.
      */
-    static Process fromStdin(java.util.function.Consumer<String> onDone) throws IOException {
+    static Process fromStdin(java.util.function.BooleanSupplier allowed, java.util.function.Consumer<String> onDone) throws IOException {
         PipedInputStream in = new PipedInputStream(64 * 1024);
         PipedOutputStream stdin = new PipedOutputStream(in);
         CountDownLatch done = new CountDownLatch(1);
@@ -261,7 +262,7 @@ final class HostsFile {
         StringBuilder err = new StringBuilder();
         Thread t = new Thread(() -> {
             try {
-                Filtered f = write(in);
+                Filtered f = write(in, allowed);
                 exit[0] = 0;
                 onDone.accept(f.entries + " names" + (f.dropped > 0 ? ", " + f.dropped + " redirecting lines dropped" : ""));
             } catch (IOException e) {

@@ -13,7 +13,7 @@ Each part of this repository is under the licence of what it comes from. The rul
 
 | What | Licence | Why |
 |---|---|---|
-| Patches in `art`, `frameworks_base`, `frameworks_native`, `frameworks_libs_systemui`, `build_make`, `build_soong`, `external_zstd`, `packages_apps_Contacts`, `packages_apps_Dialer`, `packages_apps_Launcher3`, `packages_apps_Settings`, `packages_apps_ThemePicker` | Apache-2.0 | They change AOSP files. Each patch keeps its author in its `From:` line (ports keep the original author); files a patch adds carry their own header. `external_zstd` only changes AOSP's `Android.bp`, not zstd (BSD-3-Clause OR GPL-2.0). |
+| Patches in `art`, `frameworks_base`, `frameworks_native`, `frameworks_libs_systemui`, `build_make`, `build_soong`, `external_zstd`, `packages_apps_Contacts`, `packages_apps_Dialer`, `packages_apps_Launcher3`, `packages_apps_Settings`, `packages_apps_ThemePicker`, `packages_apps_Traceur`, and `apps/plait-messaging` (a patch series on GrapheneOS's fork of AOSP Messaging, tag `18`) | Apache-2.0 | They change AOSP files. Each patch keeps its author in its `From:` line (ports keep the original author); files a patch adds carry their own header. `external_zstd` only changes AOSP's `Android.bp`, not zstd (BSD-3-Clause OR GPL-2.0). |
 | Patches in `branding`, `packages_apps_SetupWizard2`, `packages_apps_Updater` | MIT | They change GrapheneOS's own projects (the `LICENSE` file in each folder is that project's). |
 | `apply-patches.sh`, `crave-build.sh`, this documentation | Apache-2.0 | PlaitOS's own work. |
 | `apps/plait-backup`, `apps/loudness-boost`, `apps/plait-design`, Plait Shield and Plait Scan (in `apps/plait-broker`) | Apache-2.0 | PlaitOS's own apps and library. |

@@ -16,10 +16,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +28,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,7 +51,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -100,7 +104,7 @@ private fun addressType(address: String, vendor: String?): String {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun BluetoothPage(scanner: BtScanner) {
     val ctx = LocalContext.current
@@ -140,9 +144,10 @@ fun BluetoothPage(scanner: BtScanner) {
             BtDevicePage(page, scanner, pad)
             return@Scaffold
         }
-        LazyColumn(Modifier.padding(pad).fillMaxWidth(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // No spacedBy: the device rows form one group (as on the Network tab)
+        LazyColumn(Modifier.padding(pad).fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
             item {
-                PlaitCard(Modifier.fillMaxWidth()) {
+                PlaitCard(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             when {
@@ -155,7 +160,10 @@ fun BluetoothPage(scanner: BtScanner) {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         scanner.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             when {
                                 !ok -> PlaitFilledButton(onClick = { ask.launch(perms) }) { Text("Allow") }
                                 !on -> PlaitFilledButton(onClick = { enable.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }) { Text("Turn on Bluetooth") }
@@ -166,34 +174,50 @@ fun BluetoothPage(scanner: BtScanner) {
                             TextButton(onClick = { phone = true }) { Text("Phone details") }
                         }
                         Text(
-                            "Bluetooth Low Energy and classic devices. Most phones and trackers change their address every few minutes, so one device can appear more than once.",
+                            "Bluetooth Low Energy and classic devices. Randomized addresses can make a device appear more than once.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
             }
-            items(scanner.devices, key = { it.address }) { BtRow(it, scanner) { selected = it.address } }
+            val devices = scanner.devices
+            itemsIndexed(devices, key = { _, d -> d.address }) { i, d ->
+                BtRow(d, scanner, first = i == 0, last = i == devices.lastIndex) { selected = d.address }
+            }
         }
     }
 }
 
 @Composable
-private fun BtRow(d: BtDevice, scanner: BtScanner, onOpen: () -> Unit) {
+private fun BtRow(d: BtDevice, scanner: BtScanner, first: Boolean, last: Boolean, onOpen: () -> Unit) {
     val id = d.identity
     val kind = id?.kind ?: BtKind.UNKNOWN
     val nums = scanner.numbers()
     val company = nums?.let { n -> d.manufacturer.keys.firstNotNullOfOrNull { n.company(it) } }
     val title = (d.name ?: d.hintName)?.takeIf { it.isNotBlank() } ?: id?.model ?: company ?: "Unknown device"
     val sub = listOfNotNull(kind.label.takeIf { id != null && id.confidence > 0 && kind != BtKind.UNKNOWN }, id?.model?.takeIf { it != title })
-    PlaitCard(Modifier.fillMaxWidth().alpha(if (d.nearby) 1f else 0.55f).clickable { onOpen() }) {
+    val colors = MaterialTheme.colorScheme
+    val iconBackground = if (d.nearby) colors.primaryContainer else colors.surfaceContainerHighest
+    val iconTint = if (d.nearby) colors.onPrimaryContainer else colors.onSurfaceVariant
+    val corner = 14.dp
+    val shape = RoundedCornerShape(topStart = if (first) corner else 0.dp, topEnd = if (first) corner else 0.dp,
+        bottomStart = if (last) corner else 0.dp, bottomEnd = if (last) corner else 0.dp)
+    Column(Modifier.fillMaxWidth().clip(shape).background(colors.surfaceContainer).clickable(onClick = onOpen)) {
+        if (!first) HorizontalDivider(Modifier.padding(start = 68.dp), color = colors.outlineVariant.copy(alpha = 0.5f))
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                PlaitIcon(kind.icon(), kind.label, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            // A tonal tile like every system icon; dimmed when the device is no longer nearby (a state)
+            Box(Modifier.size(40.dp).background(iconBackground, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                PlaitIcon(kind.icon(), kind.label, Modifier.size(22.dp), iconTint)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (sub.isNotEmpty()) Text(sub.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(d.address, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                Text(
+                    d.address,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace,
+                )
                 Text(
                     listOfNotNull(
                         if (d.nearby) "${d.rssi} dBm · ${signal(d.rssi)}" else "not nearby",

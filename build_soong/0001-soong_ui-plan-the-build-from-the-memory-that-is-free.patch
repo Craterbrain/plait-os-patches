@@ -36,7 +36,6 @@ ui/build/memory_budget.go, the Go settings in shared/gomemory.go, both with
 unit tests (including one that soong_build's command has no memory settings).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
 ---
  cmd/soong_build/main.go        |   4 +
  shared/Android.bp              |   2 +

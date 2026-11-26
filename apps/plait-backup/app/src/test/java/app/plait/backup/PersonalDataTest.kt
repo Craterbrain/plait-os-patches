@@ -11,11 +11,21 @@ import java.io.InputStream
 import java.io.OutputStream
 
 class PersonalDataTest {
+    private data class Query(
+        val uri: String,
+        val projection: List<String>? = null,
+        val selection: String? = null,
+        val args: List<String>? = null,
+        val sort: String? = null,
+    )
+
     /** A provider in memory: tables by URI, rows with ids, part files by part id. */
     private class FakeStore : PersonalStore {
         val tables = mutableMapOf<String, MutableList<MutableMap<String, Any?>>>()
         val files = mutableMapOf<Long, ByteArray>()
         val deleted = mutableListOf<String>()
+        val queries = mutableListOf<Query>()
+        var failAttachmentWrite = false
         var nextId = 100L
         var threadQueries = mutableListOf<String>()
 
@@ -28,6 +38,7 @@ class PersonalDataTest {
         }
 
         override fun query(uri: String, projection: Array<String>?, selection: String?, args: Array<String>?, sort: String?): Rows {
+            queries += Query(uri, projection?.toList(), selection, args?.toList(), sort)
             if (uri.startsWith("content://mms-sms/threadID")) {
                 threadQueries += uri
                 return Rows(listOf("_id"), listOf(listOf(7L)))
@@ -47,17 +58,24 @@ class PersonalDataTest {
                 else -> uri
             }
             table(target).add(values.toMutableMap().apply { put("_id", id) })
+            if (uri == PersonalFormat.CONTACT_DATA && values["mimetype"] == PersonalFormat.NAME) {
+                // ContactsProvider derives raw_contacts.display_name from the structured name.
+                table(PersonalFormat.RAW_CONTACTS).single { it["_id"] == values["raw_contact_id"] }
+                    .set("display_name", values["data1"])
+            }
             return if (target == "content://mms/part") "content://mms/part/$id" else "$uri/$id"
         }
 
         override fun delete(uri: String): Int {
             deleted += uri
-            return 1
+            val id = PersonalFormat.idOf(uri)
+            return if (table(PersonalFormat.MMS).removeAll { it["_id"] == id }) 1 else 0
         }
 
         override fun read(uri: String): InputStream = ByteArrayInputStream(files.getValue(uri.substringAfterLast('/').toLong()))
 
         override fun write(uri: String): OutputStream {
+            if (failAttachmentWrite) throw java.io.IOException("attachment write failed")
             val id = uri.substringAfterLast('/').toLong()
             return object : ByteArrayOutputStream() {
                 override fun close() {
@@ -155,6 +173,60 @@ class PersonalDataTest {
         val photo = data.single { it["mimetype"] == PersonalFormat.PHOTO }
         assertNull(photo["data14"])
         assertArrayEquals(byteArrayOf(9, 9), photo["data15"] as ByteArray)
+    }
+
+    @Test
+    fun phoneRestoreQueriesMatchTheRomServiceContract() {
+        val source = FakeStore()
+        source.add(PersonalFormat.CALLS, "number" to "555", "date" to 1L, "duration" to 1L, "type" to 1L)
+        source.add(PersonalFormat.SMS, "address" to "555", "date" to 2L, "type" to 1L, "body" to "hello")
+        val message = source.add(PersonalFormat.MMS, "date" to 3L, "msg_box" to 2L, "m_type" to 128L)
+        source.add("content://mms/$message/addr", "address" to "+1555", "type" to 151L)
+        source.add("content://mms/$message/addr", "address" to "demo+tag@example.com", "type" to 151L)
+        source.add(PersonalFormat.MMS_PART, "mid" to message, "ct" to "text/plain", "text" to "hello")
+        val contact = source.add(PersonalFormat.RAW_CONTACTS, "display_name" to "Ada", "deleted" to 0L)
+        source.add(PersonalFormat.CONTACT_DATA, "raw_contact_id" to contact, "mimetype" to PersonalFormat.NAME, "data1" to "Ada")
+
+        val expected = mapOf(
+            Personal.CALL_LOG to listOf(
+                Query(PersonalFormat.CALLS, selection = "0"),
+                Query(PersonalFormat.CALLS, listOf("number", "date", "duration", "type")),
+            ),
+            Personal.SMS to listOf(
+                Query(PersonalFormat.SMS, selection = "0"),
+                Query(PersonalFormat.SMS, listOf("date", "type", "address", "body")),
+            ),
+            Personal.MMS to listOf(
+                Query(PersonalFormat.MMS, selection = "0"),
+                Query(PersonalFormat.MMS, listOf("date", "msg_box", "m_type", "sub")),
+                Query("content://mms-sms/threadID?recipient=%2B1555&recipient=demo%2Btag%40example.com"),
+            ),
+            Personal.CONTACTS to listOf(
+                Query(PersonalFormat.RAW_CONTACTS, listOf("display_name"), selection = "deleted = 0"),
+            ),
+        )
+        for ((kind, expectedQueries) in expected) {
+            val target = FakeStore()
+            assertEquals(kind.name, PersonalResult(1, 0, 0), roundTrip(kind, source, target))
+            assertEquals(kind.name, expectedQueries, target.queries)
+            assertEquals(kind.name, PersonalResult(0, 1, 0), roundTrip(kind, source, target))
+        }
+    }
+
+    @Test
+    fun mmsAttachmentFailureDeletesOnlyTheNewMessage() {
+        val old = FakeStore()
+        val message = old.add(PersonalFormat.MMS, "date" to 50L, "msg_box" to 1L, "m_type" to 132L)
+        old.add("content://mms/$message/addr", "address" to "+1555", "type" to 137L)
+        val attachment = old.add(PersonalFormat.MMS_PART, "mid" to message, "ct" to "image/jpeg", "_data" to "/data/x/PART_1")
+        old.files[attachment] = byteArrayOf(1, 2, 3)
+
+        val target = FakeStore()
+        val existing = target.add(PersonalFormat.MMS, "date" to 10L, "msg_box" to 1L, "m_type" to 132L)
+        target.failAttachmentWrite = true
+        assertEquals(PersonalResult(0, 0, 1), roundTrip(Personal.MMS, old, target))
+        assertEquals(existing, target.table(PersonalFormat.MMS).single()["_id"])
+        assertEquals(listOf("${PersonalFormat.MMS}/${existing + 1}"), target.deleted)
     }
 
     @Test

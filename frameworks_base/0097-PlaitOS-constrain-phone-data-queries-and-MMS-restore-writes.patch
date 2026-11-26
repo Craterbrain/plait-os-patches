@@ -1,0 +1,385 @@
+From b0a9b707ddbeb0aec0a95489b598ab1cfe3c4d72 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 08:26:46 -0600
+Subject: [PATCH] PlaitOS: constrain phone data queries and MMS restore writes
+
+---
+ .../android/internal/plait/IPlaitBackup.aidl  |   7 +-
+ .../server/plait/PlaitBackupService.java      | 255 +++++++++++++++---
+ 2 files changed, 227 insertions(+), 35 deletions(-)
+
+diff --git a/core/java/com/android/internal/plait/IPlaitBackup.aidl b/core/java/com/android/internal/plait/IPlaitBackup.aidl
+index ee2592100..60d01b8a0 100644
+--- a/core/java/com/android/internal/plait/IPlaitBackup.aidl
++++ b/core/java/com/android/internal/plait/IPlaitBackup.aidl
+@@ -57,8 +57,7 @@ interface IPlaitBackup {
+     // Only a fixed set of provider URIs is accepted (PlaitBackupService.personalUri); the calls run as the system.
+ 
+     /**
+-     * Rows of a query as JSON lines into sink: {"columns":[...]} then one JSON array per row (blobs as
+-     * {"blob":"<base64>"}). Scope backup.apps.
++     * Legacy caller-owned output pipe. Replaced by personalQueryPipe; kept for transaction numbering.
+      */
+     void personalQuery(String grant, int userId, String uri, in String[] projection, String selection,
+             in String[] selectionArgs, String sortOrder, in ParcelFileDescriptor sink);
+@@ -88,4 +87,8 @@ interface IPlaitBackup {
+     void restorePartStage(String grant, String packageName, int userId, int part, in ParcelFileDescriptor source);
+ 
+     void restoreFinish(String grant, String packageName, int userId, in int[] parts, boolean commit);
++
++    /** Fixed phone-data query streamed as JSON lines through a reliable service-owned pipe. */
++    ParcelFileDescriptor personalQueryPipe(String grant, int userId, String uri, in String[] projection,
++            String selection, in String[] selectionArgs, String sortOrder);
+ }
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index 21ce7b6bc..2e2a2b98f 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -24,14 +24,21 @@ import android.content.pm.SigningInfo;
+ import android.net.Uri;
+ import android.os.Binder;
+ import android.os.Bundle;
++import android.os.CancellationSignal;
+ import android.os.IBinder;
+ import android.os.ParcelFileDescriptor;
+ import android.os.Process;
+ import android.os.ServiceManager;
++import android.os.SystemClock;
+ import android.os.UserHandle;
+ import android.util.Slog;
++import android.system.ErrnoException;
++import android.system.Os;
++import android.system.OsConstants;
++import android.system.StructPollfd;
+ 
+ import com.android.internal.app.IAppOpsService;
++import com.android.internal.os.BackgroundThread;
+ import com.android.server.pm.permission.SpecialRuntimePermUtils;
+ import com.android.internal.plait.IPlaitBackup;
+ import com.android.server.LocalServices;
+@@ -54,6 +61,9 @@ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.concurrent.LinkedBlockingQueue;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.Semaphore;
+ import java.util.concurrent.TimeUnit;
+ 
+ /**
+@@ -949,14 +959,28 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+     static PersonalUri personalUri(String text) {
+         Uri u = text == null ? null : Uri.parse(text);
+         if (u == null || !"content".equals(u.getScheme()) || u.getEncodedUserInfo() != null
+-                || u.getEncodedFragment() != null || u.getPort() != -1) {
++                || u.getEncodedFragment() != null || u.getPort() != -1
++                || !java.util.Objects.equals(u.getEncodedAuthority(), u.getAuthority())
++                || !java.util.Objects.equals(u.getEncodedPath(), u.getPath())) {
+             throw new SecurityException("not a personal-data URI: " + text);
+         }
+         String path = u.getPath() == null ? "" : u.getPath().replaceAll("^/+|/+$", "");
+         boolean params = u.getEncodedQuery() != null;
+         String auth = String.valueOf(u.getAuthority());
+         if (auth.equals("mms-sms") && path.equals("threadID")) {
+-            return new PersonalUri(u, new String[] {SMS, MMS}, true, false, false, false);
++            List<String> recipients = u.getQueryParameters("recipient");
++            if (!u.getQueryParameterNames().equals(Set.of("recipient")) || recipients.isEmpty()
++                    || recipients.size() > 64) {
++                throw new SecurityException("invalid MMS recipients");
++            }
++            Uri.Builder canonical = Uri.parse("content://mms-sms/threadID").buildUpon();
++            for (String recipient : recipients) {
++                if (recipient.isBlank() || recipient.length() > 512) {
++                    throw new SecurityException("invalid MMS recipient");
++                }
++                canonical.appendQueryParameter("recipient", recipient);
++            }
++            return new PersonalUri(canonical.build(), new String[] {MMS}, true, false, false, false);
+         }
+         if (params) throw new SecurityException("query parameters are not accepted: " + text);
+         switch (auth) {
+@@ -1018,29 +1042,132 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         return userContext(userId).getContentResolver();
+     }
+ 
++    private static final int PERSONAL_QUERY_TIMEOUT_MS = 120_000;
++    private static final int PERSONAL_QUERY_LIMIT = 2;
++    private final Semaphore mPersonalQueries = new Semaphore(PERSONAL_QUERY_LIMIT);
++    private final ExecutorService mPersonalQueryWorkers = Executors.newFixedThreadPool(PERSONAL_QUERY_LIMIT);
++
++    private record PersonalQuery(String[] columns, String selection, String sort, boolean restore) {}
++
++    private static PersonalQuery checkedPersonalQuery(PersonalUri target, String[] projection,
++            String selection, String[] selectionArgs, String sortOrder) {
++        if (selectionArgs != null && selectionArgs.length != 0) {
++            throw new SecurityException("personal queries do not accept selection arguments");
++        }
++        String authority = target.uri.getAuthority();
++        String path = String.join("/", target.uri.getPathSegments());
++        if ("mms-sms".equals(authority) && projection == null && selection == null && sortOrder == null) {
++            return new PersonalQuery(null, null, null, true);
++        }
++        boolean collection = ("call_log".equals(authority) && "calls".equals(path))
++                || (("sms".equals(authority) || "mms".equals(authority)) && path.isEmpty());
++        if (collection && "0".equals(selection) && projection == null && sortOrder == null) {
++            return new PersonalQuery(null, "0", null, true);
++        }
++        if (collection && selection == null && sortOrder == null && projection != null) {
++            String[] deduplication = switch (authority) {
++                case "call_log" -> new String[] {"number", "date", "duration", "type"};
++                case "sms" -> new String[] {"date", "type", "address", "body"};
++                default -> new String[] {"date", "msg_box", "m_type", "sub"};
++            };
++            if (Arrays.equals(deduplication, projection)) {
++                return new PersonalQuery(deduplication, null, null, true);
++            }
++        }
++        boolean rawContacts = "com.android.contacts".equals(authority) && "raw_contacts".equals(path);
++        if (rawContacts && "deleted = 0".equals(selection) && sortOrder == null
++                && Arrays.equals(projection, new String[] {"display_name"})) {
++            return new PersonalQuery(new String[] {"display_name"}, "deleted = 0", null, true);
++        }
++        if (collection && projection == null && selection == null && "date DESC".equals(sortOrder)) {
++            return new PersonalQuery(null, null, "date DESC", false);
++        }
++        if (rawContacts && projection == null && "deleted = 0".equals(selection) && sortOrder == null) {
++            return new PersonalQuery(null, "deleted = 0", null, false);
++        }
++        if (projection == null && selection == null && sortOrder == null
++                && (("mms".equals(authority) && ("part".equals(path) || path.matches("[0-9]+/addr")))
++                || ("com.android.contacts".equals(authority) && "data".equals(path)))) {
++            return new PersonalQuery(null, null, null, false);
++        }
++        throw new SecurityException("unsupported personal-data query");
++    }
++
++    /** The service-owned writer is nonblocking, and the deadline also bounds progress on a slow reader. */
++    private static void writePersonalLine(java.io.FileDescriptor fd, String json, long deadline)
++            throws IOException, ErrnoException {
++        byte[] bytes = (json + "\n").getBytes(StandardCharsets.UTF_8);
++        StructPollfd poll = new StructPollfd();
++        poll.fd = fd;
++        poll.events = (short) OsConstants.POLLOUT;
++        StructPollfd[] polls = {poll};
++        int offset = 0;
++        while (offset < bytes.length) {
++            long remaining = deadline - SystemClock.elapsedRealtime();
++            if (remaining <= 0 || Os.poll(polls, (int) remaining) == 0) {
++                throw new IOException("personal-data query timed out");
++            }
++            if ((poll.revents & OsConstants.POLLOUT) == 0) throw new IOException("query reader closed");
++            try {
++                offset += Os.write(fd, bytes, offset, bytes.length - offset);
++            } catch (ErrnoException e) {
++                if (e.errno != OsConstants.EAGAIN) throw e;
++            }
++        }
++    }
++
+     @Override
+     public void personalQuery(String grant, int userId, String uri, String[] projection, String selection,
+             String[] selectionArgs, String sortOrder, ParcelFileDescriptor out) {
++        closeQuietly(out);
++        throw new UnsupportedOperationException("update Plait Backup to use personalQueryPipe");
++    }
++
++    @Override
++    public ParcelFileDescriptor personalQueryPipe(String grant, int userId, String uri, String[] projection,
++            String selection, String[] selectionArgs, String sortOrder) {
++        PersonalUri target = personalUri(uri);
++        if (!target.query) throw new SecurityException("no queries on " + uri);
++        PersonalQuery query = checkedPersonalQuery(target, projection, selection, selectionArgs, sortOrder);
++        Call call = verifyPersonal(grant,
++                query.restore ? PlaitGrant.SCOPE_RESTORE : PlaitGrant.SCOPE_BACKUP, target, userId);
++        if (!mPersonalQueries.tryAcquire()) throw new IllegalStateException("personal-data queries are busy");
++        ParcelFileDescriptor[] pipe = null;
+         try {
+-            PersonalUri p = personalUri(uri);
+-            if (!p.query) throw new SecurityException("no queries on " + uri);
+-            // A restore reads the rows that are already there (to skip duplicates and find conversation
+-            // threads) before it adds any, so a restore grant may query as well as a backup grant
+-            Call call;
+-            try {
+-                call = verifyPersonal(grant, PlaitGrant.SCOPE_BACKUP, p, userId);
+-            } catch (SecurityException notBackup) {
+-                call = verifyPersonal(grant, PlaitGrant.SCOPE_RESTORE, p, userId);
++            pipe = ParcelFileDescriptor.createReliablePipe();
++            ParcelFileDescriptor writer = pipe[1];
++            long deadline = SystemClock.elapsedRealtime() + PERSONAL_QUERY_TIMEOUT_MS;
++            mPersonalQueryWorkers.execute(() -> runPersonalQuery(call, target, query, writer, deadline));
++            return pipe[0];
++        } catch (IOException | RuntimeException e) {
++            if (pipe != null) {
++                closeQuietly(pipe[0]);
++                closeQuietly(pipe[1]);
+             }
+-            final long ident = Binder.clearCallingIdentity();
+-            try (android.database.Cursor c = resolver(userId).query(p.uri, projection, selection, selectionArgs,
+-                    sortOrder);
+-                    java.io.Writer w = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
+-                            new ParcelFileDescriptor.AutoCloseOutputStream(dup(out)), StandardCharsets.UTF_8))) {
++            mPersonalQueries.release();
++            throw new IllegalStateException("could not start personal-data query", e);
++        }
++    }
++
++    private void runPersonalQuery(Call call, PersonalUri target, PersonalQuery query,
++            ParcelFileDescriptor writer, long deadline) {
++        CancellationSignal cancellation = new CancellationSignal();
++        Runnable timeout = () -> {
++            failPersonalQuery(writer, "Personal-data query timed out");
++            cancellation.cancel();
++        };
++        try {
++            long remaining = deadline - SystemClock.elapsedRealtime();
++            if (remaining <= 0) throw new IOException("personal-data query timed out");
++            java.io.FileDescriptor fd = writer.getFileDescriptor();
++            int flags = Os.fcntlInt(fd, OsConstants.F_GETFL, 0);
++            Os.fcntlInt(fd, OsConstants.F_SETFL, flags | OsConstants.O_NONBLOCK);
++            BackgroundThread.getHandler().postDelayed(timeout, remaining);
++            try (android.database.Cursor c = resolver(call.userId).query(target.uri, query.columns,
++                    query.selection, null, query.sort, cancellation)) {
+                 org.json.JSONObject head = new org.json.JSONObject();
+                 head.put("columns", new org.json.JSONArray(c == null ? new String[0] : c.getColumnNames()));
+-                w.write(head.toString());
+-                w.write('\n');
++                writePersonalLine(fd, head.toString(), deadline);
+                 while (c != null && c.moveToNext()) {
+                     org.json.JSONArray row = new org.json.JSONArray();
+                     for (int i = 0; i < c.getColumnCount(); i++) {
+@@ -1063,28 +1190,60 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+                                 break;
+                         }
+                     }
+-                    w.write(row.toString());
+-                    w.write('\n');
++                    writePersonalLine(fd, row.toString(), deadline);
+                 }
+-                logPersonal(call, call.grant.scopes.contains(PlaitGrant.SCOPE_BACKUP) ? "backup" : "restore");
+-            } catch (IOException | org.json.JSONException e) {
+-                throw new IllegalStateException("query of " + uri + " failed: " + e.getMessage());
+-            } finally {
+-                Binder.restoreCallingIdentity(ident);
++                logPersonal(call, query.restore ? "restore" : "backup");
+             }
++        } catch (IOException | ErrnoException | org.json.JSONException | RuntimeException e) {
++            Slog.w(TAG, "personal-data query failed", e);
++            failPersonalQuery(writer, "Personal-data query failed or timed out");
+         } finally {
+-            closeQuietly(out);
++            BackgroundThread.getHandler().removeCallbacks(timeout);
++            synchronized (writer) {
++                closeQuietly(writer);
++            }
++            mPersonalQueries.release();
+         }
+     }
+ 
+-    private static ParcelFileDescriptor dup(ParcelFileDescriptor pfd) throws IOException {
+-        return pfd.dup();
++    private static void failPersonalQuery(ParcelFileDescriptor writer, String message) {
++        synchronized (writer) {
++            try {
++                writer.closeWithError(message);
++            } catch (IOException ignored) {
++                // The reader may already have disconnected.
++            }
++        }
+     }
+ 
+     /** SMS and MMS boxes a restore may write: inbox, sent, drafts, failed. Never the outbox or queue (they send). */
+     private static final Set<Integer> SMS_TYPES = Set.of(1, 2, 3, 5);
+     private static final Set<Integer> MMS_BOXES = Set.of(1, 2, 3);
+ 
++    private record MmsRestore(Uri message, Set<Long> parts) {}
++    private final java.util.LinkedHashMap<String, MmsRestore> mMmsRestores = new java.util.LinkedHashMap<>();
++
++    private synchronized void rememberMms(Call call, Uri message) {
++        mMmsRestores.remove(call.grant.grantId);
++        if (mMmsRestores.size() >= 32) mMmsRestores.remove(mMmsRestores.keySet().iterator().next());
++        mMmsRestores.put(call.grant.grantId, new MmsRestore(message, new HashSet<>()));
++    }
++
++    private synchronized MmsRestore requireMms(Call call, Uri uri, boolean attachment) {
++        MmsRestore restore = mMmsRestores.get(call.grant.grantId);
++        List<String> path = uri.getPathSegments();
++        if (restore == null || (attachment
++                ? !restore.parts.contains(android.content.ContentUris.parseId(uri))
++                : !path.get(0).equals(restore.message.getLastPathSegment()))) {
++            throw new SecurityException("MMS row was not created by this restore");
++        }
++        return restore;
++    }
++
++    private synchronized void rememberMmsPart(MmsRestore restore, Uri uri) {
++        if (restore.parts.size() < 256) restore.parts.add(android.content.ContentUris.parseId(uri));
++    }
++
+     @Override
+     public String personalInsert(String grant, int userId, String uri, android.content.ContentValues values) {
+         PersonalUri p = personalUri(uri);
+@@ -1109,7 +1268,23 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }
+         final long ident = Binder.clearCallingIdentity();
+         try {
+-            Uri inserted = resolver(userId).insert(p.uri, v);
++            Uri inserted;
++            if ("mms".equals(auth)) {
++                synchronized (restoreLock(call)) {
++                    List<String> path = p.uri.getPathSegments();
++                    MmsRestore current = path.isEmpty() ? null : requireMms(call, p.uri, false);
++                    // The provider takes the parent ID from the permitted path.
++                    v.remove("mid");
++                    v.remove("msg_id");
++                    inserted = resolver(userId).insert(p.uri, v);
++                    if (inserted != null && current == null) rememberMms(call, inserted);
++                    if (inserted != null && current != null && "part".equals(path.get(1))) {
++                        rememberMmsPart(current, inserted);
++                    }
++                }
++            } else {
++                inserted = resolver(userId).insert(p.uri, v);
++            }
+             logPersonal(call, "restore");
+             return inserted == null ? null : inserted.toString();
+         } finally {
+@@ -1124,9 +1299,15 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         Call call = verifyPersonal(grant, PlaitGrant.SCOPE_RESTORE, p, userId);
+         final long ident = Binder.clearCallingIdentity();
+         try {
+-            int n = resolver(userId).delete(p.uri, null, null);
+-            logPersonal(call, "clean up a partial restore of");
+-            return n;
++            synchronized (restoreLock(call)) {
++                MmsRestore restore = requireMms(call, p.uri, false);
++                int n = resolver(userId).delete(restore.message, null, null);
++                synchronized (this) {
++                    mMmsRestores.remove(call.grant.grantId);
++                }
++                logPersonal(call, "clean up a partial restore of");
++                return n;
++            }
+         } finally {
+             Binder.restoreCallingIdentity(ident);
+         }
+@@ -1141,8 +1322,16 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         Call call = verifyPersonal(grant, write ? PlaitGrant.SCOPE_RESTORE : PlaitGrant.SCOPE_BACKUP, p, userId);
+         final long ident = Binder.clearCallingIdentity();
+         try {
++            if (write) {
++                synchronized (restoreLock(call)) {
++                    requireMms(call, p.uri, true);
++                    ParcelFileDescriptor pfd = resolver(userId).openFileDescriptor(p.uri, mode);
++                    logPersonal(call, "restore");
++                    return pfd;
++                }
++            }
+             ParcelFileDescriptor pfd = resolver(userId).openFileDescriptor(p.uri, mode);
+-            logPersonal(call, write ? "restore" : "backup");
++            logPersonal(call, "backup");
+             return pfd;
+         } catch (java.io.FileNotFoundException e) {
+             throw new IllegalArgumentException(uri + ": " + e.getMessage());
+-- 
+2.56.1
+

@@ -1,0 +1,221 @@
+From 89fb8374a9e5b9b23c230394271d5363a10ce864 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 07:54:46 -0600
+Subject: [PATCH] PlaitOS: bind staged restores and keep local APK provenance
+
+---
+ .../server/plait/PlaitBackupService.java      | 152 +++++++++++++-----
+ 1 file changed, 113 insertions(+), 39 deletions(-)
+
+diff --git a/services/core/java/com/android/server/plait/PlaitBackupService.java b/services/core/java/com/android/server/plait/PlaitBackupService.java
+index 11dd39842..21ce7b6bc 100644
+--- a/services/core/java/com/android/server/plait/PlaitBackupService.java
++++ b/services/core/java/com/android/server/plait/PlaitBackupService.java
+@@ -605,13 +605,9 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         // access, ...) apply to the app as they would to any app the user installed from a file
+         params.setPackageSource(PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE);
+         if (installerName != null) {
+-            // Looks like the store's own install: installer and initiator are the store (see installerFor), the store is
+-            // the update owner where Android enforces that, the package source is "store" and the reason a device restore. Only known stores get here.
++            // Attribution is useful for updates, but the APK itself came from a local archive.
+             params.installerPackageName = installerName;
+-            params.setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE);
+-            // What a store's own restore of a new phone records (the rooted Plait Backup records the same)
+             params.setInstallReason(PackageManager.INSTALL_REASON_DEVICE_RESTORE);
+-            params.installFlags |= PackageManager.INSTALL_REQUEST_UPDATE_OWNERSHIP;
+         }
+         params.installFlags |= PackageManager.INSTALL_REPLACE_EXISTING;
+         int sessionId = -1;
+@@ -679,6 +675,43 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+         }
+     }
+ 
++    private record RestorePart(int userId, String pkg, int part) {}
++    private record StagedRestore(String grantId, int uid, long version, String codePath,
++            String volume, String certificate) {}
++
++    private final java.util.concurrent.ConcurrentHashMap<RestorePart, StagedRestore> mStages =
++            new java.util.concurrent.ConcurrentHashMap<>();
++    private final Object[] mRestoreLocks = newRestoreLocks();
++
++    private static Object[] newRestoreLocks() {
++        Object[] locks = new Object[32];
++        java.util.Arrays.setAll(locks, unused -> new Object());
++        return locks;
++    }
++
++    private Object restoreLock(Call call) {
++        return mRestoreLocks[Math.floorMod(java.util.Objects.hash(call.userId, call.pkg),
++                mRestoreLocks.length)];
++    }
++
++    private RestorePart partKey(Call call, int part) {
++        return new RestorePart(call.userId, call.pkg, part);
++    }
++
++    private StagedRestore stageIdentity(Call call, ApplicationInfo ai, int part) {
++        String cert = signingCert(call.pkg, call.userId);
++        if (cert == null) throw new SecurityException("cannot verify the restore target certificate");
++        return new StagedRestore(call.grant.grantId, ai.uid, ai.longVersionCode, ai.sourceDir,
++                volumeFor(ai, part), cert);
++    }
++
++    private void requireActiveRestore(Call call) {
++        if (!call.grant.allows(PlaitGrant.SCOPE_RESTORE, call.pkg, System.currentTimeMillis())
++                || !isActive(call.grant.grantId, call.userId)) {
++            throw new SecurityException("restore grant expired or was revoked");
++        }
++    }
++
+     @Override
+     public void restorePart(String grant, String packageName, int userId, int part, ParcelFileDescriptor source) {
+         try {
+@@ -686,15 +719,19 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
+             final long ident = Binder.clearCallingIdentity();
+             try {
+-                ApplicationInfo ai = target(call, true);
+-                String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
+-                // Frozen, not just stopped: an alarm, job or push must not start the app on half-restored data
+-                try (AutoCloseable frozen = LocalServices.getService(PackageManagerInternal.class)
+-                        .plaitFreezePackage(call.pkg, call.userId, "plait_backup restore")) {
+-                    mInstaller.plaitRestoreAppData(volumeFor(ai, part), call.pkg, userId,
+-                            UserHandle.getAppId(ai.uid), seInfo, part, source);
++                synchronized (restoreLock(call)) {
++                    requireActiveRestore(call);
++                    mStages.remove(partKey(call, part));
++                    ApplicationInfo ai = target(call, true);
++                    String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
++                    // Frozen, not just stopped: an alarm, job or push must not start the app on half-restored data
++                    try (AutoCloseable frozen = LocalServices.getService(PackageManagerInternal.class)
++                            .plaitFreezePackage(call.pkg, call.userId, "plait_backup restore")) {
++                        mInstaller.plaitRestoreAppData(volumeFor(ai, part), call.pkg, userId,
++                                UserHandle.getAppId(ai.uid), seInfo, part, source);
++                    }
++                    logUse(call, "restore part " + part + " of");
+                 }
+-                logUse(call, "restore part " + part + " of");
+             } catch (InstallerException e) {
+                 throw failed("restore of " + call.pkg, e);
+             } catch (RuntimeException e) {
+@@ -717,13 +754,28 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+             Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
+             final long ident = Binder.clearCallingIdentity();
+             try {
+-                ApplicationInfo ai = target(call, true);
+-                String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
+-                mInstaller.plaitRestoreAppDataStage(volumeFor(ai, part), call.pkg, userId,
+-                        UserHandle.getAppId(ai.uid), seInfo, part, source);
+-                logUse(call, "stage part " + part + " of");
++                synchronized (restoreLock(call)) {
++                    requireActiveRestore(call);
++                    // Staging can recover a previous journal, which must happen with the target stopped.
++                    try (AutoCloseable frozen = LocalServices.getService(PackageManagerInternal.class)
++                            .plaitFreezePackage(call.pkg, call.userId, "plait_backup stage")) {
++                        ApplicationInfo ai = target(call, true);
++                        RestorePart key = partKey(call, part);
++                        StagedRestore owner = stageIdentity(call, ai, part);
++                        mStages.remove(key);
++                        String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
++                        mInstaller.plaitRestoreAppDataStage(volumeFor(ai, part), call.pkg, userId,
++                                UserHandle.getAppId(ai.uid), seInfo, part, source);
++                        mStages.put(key, owner);
++                    }
++                    logUse(call, "stage part " + part + " of");
++                }
+             } catch (InstallerException e) {
+                 throw failed("staging the restore of " + call.pkg, e);
++            } catch (RuntimeException e) {
++                throw e;
++            } catch (Exception e) {
++                throw new IllegalStateException("staging restore of " + call.pkg, e);
+             } finally {
+                 Binder.restoreCallingIdentity(ident);
+             }
+@@ -734,33 +786,51 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+ 
+     @Override
+     public void restoreFinish(String grant, String packageName, int userId, int[] parts, boolean commit) {
+-        for (int part : parts) checkPart(part);
++        if (parts == null) throw new IllegalArgumentException("missing restore parts");
++        java.util.Set<Integer> distinct = new java.util.HashSet<>();
++        for (int part : parts) {
++            checkPart(part);
++            if (!distinct.add(part)) throw new IllegalArgumentException("duplicate restore part");
++        }
+         Call call = verify(grant, PlaitGrant.SCOPE_RESTORE, packageName, userId);
++        if (parts.length == 0) return;
+         final long ident = Binder.clearCallingIdentity();
+         try {
+-            ApplicationInfo ai = target(call, true);
+-            String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
+-            int appId = UserHandle.getAppId(ai.uid);
+-            if (!commit) {
+-                discardStaged(ai, call, parts, seInfo, appId);
+-                return;
+-            }
+-            // Frozen, not just stopped: an alarm, job or push must not start the app on half-restored data
+-            try (AutoCloseable frozen = LocalServices.getService(PackageManagerInternal.class)
+-                    .plaitFreezePackage(call.pkg, call.userId, "plait_backup restore")) {
+-                for (int i = 0; i < parts.length; i++) {
+-                    try {
+-                        mInstaller.plaitRestoreAppDataFinish(volumeFor(ai, parts[i]), call.pkg, userId, appId,
+-                                seInfo, parts[i], true);
+-                    } catch (InstallerException e) {
+-                        // What is not in place yet is thrown away; what already is stays (a swap cannot be undone)
+-                        discardStaged(ai, call, java.util.Arrays.copyOfRange(parts, i + 1, parts.length), seInfo,
+-                                appId);
+-                        throw failed("restore of " + call.pkg, e);
++            synchronized (restoreLock(call)) {
++                requireActiveRestore(call);
++                try (AutoCloseable frozen = LocalServices.getService(PackageManagerInternal.class)
++                        .plaitFreezePackage(call.pkg, call.userId, "plait_backup restore")) {
++                    ApplicationInfo ai = target(call, true);
++                    String seInfo = ai.seInfo + (ai.seInfoUser == null ? "" : ai.seInfoUser);
++                    int appId = UserHandle.getAppId(ai.uid);
++                    if (!commit) {
++                        discardStaged(ai, call, parts, seInfo, appId);
++                        return;
++                    }
++                    // Validate the entire request before changing the first part.
++                    for (int part : parts) {
++                        if (!stageIdentity(call, ai, part).equals(mStages.get(partKey(call, part)))) {
++                            throw new SecurityException("restore part is not staged for this grant and target");
++                        }
++                    }
++                    for (int i = 0; i < parts.length; i++) {
++                        try {
++                            requireActiveRestore(call);
++                            mInstaller.plaitRestoreAppDataFinish(volumeFor(ai, parts[i]), call.pkg,
++                                    userId, appId, seInfo, parts[i], true);
++                            mStages.remove(partKey(call, parts[i]));
++                        } catch (InstallerException | RuntimeException e) {
++                            discardStaged(ai, call, java.util.Arrays.copyOfRange(parts, i, parts.length),
++                                    seInfo, appId);
++                            if (e instanceof InstallerException installerError) {
++                                throw failed("restore of " + call.pkg, installerError);
++                            }
++                            throw e;
++                        }
+                     }
+                 }
++                logUse(call, "restore parts of");
+             }
+-            logUse(call, "restore parts of");
+         } catch (RuntimeException e) {
+             throw e;
+         } catch (Exception e) {
+@@ -774,6 +844,10 @@ public final class PlaitBackupService extends IPlaitBackup.Stub {
+     private void discardStaged(ApplicationInfo ai, Call call, int[] parts, String seInfo, int appId) {
+         for (int part : parts) {
+             try {
++                RestorePart key = partKey(call, part);
++                StagedRestore owner = mStages.get(key);
++                if (owner == null || !owner.equals(stageIdentity(call, ai, part))) continue;
++                mStages.remove(key);
+                 mInstaller.plaitRestoreAppDataFinish(volumeFor(ai, part), call.pkg, call.userId, appId, seInfo, part,
+                         false);
+             } catch (InstallerException | RuntimeException e) {
+-- 
+2.56.1
+

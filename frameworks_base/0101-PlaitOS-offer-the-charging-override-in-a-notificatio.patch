@@ -1,0 +1,246 @@
+From bc7ce5c1fa2c5e9275cbc08ca01aca02c40a70b0 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 11:03:33 -0600
+Subject: [PATCH] PlaitOS: offer the charging override in a notification
+
+---
+ core/res/res/values/plait_charging.xml        |   8 ++
+ core/res/res/values/symbols.xml               |   7 +-
+ .../server/plait/PlaitChargeLimitService.java | 119 +++++++++++++-----
+ 3 files changed, 100 insertions(+), 34 deletions(-)
+ create mode 100644 core/res/res/values/plait_charging.xml
+
+diff --git a/core/res/res/values/plait_charging.xml b/core/res/res/values/plait_charging.xml
+new file mode 100644
+index 000000000..fda4a2754
+--- /dev/null
++++ b/core/res/res/values/plait_charging.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="plait_charge_notification_channel">Charging limit</string>
++    <string name="plait_charge_notification_title">Charging</string>
++    <string name="plait_charge_notification_limit">Charge limit is %1$d%%</string>
++    <string name="plait_charge_notification_override">Charging to 100% for this session</string>
++    <string name="plait_charge_notification_action">Charge to 100% once</string>
++</resources>
+diff --git a/core/res/res/values/symbols.xml b/core/res/res/values/symbols.xml
+index 5300fe8a3..09c48ef20 100644
+--- a/core/res/res/values/symbols.xml
++++ b/core/res/res/values/symbols.xml
+@@ -6631,4 +6631,9 @@
+   <java-symbol type="drawable" name="ic_cross_device_sync_airplane" />
+   <!-- Disable the Video Capability over IWLAN when Wi-Fi Calling is turned off  -->
+   <java-symbol type="bool" name="config_disable_video_capability_when_wfc_off" />
+-  </resources>
++  <java-symbol type="string" name="plait_charge_notification_channel" />
++  <java-symbol type="string" name="plait_charge_notification_title" />
++  <java-symbol type="string" name="plait_charge_notification_limit" />
++  <java-symbol type="string" name="plait_charge_notification_override" />
++  <java-symbol type="string" name="plait_charge_notification_action" />
++</resources>
+diff --git a/services/core/java/com/android/server/plait/PlaitChargeLimitService.java b/services/core/java/com/android/server/plait/PlaitChargeLimitService.java
+index ed12cf0ad..84d4d7ea6 100644
+--- a/services/core/java/com/android/server/plait/PlaitChargeLimitService.java
++++ b/services/core/java/com/android/server/plait/PlaitChargeLimitService.java
+@@ -8,12 +8,16 @@ package com.android.server.plait;
+ 
+ import android.app.ActivityManager;
+ import android.app.AlarmManager;
++import android.app.Notification;
++import android.app.NotificationChannel;
++import android.app.NotificationManager;
++import android.app.PendingIntent;
+ import android.content.BroadcastReceiver;
+ import android.content.Context;
+ import android.content.Intent;
+ import android.content.IntentFilter;
+ import android.database.ContentObserver;
+-import android.os.BatteryManager;
++import android.os.BatteryManagerInternal;
+ import android.os.Handler;
+ import android.os.SystemProperties;
+ import android.os.UserHandle;
+@@ -21,6 +25,7 @@ import android.provider.Settings;
+ import android.text.format.DateUtils;
+ import android.util.Slog;
+ 
++import com.android.internal.R;
+ import com.android.server.SystemService;
+ 
+ /**
+@@ -40,7 +45,10 @@ public final class PlaitChargeLimitService extends SystemService {
+     static final String ENABLED = "plait_charge_limit_enabled";
+     static final String LIMIT = "plait_charge_limit";
+     static final String BY_ALARM = "plait_charge_limit_by_alarm";
+-    private static final String CHARGE_ONCE = "plait_charge_once";
++    private static final String ACTION_CHARGE_ONCE = "com.android.server.plait.CHARGE_ONCE";
++    private static final String EXTRA_SESSION = "session";
++    private static final String CHANNEL = "PLAIT_CHARGING_LIMIT";
++    private static final int NOTIFICATION_ID = 1;
+     private static final int DEFAULT_LIMIT = 80;
+     private static final int MIN_LIMIT = 50;
+     private static final int MARGIN = 5;
+@@ -61,6 +69,12 @@ public final class PlaitChargeLimitService extends SystemService {
+     private int mAppliedStart = -1;
+     private long mAppliedTarget = 0;
+ 
++    private boolean mChargeOnce;
++    private int mSession;
++    private PendingIntent mChargeAction;
++    private int mNotifiedLimit;
++    private boolean mNotifiedOverride;
++
+     private final ContentObserver mObserver = new ContentObserver(mHandler) {
+         @Override
+         public void onChange(boolean selfChange) {
+@@ -71,7 +85,16 @@ public final class PlaitChargeLimitService extends SystemService {
+     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
+         @Override
+         public void onReceive(Context context, Intent intent) {
+-            apply(Intent.ACTION_POWER_DISCONNECTED.equals(intent.getAction()));
++            final String action = intent.getAction();
++            apply(Intent.ACTION_POWER_DISCONNECTED.equals(action)
++                    || Intent.ACTION_POWER_CONNECTED.equals(action), false, 0);
++        }
++    };
++
++    private final BroadcastReceiver mChargeReceiver = new BroadcastReceiver() {
++        @Override
++        public void onReceive(Context context, Intent intent) {
++            apply(false, true, intent.getIntExtra(EXTRA_SESSION, -1));
+         }
+     };
+ 
+@@ -103,68 +126,98 @@ public final class PlaitChargeLimitService extends SystemService {
+             mContext.getContentResolver().registerContentObserver(
+                     Settings.System.getUriFor(key), false, mObserver, UserHandle.USER_SYSTEM);
+         }
+-        clearOverride();
+-        mContext.getContentResolver().registerContentObserver(
+-                Settings.Secure.getUriFor(CHARGE_ONCE), false, mObserver, UserHandle.USER_SYSTEM);
+         final IntentFilter filter = new IntentFilter(Intent.ACTION_POWER_CONNECTED);
+         filter.addAction(Intent.ACTION_POWER_DISCONNECTED);
+         filter.addAction(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED);
+         filter.addAction(Intent.ACTION_TIME_CHANGED);
+         filter.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+         mContext.registerReceiverAsUser(mReceiver, UserHandle.ALL, filter, null, mHandler);
++        mContext.registerReceiverAsUser(mChargeReceiver, UserHandle.SYSTEM,
++                new IntentFilter(ACTION_CHARGE_ONCE), null, mHandler, Context.RECEIVER_NOT_EXPORTED);
+         apply();
+     }
+ 
+     private void apply() {
+-        apply(false);
++        apply(false, false, 0);
+     }
+ 
+-    private void apply(boolean disconnected) {
++    private void apply(boolean powerChanged, boolean overrideRequested, int session) {
+         try {
+-            if (disconnected) {
+-                clearOverride();
++            final BatteryManagerInternal battery = getLocalService(BatteryManagerInternal.class);
++            final boolean plugged = battery != null && battery.getPlugType() != 0;
++            final boolean enabled = Settings.System.getIntForUser(mContext.getContentResolver(),
++                    ENABLED, 0, UserHandle.USER_SYSTEM) == 1;
++            final int limit = Math.max(MIN_LIMIT, Math.min(100, Settings.System.getIntForUser(
++                    mContext.getContentResolver(), LIMIT, DEFAULT_LIMIT, UserHandle.USER_SYSTEM)));
++            final boolean available = plugged && enabled && limit < 100;
++            if (powerChanged || !available) {
++                mChargeOnce = false;
++                invalidateChargeAction();
++            }
++            if (available && overrideRequested && session == mSession && mChargeAction != null) {
++                mChargeOnce = true;
++                invalidateChargeAction();
+             }
+-            applyLimit();
++            applyLimit(enabled, limit);
++            updateChargingNotification(available ? limit : 0);
+         } catch (Throwable t) {
+             Slog.e(TAG, "the charging limit could not be applied", t);
+         }
+     }
+ 
+-    private void clearOverride() {
+-        if (Settings.Secure.getIntForUser(mContext.getContentResolver(),
+-                CHARGE_ONCE, 0, UserHandle.USER_SYSTEM) != 0) {
+-            Settings.Secure.putIntForUser(mContext.getContentResolver(),
+-                    CHARGE_ONCE, 0, UserHandle.USER_SYSTEM);
++    private void invalidateChargeAction() {
++        if (mChargeAction != null) {
++            mChargeAction.cancel();
++            mChargeAction = null;
+         }
++        mSession++;
+     }
+ 
+-    private boolean chargeOnce(boolean available) {
+-        if (Settings.Secure.getIntForUser(mContext.getContentResolver(),
+-                CHARGE_ONCE, 0, UserHandle.USER_SYSTEM) != 1) {
+-            return false;
++    private void updateChargingNotification(int limit) {
++        if (mNotifiedLimit == limit && mNotifiedOverride == mChargeOnce
++                && (limit == 0 || mChargeOnce || mChargeAction != null)) {
++            return;
+         }
+-        final Intent battery = mContext.registerReceiver(null,
+-                new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+-        if (!available || battery == null || battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) == 0) {
+-            clearOverride();
+-            return false;
++        final NotificationManager notifications = mContext.getSystemService(NotificationManager.class);
++        if (limit == 0) {
++            notifications.cancelAsUser(TAG, NOTIFICATION_ID, UserHandle.SYSTEM);
++        } else {
++            notifications.createNotificationChannel(new NotificationChannel(CHANNEL,
++                    mContext.getText(R.string.plait_charge_notification_channel),
++                    NotificationManager.IMPORTANCE_LOW));
++            final Notification.Builder builder = new Notification.Builder(mContext, CHANNEL)
++                    .setSmallIcon(R.drawable.stat_sys_battery_charge)
++                    .setContentTitle(mContext.getText(R.string.plait_charge_notification_title))
++                    .setContentText(mChargeOnce
++                            ? mContext.getText(R.string.plait_charge_notification_override)
++                            : mContext.getString(R.string.plait_charge_notification_limit, limit))
++                    .setOnlyAlertOnce(true)
++                    .setShowWhen(false);
++            if (!mChargeOnce) {
++                if (mChargeAction == null) {
++                    final Intent action = new Intent(ACTION_CHARGE_ONCE)
++                            .setPackage(mContext.getPackageName())
++                            .putExtra(EXTRA_SESSION, mSession);
++                    mChargeAction = PendingIntent.getBroadcastAsUser(mContext, mSession, action,
++                            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_ONE_SHOT, UserHandle.SYSTEM);
++                }
++                builder.addAction(new Notification.Action.Builder(null,
++                        mContext.getText(R.string.plait_charge_notification_action), mChargeAction).build());
++            }
++            notifications.notifyAsUser(TAG, NOTIFICATION_ID, builder.build(), UserHandle.SYSTEM);
+         }
+-        return true;
++        mNotifiedLimit = limit;
++        mNotifiedOverride = mChargeOnce;
+     }
+ 
+-    private void applyLimit() {
++    private void applyLimit(boolean enabled, int limit) {
+         final AlarmManager alarms = mContext.getSystemService(AlarmManager.class);
+         alarms.cancel(mWindowAlarmListener);
+ 
+-        final boolean enabled = Settings.System.getIntForUser(mContext.getContentResolver(),
+-                ENABLED, 0, UserHandle.USER_SYSTEM) == 1;
+         int stop = 100;
+         int start = 0;
+         long target = 0;
+-        final int limit = Math.max(MIN_LIMIT, Math.min(100, Settings.System.getIntForUser(
+-                mContext.getContentResolver(), LIMIT, DEFAULT_LIMIT, UserHandle.USER_SYSTEM)));
+-        final boolean once = chargeOnce(enabled && limit < 100);
+-        if (enabled && !once) {
++        if (enabled && !mChargeOnce) {
+             stop = limit;
+             start = stop == 100 ? 0 : stop - MARGIN;
+             if (stop < 100 && Settings.System.getIntForUser(mContext.getContentResolver(),
+-- 
+2.56.1
+

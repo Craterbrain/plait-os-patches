@@ -20,7 +20,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.UnaryOperator;
 
+import rikka.hidden.compat.PackageManagerApis;
 import rikka.shizuku.server.util.Logger;
+import rikka.shizuku.server.util.UserHandleCompat;
 
 /**
  * Per-app policy, stored by the (shell-uid) daemon and edited through the manager app.
@@ -95,6 +97,11 @@ public class Policy {
         public String cert;
         /** Why the app is blocked, shown in the manager. */
         public String note;
+        /**
+         * The manager's "Show Shizuku" switch, off: the Shizuku placeholder stays hidden from this app although it is
+         * allowed. False (the default, and what older files read as) means an allowed app sees it.
+         */
+        public boolean shizukuHidden;
         public List<Cap> caps = new ArrayList<>();
 
         public boolean allowed() {
@@ -212,6 +219,11 @@ public class Policy {
         }
         if (argv == null) argv = Arrays.asList(line.split(" +"));
         return Exec.join(argv) + (prefix ? " ..." : "");
+    }
+
+    public synchronized boolean isAllowed(int uid) {
+        Entry entry = find(uid);
+        return entry != null && entry.allowed();
     }
 
     public synchronized Entry find(int uid) {
@@ -477,7 +489,65 @@ public class Policy {
         return gson.toJson(o);
     }
 
+    /** Receives the current visibility list and queues it for asynchronous publication. */
+    private volatile java.util.function.Consumer<String> visibleListener;
+
+    public synchronized void onVisibleChanged(java.util.function.Consumer<String> listener) {
+        visibleListener = listener;
+        publishVisible();
+    }
+
+    /**
+     * The apps that were authorized (Restricted or Permissive), as full Android UIDs, sorted and
+     * comma separated: PlaitOS shows the moe.shizuku.privileged.api placeholder only to these, so apps that look for Shizuku's own
+     * package (Aurora Store, ...) see it for the ones the user added and for nobody else.
+     */
+    synchronized String visibleUids() {
+        java.util.TreeSet<Integer> ids = new java.util.TreeSet<>();
+        for (Entry e : data.entries) if (e.allowed() && !e.shizukuHidden && stillSameApp(e)) ids.add(e.uid);
+        StringBuilder sb = new StringBuilder();
+        for (int id : ids) sb.append(sb.length() == 0 ? "" : ",").append(id);
+        return sb.toString();
+    }
+
+    /**
+     * Whether the entry's uid still belongs to the app it was made for. Android gives a freed uid to the next app
+     * installed, and an entry is only re-checked when its app talks to the Broker ({@link #checkIdentity}), so a
+     * reinstalled app's old entry would otherwise show the placeholder to whichever app got that uid next.
+     */
+    private static boolean stillSameApp(Entry e) {
+        List<String> now = PackageManagerApis.getPackagesForUidNoThrow(e.uid);
+        for (String pkg : e.packages) {
+            if (!now.contains(pkg)) continue;
+            if (e.cert == null) return true;
+            String cert = Identity.signingCert(pkg, UserHandleCompat.getUserId(e.uid));
+            return cert == null || cert.equals(e.cert); // unreadable: the package still matches, keep it
+        }
+        return false;
+    }
+
+    /** The manager's per-app "Show Shizuku" switch. False if the app has no entry. */
+    public synchronized boolean setShizukuVisible(int uid, boolean visible) {
+        Entry e = find(uid);
+        if (e == null) return false;
+        e.shizukuHidden = !visible;
+        save();
+        return true;
+    }
+
+    /** Publishes the list again (an app may have been installed, removed or reinstalled since). Unchanged lists are not rewritten. */
+    public synchronized void republishVisible() {
+        publishVisible();
+    }
+
+    private void publishVisible() {
+        java.util.function.Consumer<String> l = visibleListener;
+        if (l == null) return;
+        l.accept(visibleUids());
+    }
+
     private void save() {
+        publishVisible();
         FileOutputStream out = null;
         try {
             out = atomicFile.startWrite();

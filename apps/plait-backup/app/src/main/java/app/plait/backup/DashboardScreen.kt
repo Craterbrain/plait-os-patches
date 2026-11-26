@@ -1,5 +1,7 @@
 package app.plait.backup
 
+import app.plait.design.PlaitAppTitle
+
 import app.plait.design.PlaitIcon
 import androidx.compose.ui.res.painterResource
 import android.text.format.DateFormat
@@ -41,7 +43,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun DashboardScreen(
     vm: BackupViewModel, grantVersion: Int, onStartSession: (Int) -> Unit, onEndSession: () -> Unit,
-    onBackup: () -> Unit, onPhoneData: () -> Unit, onRestore: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit,
+    onBackup: () -> Unit, onPhoneData: () -> Unit, onRestore: () -> Unit, onDelete: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit,
 ) {
     // Back from Settings (All files access granted, ...): check the backend again
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
@@ -53,15 +55,15 @@ fun DashboardScreen(
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    Surface(Modifier.fillMaxSize()) {
-        Column(Modifier.systemBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Backup", style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.width(10.dp))
-                Text(vm.version, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onSettings) { Icon(painterResource(PlaitIcon.Settings), "Settings") }
-            }
+    DashboardContent(
+        supportsPersonal = vm.backend.supportsPersonal,
+        onBackup = onBackup,
+        onPhoneData = onPhoneData,
+        onRestore = onRestore,
+        onDelete = onDelete,
+        onHistory = onHistory,
+        onSettings = onSettings,
+        backendNotice = {
             if (vm.backendProblem != null) {
                 Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
@@ -80,16 +82,42 @@ fun DashboardScreen(
                     }
                 }
             }
+        },
+        overview = { OverviewCard(vm, grantVersion, onStartSession, onEndSession) },
+    )
+}
+
+@Composable
+internal fun DashboardContent(
+    supportsPersonal: Boolean,
+    onBackup: () -> Unit,
+    onPhoneData: () -> Unit,
+    onRestore: () -> Unit,
+    onDelete: () -> Unit,
+    onHistory: () -> Unit,
+    onSettings: () -> Unit,
+    backendNotice: @Composable () -> Unit = {},
+    overview: @Composable () -> Unit,
+) {
+    Surface(Modifier.fillMaxSize()) {
+        Column(Modifier.systemBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                PlaitAppTitle("Backup")
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onSettings) { Icon(painterResource(PlaitIcon.Settings), "Settings") }
+            }
+            backendNotice()
 
             SectionLabel("Overview")
-            OverviewCard(vm, grantVersion, onStartSession, onEndSession)
+            overview()
 
             SectionLabel("Quick actions")
             val tiles = listOf(
                 Tile("Backup apps", PlaitIcon.Clock, onBackup),
-                Tile("Phone data", PlaitIcon.Contacts, if (vm.backend.supportsPersonal) onPhoneData else null),
+                Tile("Phone data", PlaitIcon.Contacts, if (supportsPersonal) onPhoneData else null),
                 Tile("Cloud", PlaitIcon.Cloud, null, arrow = true),
                 Tile("Restore", PlaitIcon.Restore, onRestore, arrow = true),
+                Tile("Delete backups", PlaitIcon.Delete, onDelete, arrow = true),
                 Tile("History", PlaitIcon.List, onHistory, arrow = true),
             )
             tiles.chunked(2).forEach { row ->
@@ -119,6 +147,14 @@ private fun OverviewCard(vm: BackupViewModel, grantVersion: Int, onStart: (Int) 
     // Re-read when a grant changes, and once a minute so an expired session drops off
     val tick = androidx.compose.runtime.produceState(0L) { while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(60_000) } }
     val until = androidx.compose.runtime.remember(grantVersion, tick.value) { Grants.sessionUntil(context) }
+    DashboardOverview(at, used, total, backups, until, onStart, onEnd)
+}
+
+@Composable
+internal fun DashboardOverview(
+    at: Long, used: Long, total: Long, backups: Long, until: Long?,
+    onStart: (Int) -> Unit, onEnd: () -> Unit,
+) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

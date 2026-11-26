@@ -9,6 +9,32 @@ class ArchiveCheckTest {
     private val pkg = "com.example.app"
 
     @Test
+    fun verifyStoredChecksContentsAndReportsSigner() {
+        val hashes = mapOf("user.tar.zst" to "a".repeat(64))
+        val text = ArchiveCheck.manifest(pkg, 10, 1L, hashes)
+        fun verify(signer: String, actual: Map<String, String>) =
+            ArchiveCheck.verifyStored(pkg, 10, text, "sig", signer, { "ours" }, { _, _, _ -> true }) { actual }
+
+        assertEquals("Verified · 1 file matches · Trusted signer", verify("ours", hashes))
+        assertEquals("Verified · 1 file matches · Signed by another install", verify("foreign", hashes))
+        assertNotNull(runCatching { verify("ours", hashes - "user.tar.zst") }.exceptionOrNull())
+        assertNotNull(runCatching { verify("ours", mapOf("user.tar.zst" to "b".repeat(64))) }.exceptionOrNull())
+    }
+
+    @Test
+    fun verifyStoredRejectsWrongUserAndInvalidSignatureBeforeReadingPayload() {
+        val text = ArchiveCheck.manifest(pkg, 10, 1L, emptyMap())
+        fun verify(user: Int, valid: Boolean) =
+            ArchiveCheck.verifyStored(pkg, user, text, "sig", "foreign", { "ours" }, { _, _, _ -> valid }) {
+                throw AssertionError("Untrusted payload was read")
+            }
+
+        assertEquals("Manifest does not match the selected archive",
+            runCatching { verify(0, true) }.exceptionOrNull()?.message)
+        assertEquals("Invalid archive signature", runCatching { verify(10, false) }.exceptionOrNull()?.message)
+    }
+
+    @Test
     fun manifestRoundTripsAndComparesExactly() {
         val hashes = mapOf("user.tar.zst" to "a".repeat(64), "apk.tar.zst" to "b".repeat(64))
         val m = ArchiveCheck.parse(ArchiveCheck.manifest(pkg, 0, 1L, hashes))!!

@@ -223,6 +223,66 @@ public class ClassifierTest {
         gated(Gate.SECURITY, "cmd", "sensor_privacy", "disable", "0", "camera");
     }
 
+    /** The install commands real installer apps send through Shizuku (read from their source), as the calling app. */
+    @Test
+    public void auroraShizukuSessionUsesCallerAttribution() throws Exec.Refused {
+        String aurora = "com.aurora.store";
+        Exec.Command requested = Exec.parse(new String[] {
+                "pm", "install-create", "-i", "com.android.vending", "--user", "0", "-r", "-S", "8192"
+        }, name -> "/system/bin/" + name);
+        Exec.Command accepted = Exec.normalizeAuroraInstall(requested, aurora);
+        assertEquals("com.android.vending", requested.argv.get(3));
+        assertEquals(aurora, accepted.execArgv()[3]);
+        assertEquals(Tier.INSTALL, Classifier.command(accepted.argv, aurora, APPS).tier);
+        for (String[] args : new String[][] {
+                {"pm", "install-write", "-S", "8192", "42", "base.apk", "-"},
+                {"pm", "install-write", "-S", "8192", "42", "split_config.arm64_v8a.apk", "-"},
+                {"pm", "install-commit", "42"},
+                {"pm", "install-abandon", "42"}
+        }) {
+            Exec.Command followUp = Exec.parse(args, name -> "/system/bin/" + name);
+            assertEquals(followUp.argv, Exec.normalizeAuroraInstall(followUp, aurora).argv);
+            assertEquals(Tier.INSTALL, Classifier.command(followUp.argv, aurora, APPS).tier);
+        }
+        assertEquals(Tier.NEVER, Classifier.command(
+                Exec.normalizeAuroraInstall(requested, ME).argv, ME, APPS).tier);
+        requested.argv.set(5, "10");
+        assertEquals(Tier.NEVER, Classifier.command(
+                Exec.normalizeAuroraInstall(requested, aurora).argv, aurora, APPS).tier);
+    }
+
+    @Test
+    public void installerAppsCommandsAreInstalls() {
+        // Droid-ify
+        tier(Tier.INSTALL, "pm", "install-create", "--user", "current", "-i", ME, "-S", "8077668");
+        tier(Tier.INSTALL, "pm", "install-create", "-i", ME, "-S", "8077668");
+        tier(Tier.INSTALL, "pm", "install-write", "-S", "8077668", "12345", "base", "-");
+        tier(Tier.INSTALL, "pm", "install-commit", "12345");
+        tier(Tier.INSTALL, "pm", "install-abandon", "12345");
+        // Neo Store and others: replace, the user by number, the install reason "user"
+        tier(Tier.INSTALL, "pm", "install-create", "-i", ME, "--user", "0", "--install-reason", "4", "-r", "-S", "100");
+        tier(Tier.INSTALL, "pm", "install-create", "-r", "--user", "0");
+        tier(Tier.INSTALL, "pm", "install-write", "-S", "100", "7", "split_config.apk", "/data/local/tmp/split.apk");
+        tier(Tier.INSTALL, "pm", "install", "-i", ME, "-r", "/data/local/tmp/a.apk");
+        tier(Tier.INSTALL, "cmd", "package", "install-create", "--user", "current", "-i", ME, "-S", "1");
+    }
+
+    /** What an installer app must not be able to do stays refused, in every spelling of the allowed options. */
+    @Test
+    public void installOptionsThatStayShellOnly() {
+        tier(Tier.NEVER, "pm", "install-create", "-i", "com.android.vending", "-S", "1");   // another app as the installer
+        tier(Tier.NEVER, "pm", "install-create", "-i");                                       // no value
+        tier(Tier.NEVER, "pm", "install-create", "--user", "10", "-S", "1");                  // another user
+        tier(Tier.NEVER, "pm", "install-create", "--user", "all", "-S", "1");
+        tier(Tier.NEVER, "pm", "install-create", "--user");
+        tier(Tier.NEVER, "pm", "install-create", "--install-reason", "2", "-S", "1");         // device restore
+        tier(Tier.NEVER, "pm", "install-create", "-d", "-S", "1");                            // downgrade
+        tier(Tier.NEVER, "pm", "install-create", "-t", "-S", "1");                            // test-only
+        tier(Tier.NEVER, "pm", "install-create", "--bypass-low-target-sdk-block", "-S", "1");
+        tier(Tier.NEVER, "pm", "install-create", "-g", "-S", "1");                            // grant everything
+        tier(Tier.NEVER, "pm", "install-create", "--user", "current", "-i", ME, "-g");        // allowed ones do not excuse a refused one
+    }
+
     @Test
     public void installsAndOrdinaryCommands() {
         tier(Tier.INSTALL, "pm", "install", "-r", "/data/local/tmp/a.apk");

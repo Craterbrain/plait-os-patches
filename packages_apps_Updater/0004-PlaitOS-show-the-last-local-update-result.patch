@@ -1,0 +1,260 @@
+From 36e08cc932361249756981bf23a2adc8cae5660e Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 10:48:19 -0600
+Subject: [PATCH] PlaitOS: show the last local update result
+
+---
+ res/values/local_update_result.xml            | 12 +++
+ res/xml/settings.xml                          |  5 ++
+ .../seamlessupdate/client/BootReceiver.java   |  1 +
+ .../client/LocalUpdateResult.java             | 85 +++++++++++++++++++
+ src/app/seamlessupdate/client/Service.java    | 16 +++-
+ src/app/seamlessupdate/client/Settings.java   |  9 ++
+ 6 files changed, 126 insertions(+), 2 deletions(-)
+ create mode 100644 res/values/local_update_result.xml
+ create mode 100644 src/app/seamlessupdate/client/LocalUpdateResult.java
+
+diff --git a/res/values/local_update_result.xml b/res/values/local_update_result.xml
+new file mode 100644
+index 0000000..75edb91
+--- /dev/null
++++ b/res/values/local_update_result.xml
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="local_update_title">Last local update</string>
++    <string name="local_update_none">No local update recorded</string>
++    <string name="local_update_checking">Checking or installing update</string>
++    <string name="local_update_rejected">Update could not be read, verified, or started</string>
++    <string name="local_update_failed">Installation failed · Update engine code %1$d</string>
++    <string name="local_update_pending">Installed · Restart to finish</string>
++    <string name="local_update_installed">Installed · Running build confirmed\n%1$s</string>
++    <string name="local_update_different_build">The expected build and slot could not be confirmed after restart</string>
++    <string name="local_update_unknown">The update result could not be confirmed</string>
++</resources>
+diff --git a/res/xml/settings.xml b/res/xml/settings.xml
+index f0f4af3..3c22d02 100644
+--- a/res/xml/settings.xml
++++ b/res/xml/settings.xml
+@@ -10,6 +10,11 @@
+             app:summary="@string/install_from_file_summary"
+             app:iconSpaceReserved="false" />
+ 
++    <Preference app:key="last_local_update"
++            app:title="@string/local_update_title"
++            app:selectable="false"
++            app:iconSpaceReserved="false" />
++
+     <PreferenceCategory app:title="@string/settings_header"
+             app:allowDividerAbove="false"
+             app:allowDividerBelow="false"
+diff --git a/src/app/seamlessupdate/client/BootReceiver.java b/src/app/seamlessupdate/client/BootReceiver.java
+index 3be6d86..dec907c 100644
+--- a/src/app/seamlessupdate/client/BootReceiver.java
++++ b/src/app/seamlessupdate/client/BootReceiver.java
+@@ -12,6 +12,7 @@ public class BootReceiver extends BroadcastReceiver {
+     public void onReceive(final Context context, final Intent intent) {
+         if (context.getSystemService(UserManager.class).isSystemUser()) {
+             final SharedPreferences preferences = Settings.getPreferences(context);
++            LocalUpdateResult.finishBoot(preferences);
+             preferences.edit().putBoolean(Settings.KEY_WAITING_FOR_REBOOT, false).apply();
+             PeriodicJob.schedule(context);
+ 
+diff --git a/src/app/seamlessupdate/client/LocalUpdateResult.java b/src/app/seamlessupdate/client/LocalUpdateResult.java
+new file mode 100644
+index 0000000..117631f
+--- /dev/null
++++ b/src/app/seamlessupdate/client/LocalUpdateResult.java
+@@ -0,0 +1,85 @@
++package app.seamlessupdate.client;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.os.Build;
++import android.os.SystemProperties;
++import android.os.UpdateEngine;
++
++final class LocalUpdateResult {
++    static final String STATE = "local_update_result";
++    private static final String TARGET = "local_update_target";
++    private static final String SLOT = "local_update_previous_slot";
++    private static final String CODE = "local_update_engine_code";
++
++    private static final String CHECKING = "checking";
++    private static final String REJECTED = "rejected";
++    private static final String FAILED = "failed";
++    private static final String PENDING = "pending";
++    private static final String INSTALLED = "installed";
++    private static final String DIFFERENT_BUILD = "different_build";
++    private static final String UNKNOWN = "unknown";
++
++    private LocalUpdateResult() {}
++
++    static void start(Context context) {
++        Settings.getPreferences(context).edit().remove(TARGET).remove(SLOT).remove(CODE)
++                .putString(STATE, CHECKING).commit();
++    }
++
++    static void reject(Context context) {
++        final var prefs = Settings.getPreferences(context);
++        if (CHECKING.equals(prefs.getString(STATE, ""))) {
++            prefs.edit().putString(STATE, REJECTED).commit();
++        }
++    }
++
++    static void complete(Context context, String target, int code) {
++        final var editor = Settings.getPreferences(context).edit().putString(TARGET, target)
++                .putInt(CODE, code);
++        if (code == UpdateEngine.ErrorCodeConstants.SUCCESS) {
++            editor.putString(STATE, PENDING).putString(SLOT, currentSlot());
++        } else {
++            editor.putString(STATE, FAILED);
++        }
++        editor.commit();
++    }
++
++    static void finishBoot(SharedPreferences prefs) {
++        switch (prefs.getString(STATE, "")) {
++            case CHECKING -> prefs.edit().putString(STATE, UNKNOWN).commit();
++            case PENDING -> {
++                final String target = prefs.getString(TARGET, "");
++                final String previousSlot = prefs.getString(SLOT, "");
++                final String currentSlot = currentSlot();
++                final String result;
++                if (target.isEmpty() || previousSlot.isEmpty() || currentSlot.isEmpty()) {
++                    result = UNKNOWN;
++                } else if (target.equals(Build.FINGERPRINT) && !currentSlot.equals(previousSlot)) {
++                    result = INSTALLED;
++                } else {
++                    result = DIFFERENT_BUILD;
++                }
++                prefs.edit().putString(STATE, result).commit();
++            }
++        }
++    }
++
++    static CharSequence summary(Context context) {
++        final var prefs = Settings.getPreferences(context);
++        return switch (prefs.getString(STATE, "")) {
++            case CHECKING -> context.getString(R.string.local_update_checking);
++            case REJECTED -> context.getString(R.string.local_update_rejected);
++            case FAILED -> context.getString(R.string.local_update_failed, prefs.getInt(CODE, -1));
++            case PENDING -> context.getString(R.string.local_update_pending);
++            case INSTALLED -> context.getString(R.string.local_update_installed, prefs.getString(TARGET, ""));
++            case DIFFERENT_BUILD -> context.getString(R.string.local_update_different_build);
++            case UNKNOWN -> context.getString(R.string.local_update_unknown);
++            default -> context.getString(R.string.local_update_none);
++        };
++    }
++
++    private static String currentSlot() {
++        return SystemProperties.get("ro.boot.slot_suffix");
++    }
++}
+diff --git a/src/app/seamlessupdate/client/Service.java b/src/app/seamlessupdate/client/Service.java
+index 01c6e87..73b650b 100644
+--- a/src/app/seamlessupdate/client/Service.java
++++ b/src/app/seamlessupdate/client/Service.java
+@@ -85,7 +85,8 @@ public class Service extends IntentService {
+     }
+ 
+     private void applyUpdate(final boolean streaming, final long payloadOffset,
+-            final String[] headerKeyValuePairs, final boolean incremental) throws IOException {
++            final String[] headerKeyValuePairs, final boolean incremental,
++            final String localTarget) throws IOException {
+         notificationHandler.showInstallNotification(0);
+ 
+         final CountDownLatch monitor = new CountDownLatch(1);
+@@ -109,6 +110,9 @@ public class Service extends IntentService {
+             public void onPayloadApplicationComplete(final int errorCode) {
+                 Log.d(TAG, "onPayloadApplicationComplete: " + errorCode);
+                 this.errorCode = errorCode;
++                if (localTarget != null) {
++                    LocalUpdateResult.complete(Service.this, localTarget, errorCode);
++                }
+                 if (errorCode == ErrorCodeConstants.SUCCESS) {
+                     UPDATE_PATH.delete();
+                     annoyUser();
+@@ -176,11 +180,14 @@ public class Service extends IntentService {
+             String streamingPropertyFiles[] = null;
+             String sourceIncremental = null;
+             String sourceFingerprint = null;
++            String targetFingerprint = "";
+             try (final var reader = new BufferedReader(new InputStreamReader(zipFile.getInputStream(metadata)))) {
+                 for (String line; (line = reader.readLine()) != null; ) {
+                     final String[] pair = line.split("=");
+                     if ("post-timestamp".equals(pair[0])) {
+                         timestamp = Long.parseLong(pair[1]);
++                    } else if ("post-build".equals(pair[0]) && pair.length == 2) {
++                        targetFingerprint = pair[1];
+                     } else if ("post-build-incremental".equals(pair[0])) {
+                         incremental = pair[1];
+                     } else if ("pre-device".equals(pair[0])) {
+@@ -253,7 +260,8 @@ public class Service extends IntentService {
+             try (final var propertiesReader = new BufferedReader(new InputStreamReader(zipFile.getInputStream(payloadProperties)))) {
+                 headerKeyValuePairs = propertiesReader.lines().toArray(String[]::new);
+             }
+-            applyUpdate(streaming, payloadOffset, headerKeyValuePairs, sourceIncremental != null);
++            applyUpdate(streaming, payloadOffset, headerKeyValuePairs, sourceIncremental != null,
++                    targetBuildDate == LOCAL_FILE ? targetFingerprint : null);
+         } catch (final GeneralSecurityException e) {
+             UPDATE_PATH.delete();
+             throw e;
+@@ -345,6 +353,7 @@ public class Service extends IntentService {
+             notificationHandler.start();
+ 
+             if (intent.getData() != null) {
++                LocalUpdateResult.start(this);
+                 installLocalFile(intent.getData());
+                 return;
+             }
+@@ -490,6 +499,9 @@ public class Service extends IntentService {
+             Log.d(TAG, "download completed");
+             onDownloadFinished(streaming, targetBuildDate, targetIncremental);
+         } catch (GeneralSecurityException | IOException | ServiceSpecificException e) {
++            if (intent.getData() != null) {
++                LocalUpdateResult.reject(this);
++            }
+             Log.e(TAG, "failed to download and install update", e);
+             notificationHandler.showFailureNotification(e.getMessage());
+             mUpdating = false;
+diff --git a/src/app/seamlessupdate/client/Settings.java b/src/app/seamlessupdate/client/Settings.java
+index 1a5bd50..c1ae014 100644
+--- a/src/app/seamlessupdate/client/Settings.java
++++ b/src/app/seamlessupdate/client/Settings.java
+@@ -35,6 +35,7 @@ public class Settings extends CollapsingToolbarBaseActivity {
+     private static final String KEY_IDLE_REBOOT = "idle_reboot";
+     private static final String KEY_CHECK_FOR_UPDATES = "check_for_updates";
+     private static final String KEY_INSTALL_FROM_FILE = "install_from_file";
++    private static final String KEY_LOCAL_UPDATE_RESULT = "last_local_update";
+     private static final int REQUEST_INSTALL_FROM_FILE = 1;
+     static final String KEY_WAITING_FOR_REBOOT = "waiting_for_reboot";
+ 
+@@ -229,6 +230,9 @@ public class Settings extends CollapsingToolbarBaseActivity {
+         @Override
+         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+             switch (key) {
++                case LocalUpdateResult.STATE:
++                    updateLocalUpdateResult();
++                    break;
+                 case KEY_CHANNEL:
+                 case KEY_BATTERY_NOT_LOW:
+                 case KEY_REQUIRES_CHARGING:
+@@ -244,9 +248,14 @@ public class Settings extends CollapsingToolbarBaseActivity {
+             }
+         }
+ 
++        private void updateLocalUpdateResult() {
++            requirePreference(KEY_LOCAL_UPDATE_RESULT).setSummary(LocalUpdateResult.summary(requireContext()));
++        }
++
+         @Override
+         public void onResume() {
+             super.onResume();
++            updateLocalUpdateResult();
+             getPreferenceManager().getSharedPreferences().registerOnSharedPreferenceChangeListener(this);
+             final ListPreference networkType = (ListPreference) findPreference(KEY_NETWORK_TYPE);
+             networkType.setValue(Integer.toString(getNetworkType(requireContext())));
+-- 
+2.56.1
+

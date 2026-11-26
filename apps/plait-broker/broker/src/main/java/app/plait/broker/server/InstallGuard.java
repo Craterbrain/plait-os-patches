@@ -118,6 +118,8 @@ final class InstallGuard {
         // The app installs as itself unless the user agreed to the installer it names (the field wins over the argument)
         set(params, "installerPackageName", installerName(uid, pkg, params, installerArg));
         set(params, "originatingUid", uid);
+        // The broker cannot attest to the APK source. Preserve local-file install restrictions.
+        params.setPackageSource(PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE);
         trySet(params, "whitelistedRestrictedPermissions", null);
         trySet(params, "forceQueryableOverride", false);
         policy.log(uid, pkg, "install", capKey + (removed.isEmpty() ? "" : " without " + String.join(",", removed)), "session allowed");

@@ -1,0 +1,267 @@
+From e04d15aa382fc641fe30e41a025843e289ff53a8 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 08:26:45 -0600
+Subject: [PATCH] PlaitOS: scope downgrade approval to one explicit owner
+ install
+
+---
+ .../server/pm/InstallPackageHelper.java       | 60 ++++------------
+ .../android/server/pm/InstallingSession.java  |  2 +-
+ .../server/pm/PackageManagerService.java      |  4 +-
+ .../server/pm/PlaitDowngradeTimeout.java      | 71 ++++++++-----------
+ .../android/server/pm/VerifyingSession.java   |  2 +-
+ 5 files changed, 50 insertions(+), 89 deletions(-)
+
+diff --git a/services/core/java/com/android/server/pm/InstallPackageHelper.java b/services/core/java/com/android/server/pm/InstallPackageHelper.java
+index d9eb4ffdd..d6205c277 100644
+--- a/services/core/java/com/android/server/pm/InstallPackageHelper.java
++++ b/services/core/java/com/android/server/pm/InstallPackageHelper.java
+@@ -3023,20 +3023,19 @@ final class InstallPackageHelper {
+     }
+ 
+     Pair<Integer, String> verifyReplacingVersionCode(PackageInfoLite pkgLite,
+-            long requiredInstalledVersionCode, int installFlags) {
++            long requiredInstalledVersionCode, int installFlags, int userId, int sessionId) {
+         if ((installFlags & PackageManager.INSTALL_APEX) != 0) {
+             return verifyReplacingVersionCodeForApex(
+                     pkgLite, requiredInstalledVersionCode, installFlags);
+         }
+ 
+         String packageName = pkgLite.packageName;
+-        // PlaitOS: app downgrades switched on in Settings (off by default). Read before taking
+-        // mPm.mLock, as a settings read goes through the settings provider. System apps still
+-        // can't go below their preloaded version, and APEX downgrades stay blocked. The switch
+-        // turns itself off once used (see PlaitDowngradeTimeout).
+-        final boolean plaitDowngradeAllowed = android.provider.Settings.Global.getInt(
+-                mContext.getContentResolver(), PlaitDowngradeTimeout.SETTING, 0) == 1;
+-        boolean plaitDowngradeUsed = false;
++        final PlaitDowngradeTimeout downgrades = mPm.mPlaitDowngradeTimeout;
++        final int requiredFlags = PackageManager.INSTALL_FROM_ADB | PackageManager.INSTALL_REQUEST_DOWNGRADE;
++        final String approval = downgrades != null && sessionId >= 0 && userId == UserHandle.USER_SYSTEM
++                && (installFlags & requiredFlags) == requiredFlags
++                && (installFlags & PackageManager.INSTALL_STAGED) == 0
++                ? downgrades.readApproval() : null;
+         synchronized (mPm.mLock) {
+             PackageSetting dataOwnerPs = mPm.mSettings.getPackageLPr(packageName);
+             if (dataOwnerPs == null) {
+@@ -3085,12 +3084,8 @@ final class InstallPackageHelper {
+             // some users. Wwe should do the downgrade check. E.g. DELETE_KEEP_DATA and
+             // archived apps
+             if (dataOwnerPkg == null) {
+-                plaitDowngradeUsed = plaitDowngradeAllowed
+-                        && !PackageManagerServiceUtils.isDowngradePermitted(installFlags,
+-                                dataOwnerPs.isDebuggable())
+-                        && isPlaitDowngrade(dataOwnerPs, pkgLite);
+                 if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,
+-                        dataOwnerPs.isDebuggable()) && !plaitDowngradeAllowed) {
++                        dataOwnerPs.isDebuggable())) {
+                     // The data exists on some users and downgrade is not permitted; a lower
+                     // version of the app will not be allowed.
+                     try {
+@@ -3106,20 +3101,18 @@ final class InstallPackageHelper {
+                 // dataOwnerPs.getPkg() is not null on system apps case. Don't need to consider
+                 // system apps case like below.
+             } else if (dataOwnerPkg != null && !dataOwnerPkg.isSdkLibrary()) {
+-                plaitDowngradeUsed = plaitDowngradeAllowed
+-                        && !PackageManagerServiceUtils.isDowngradePermitted(installFlags,
+-                                dataOwnerPkg.isDebuggable())
+-                        && isPlaitDowngrade(dataOwnerPkg, pkgLite);
+                 if (!PackageManagerServiceUtils.isDowngradePermitted(installFlags,
+-                        dataOwnerPkg.isDebuggable()) && !plaitDowngradeAllowed) {
++                        dataOwnerPkg.isDebuggable())) {
+                     // Downgrade is not permitted; a lower version of the app will not be allowed
+                     try {
+                         PackageManagerServiceUtils.checkDowngrade(dataOwnerPkg, pkgLite);
+                     } catch (PackageManagerException e) {
+-                        String errorMsg = "Downgrade detected: " + e.getMessage();
+-                        Slog.w(TAG, errorMsg);
+-                        return Pair.create(
+-                                PackageManager.INSTALL_FAILED_VERSION_DOWNGRADE, errorMsg);
++                        if (dataOwnerPs.isSystem() || approval == null
++                                || !downgrades.consume(approval, packageName, sessionId)) {
++                            String errorMsg = "Downgrade detected: " + e.getMessage();
++                            Slog.w(TAG, errorMsg);
++                            return Pair.create(PackageManager.INSTALL_FAILED_VERSION_DOWNGRADE, errorMsg);
++                        }
+                     }
+                 } else if (dataOwnerPs.isSystem()) {
+                     // Downgrade is permitted, but system apps can't be downgraded below
+@@ -3146,32 +3139,9 @@ final class InstallPackageHelper {
+                 }
+             }
+         }
+-        final PlaitDowngradeTimeout plaitDowngradeTimeout = mPm.mPlaitDowngradeTimeout;
+-        if (plaitDowngradeUsed && plaitDowngradeTimeout != null) {
+-            plaitDowngradeTimeout.onDowngradeAllowed(packageName);
+-        }
+         return Pair.create(PackageManager.INSTALL_SUCCEEDED, null);
+     }
+ 
+-    /** PlaitOS: whether installing [after] over [before] lowers the version. */
+-    private static boolean isPlaitDowngrade(PackageSetting before, PackageInfoLite after) {
+-        try {
+-            PackageManagerServiceUtils.checkDowngrade(before, after);
+-            return false;
+-        } catch (PackageManagerException e) {
+-            return true;
+-        }
+-    }
+-
+-    private static boolean isPlaitDowngrade(AndroidPackage before, PackageInfoLite after) {
+-        try {
+-            PackageManagerServiceUtils.checkDowngrade(before, after);
+-            return false;
+-        } catch (PackageManagerException e) {
+-            return true;
+-        }
+-    }
+-
+     private Pair<Integer, String> verifyReplacingVersionCodeForApex(PackageInfoLite pkgLite,
+             long requiredInstalledVersionCode, int installFlags) {
+         String packageName = pkgLite.packageName;
+diff --git a/services/core/java/com/android/server/pm/InstallingSession.java b/services/core/java/com/android/server/pm/InstallingSession.java
+index c5b4ee57a..1ee209721 100644
+--- a/services/core/java/com/android/server/pm/InstallingSession.java
++++ b/services/core/java/com/android/server/pm/InstallingSession.java
+@@ -266,7 +266,7 @@ class InstallingSession {
+         boolean isStaged = (mInstallFlags & INSTALL_STAGED) != 0;
+         if (isStaged) {
+             Pair<Integer, String> ret = mPm.verifyReplacingVersionCode(
+-                    pkgLite, mRequiredInstalledVersionCode, mInstallFlags);
++                    pkgLite, mRequiredInstalledVersionCode, mInstallFlags, mUser.getIdentifier(), mSessionId);
+             mRet = ret.first;
+             if (mRet != INSTALL_SUCCEEDED) {
+                 request.setError(mRet, "Failed to verify version code: " + ret.second);
+diff --git a/services/core/java/com/android/server/pm/PackageManagerService.java b/services/core/java/com/android/server/pm/PackageManagerService.java
+index 2584f6b77..90ad28a61 100644
+--- a/services/core/java/com/android/server/pm/PackageManagerService.java
++++ b/services/core/java/com/android/server/pm/PackageManagerService.java
+@@ -8948,9 +8948,9 @@ public class PackageManagerService implements PackageSender, TestUtilityService
+ 
+     Pair<Integer, String> verifyReplacingVersionCode(@NonNull PackageInfoLite pkgLite,
+                                     long requiredInstalledVersionCode,
+-                                    int installFlags) {
++                                    int installFlags, int userId, int sessionId) {
+         return mInstallPackageHelper.verifyReplacingVersionCode(
+-                pkgLite, requiredInstalledVersionCode, installFlags);
++                pkgLite, requiredInstalledVersionCode, installFlags, userId, sessionId);
+     }
+ 
+     int getUidForVerifier(VerifierInfo verifierInfo) {
+diff --git a/services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java b/services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java
+index 2b71bef63..4b4a641d0 100644
+--- a/services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java
++++ b/services/core/java/com/android/server/pm/PlaitDowngradeTimeout.java
+@@ -7,65 +7,56 @@ package com.android.server.pm;
+ 
+ import android.content.ContentResolver;
+ import android.content.Context;
+-import android.database.ContentObserver;
+ import android.os.Handler;
++import android.os.SystemClock;
+ import android.provider.Settings;
+ import android.util.Slog;
+ 
+-/**
+- * Keeps the "allow app downgrades" switch (Settings.Global plait_pm_downgrade_allowed) short-lived:
+- * it turns itself off an hour after being switched on, once it has let a downgrade through, and at
+- * every boot.
+- */
++import java.util.HashMap;
++import java.util.Map;
++
++/** One short-lived downgrade approval, bound to an explicitly named package and install session. */
+ final class PlaitDowngradeTimeout {
+     private static final String TAG = "PlaitDowngradeTimeout";
+-
+-    static final String SETTING = "plait_pm_downgrade_allowed";
++    static final String SETTING = "plait_pm_downgrade_approval";
+     private static final long TIMEOUT_MS = 60 * 60 * 1000L;
+ 
+-    private final Context mContext;
++    private final ContentResolver mResolver;
+     private final Handler mHandler;
+-    private final Runnable mTurnOff = () -> turnOff("timed out");
++    private final Map<String, Long> mConsumed = new HashMap<>();
+ 
+     PlaitDowngradeTimeout(Context context, Handler handler) {
+-        mContext = context;
++        mResolver = context.getContentResolver();
+         mHandler = handler;
+     }
+ 
+-    /** Called from PackageManagerService.systemReady(), once the settings provider is up. */
+     void systemReady() {
+-        final ContentResolver resolver = mContext.getContentResolver();
+-        // The hour can't be measured across a reboot, so a reboot always ends it
+-        if (isEnabled(resolver)) {
+-            turnOff("reboot");
+-        }
+-        resolver.registerContentObserver(Settings.Global.getUriFor(SETTING), false,
+-                new ContentObserver(mHandler) {
+-                    @Override
+-                    public void onChange(boolean selfChange) {
+-                        mHandler.removeCallbacks(mTurnOff);
+-                        if (isEnabled(resolver)) {
+-                            mHandler.postDelayed(mTurnOff, TIMEOUT_MS);
+-                        }
+-                    }
+-                });
+-    }
+-
+-    /** A downgrade got past the version check because of the switch; it is now used up. */
+-    void onDowngradeAllowed(String packageName) {
+-        Slog.i(TAG, "Downgrade of " + packageName + " allowed by " + SETTING);
+-        mHandler.post(() -> turnOff("used"));
++        Settings.Global.putString(mResolver, SETTING, null);
+     }
+ 
+-    private static boolean isEnabled(ContentResolver resolver) {
+-        return Settings.Global.getInt(resolver, SETTING, 0) == 1;
++    // Read before taking the package manager lock. The provider may call back into Package Manager.
++    String readApproval() {
++        return Settings.Global.getString(mResolver, SETTING);
+     }
+ 
+-    private void turnOff(String why) {
+-        mHandler.removeCallbacks(mTurnOff);
+-        if (isEnabled(mContext.getContentResolver())) {
+-            Slog.i(TAG, "Turning off " + SETTING + " (" + why + ")");
+-            Settings.Global.putInt(mContext.getContentResolver(), SETTING, 0);
++    synchronized boolean consume(String approval, String packageName, int sessionId) {
++        if (approval == null || sessionId < 0) return false;
++        String[] fields = approval.split(":", -1);
++        if (fields.length != 3 || !packageName.equals(fields[0]) || fields[2].isEmpty()) return false;
++        long now = SystemClock.elapsedRealtime();
++        long expires;
++        try {
++            expires = Long.parseLong(fields[1]);
++        } catch (NumberFormatException e) {
++            return false;
+         }
++        if (expires <= now || expires - now > TIMEOUT_MS) return false;
++        mConsumed.values().removeIf(end -> end <= now);
++        if (mConsumed.putIfAbsent(approval, expires) != null) return false;
++        Slog.i(TAG, "Authorized requested downgrade of " + packageName + " in session " + sessionId);
++        mHandler.post(() -> {
++            if (approval.equals(readApproval())) Settings.Global.putString(mResolver, SETTING, null);
++        });
++        return true;
+     }
+ }
+diff --git a/services/core/java/com/android/server/pm/VerifyingSession.java b/services/core/java/com/android/server/pm/VerifyingSession.java
+index 4c6349343..982a27655 100644
+--- a/services/core/java/com/android/server/pm/VerifyingSession.java
++++ b/services/core/java/com/android/server/pm/VerifyingSession.java
+@@ -170,7 +170,7 @@ final class VerifyingSession {
+                 mPackageLite, mOriginInfo.mResolvedPath, mInstallFlags, mPackageAbiOverride);
+ 
+         Pair<Integer, String> ret = mPm.verifyReplacingVersionCode(
+-                pkgLite, mRequiredInstalledVersionCode, mInstallFlags);
++                pkgLite, mRequiredInstalledVersionCode, mInstallFlags, mUser.getIdentifier(), mSessionId);
+         setReturnCode(ret.first, ret.second);
+         if (mRet != INSTALL_SUCCEEDED) {
+             return;
+-- 
+2.56.1
+

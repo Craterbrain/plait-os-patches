@@ -61,6 +61,14 @@ interface Backend {
 
     fun restorePersonal(grant: String, kind: Personal, userId: Int, trustForeign: Boolean, log: (String) -> Unit): Boolean =
         false.also { log("${kind.label}: needs PlaitOS's backup service") }
+
+    /**
+     * Deletes one backup: the archive of app [pkg], or of phone data when [pkg] is a [Personal] target, for [userId]
+     * (its whole `user_N` folder, and the app's folder when nothing else is left in it). Only the archive folder is
+     * touched, never the app or its data on the phone, so no grant. True when the backup is gone.
+     */
+    fun deleteArchive(pkg: String, userId: Int, log: (String) -> Unit): Boolean =
+        false.also { log("${pkg}: this backend cannot delete backups") }
 }
 
 /** Where archives live. A DataBackup-style tree, so archives can move between the two apps later. */
@@ -72,4 +80,15 @@ object Layout {
 
     /** Package names are the only untrusted strings that reach a shell; only Android's own charset gets through. */
     fun isSafePackage(pkg: String) = pkg.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+"))
+
+    /**
+     * A backup's folder relative to the archive folder (`apps/<pkg>/user_N` or `personal/<kind>/user_N`), or null when
+     * [pkg] is neither phone data nor a safe package name. Deleting goes only through this, so nothing outside a single
+     * backup's own folder can be named.
+     */
+    fun archiveRelative(pkg: String, userId: Int): String? {
+        if (userId < 0) return null
+        Personal.of(pkg)?.let { return "personal/${it.dirName}/user_$userId" }
+        return if (isSafePackage(pkg)) "apps/$pkg/user_$userId" else null
+    }
 }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder only: no code, no components, no permissions. Apps such as Aurora Store offer their Shizuku features only when
+     Shizuku's own package is installed; this is that package's name, and nothing else. The real server is Plait Broker. A framework
+     patch (PlaitShizukuVisibility) shows it only to the apps authorized in the Broker, and to no one else. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="moe.shizuku.privileged.api"
+    android:versionCode="13"
+    android:versionName="13.0.0-plait-placeholder">
+    <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="36" />
+    <application
+        android:label="@string/app_name"
+        android:hasCode="false"
+        android:allowBackup="false"
+        android:icon="@android:drawable/sym_def_app_icon" />
+</manifest>

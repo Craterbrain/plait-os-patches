@@ -1,0 +1,515 @@
+From f1b798c9db6ceabc6493f65f88bb6415549d38a9 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 13:30:42 -0600
+Subject: [PATCH] Add PlaitOS developer quick settings controls
+
+---
+ AndroidManifest.xml                           |  46 +++
+ res/values/strings.xml                        |   2 +
+ .../DevelopmentSettingsDashboardFragment.java |   4 +
+ .../AdbWirelessDebuggingDevelopmentTile.java  |   1 +
+ .../DevelopmentTilePreferenceController.java  |  20 +-
+ .../development/qstile/DevelopmentTiles.java  |  12 +-
+ .../qstile/PlaitDevelopmentTiles.java         | 262 ++++++++++++++++++
+ .../qstile/QSTileLongPressGatewayActivity.kt  |  20 +-
+ 8 files changed, 360 insertions(+), 7 deletions(-)
+ create mode 100644 src/com/android/settings/development/qstile/PlaitDevelopmentTiles.java
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 008fcd1..87adce4 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -5370,6 +5370,52 @@
+             android:permission="android.permission.DUMP" />
+ 
+         <!-- Quick Settings tiles for Developer Options -->
++        <service
++            android:name=".development.qstile.PlaitDevelopmentTiles$UsbDebugging"
++            android:label="@string/enable_adb"
++            android:icon="@drawable/ic_usb"
++            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
++            android:exported="true"
++            android:enabled="false">
++            <intent-filter>
++                <action android:name="android.service.quicksettings.action.QS_TILE" />
++            </intent-filter>
++            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE"
++                       android:value="true" />
++            <meta-data android:name="android.service.quicksettings.TILE_CATEGORY"
++                       android:value="android.service.quicksettings.CATEGORY_CONNECTIVITY" />
++        </service>
++
++        <service
++            android:name=".development.qstile.PlaitDevelopmentTiles$Grayscale"
++            android:label="@string/plait_grayscale"
++            android:icon="@drawable/ic_color_inversion"
++            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
++            android:exported="true"
++            android:enabled="false">
++            <intent-filter>
++                <action android:name="android.service.quicksettings.action.QS_TILE" />
++            </intent-filter>
++            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE"
++                       android:value="true" />
++            <meta-data android:name="android.service.quicksettings.TILE_CATEGORY"
++                       android:value="android.service.quicksettings.CATEGORY_DISPLAY" />
++        </service>
++
++        <service
++            android:name=".development.qstile.PlaitDevelopmentTiles$FrameRate"
++            android:label="@string/external_display_refresh_rate_title"
++            android:icon="@drawable/tile_icon_graphics"
++            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
++            android:exported="true"
++            android:enabled="false">
++            <intent-filter>
++                <action android:name="android.service.quicksettings.action.QS_TILE" />
++            </intent-filter>
++            <meta-data android:name="android.service.quicksettings.TILE_CATEGORY"
++                       android:value="android.service.quicksettings.CATEGORY_DISPLAY" />
++        </service>
++
+         <service
+             android:name=".development.qstile.DevelopmentTiles$ShowLayout"
+             android:label="@string/debug_layout"
+diff --git a/res/values/strings.xml b/res/values/strings.xml
+index 55de29a..20ba988 100644
+--- a/res/values/strings.xml
++++ b/res/values/strings.xml
+@@ -15641,4 +15641,6 @@
+     <!-- Search keywords for Human interface device access setting -->
+     <string name="keywords_access_hid">hid, human, access, device</string>
+     <!-- Access HID end -->
++    <string name="plait_grayscale">Grayscale</string>
++    <string name="plait_refresh_rate_auto">Auto</string>
+ </resources>
+diff --git a/src/com/android/settings/development/DevelopmentSettingsDashboardFragment.java b/src/com/android/settings/development/DevelopmentSettingsDashboardFragment.java
+index f7ebc6c..97b2b25 100644
+--- a/src/com/android/settings/development/DevelopmentSettingsDashboardFragment.java
++++ b/src/com/android/settings/development/DevelopmentSettingsDashboardFragment.java
+@@ -60,6 +60,8 @@ import com.android.settings.development.desktopexperience.DesktopModeSecondaryDi
+ import com.android.settings.development.desktopexperience.FreeformWindowsPreferenceController;
+ import com.android.settings.development.graphicsdriver.GraphicsDriverEnableAngleAsSystemDriverController;
+ import com.android.settings.development.linuxterminal.LinuxTerminalPreferenceController;
++import com.android.settings.development.qstile.DevelopmentTilePreferenceController;
++import com.android.settings.development.qstile.PlaitDevelopmentTiles;
+ import com.android.settings.development.storage.SharedDataPreferenceController;
+ import com.android.settings.development.window.NonResizableMultiWindowPreferenceController;
+ import com.android.settings.development.window.ResizableActivityPreferenceController;
+@@ -475,6 +477,8 @@ public class DevelopmentSettingsDashboardFragment extends RestrictedDashboardFra
+         }
+ 
+         DevelopmentSettingsEnabler.setDevelopmentSettingsEnabled(getContext(), false);
++        PlaitDevelopmentTiles.FrameRate.restoreAdaptiveRate(requireContext());
++        DevelopmentTilePreferenceController.disablePlaitTiles(requireContext());
+         final SystemPropPoker poker = SystemPropPoker.getInstance();
+         poker.blockPokes();
+         for (AbstractPreferenceController controller : mPreferenceControllers) {
+diff --git a/src/com/android/settings/development/qstile/AdbWirelessDebuggingDevelopmentTile.java b/src/com/android/settings/development/qstile/AdbWirelessDebuggingDevelopmentTile.java
+index b147e34..414c26c 100644
+--- a/src/com/android/settings/development/qstile/AdbWirelessDebuggingDevelopmentTile.java
++++ b/src/com/android/settings/development/qstile/AdbWirelessDebuggingDevelopmentTile.java
+@@ -87,6 +87,7 @@ public class AdbWirelessDebuggingDevelopmentTile extends DevelopmentTiles {
+             // Close quick shade
+             sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
+             mToast.show();
++            return;
+         }
+ 
+         writeAdbWifiSetting(isEnabled);
+diff --git a/src/com/android/settings/development/qstile/DevelopmentTilePreferenceController.java b/src/com/android/settings/development/qstile/DevelopmentTilePreferenceController.java
+index 7fc9d9e..87a8bc8 100644
+--- a/src/com/android/settings/development/qstile/DevelopmentTilePreferenceController.java
++++ b/src/com/android/settings/development/qstile/DevelopmentTilePreferenceController.java
+@@ -111,6 +111,20 @@ public class DevelopmentTilePreferenceController extends BasePreferenceControlle
+         return servicesInfos;
+     }
+ 
++    /** Remove PlaitOS developer tiles when the master switch is turned off. */
++    public static void disablePlaitTiles(Context context) {
++        OnChangeHandler handler = new OnChangeHandler(context);
++        for (Class<?> tile : List.of(PlaitDevelopmentTiles.UsbDebugging.class,
++                AdbWirelessDebuggingDevelopmentTile.class, PlaitDevelopmentTiles.Grayscale.class,
++                PlaitDevelopmentTiles.FrameRate.class)) {
++            ComponentName component = new ComponentName(context, tile);
++            if (context.getPackageManager().getComponentEnabledSetting(component)
++                    == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
++                handler.setTileEnabled(component, false);
++            }
++        }
++    }
++
+     @VisibleForTesting
+     static class OnChangeHandler implements Preference.OnPreferenceChangeListener {
+ 
+@@ -130,6 +144,11 @@ public class DevelopmentTilePreferenceController extends BasePreferenceControlle
+             boolean enabled = ((Boolean) newValue).booleanValue();
+             ComponentName componentName = new ComponentName(
+                     mContext.getPackageName(), preference.getKey());
++            setTileEnabled(componentName, enabled);
++            return true;
++        }
++
++        void setTileEnabled(ComponentName componentName, boolean enabled) {
+             mPackageManager.setComponentEnabledSetting(componentName, enabled
+                             ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                             : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+@@ -147,7 +166,6 @@ public class DevelopmentTilePreferenceController extends BasePreferenceControlle
+                 Log.e(TAG, "Failed to modify QS tile for component " +
+                         componentName.toString(), e);
+             }
+-            return true;
+         }
+     }
+ }
+diff --git a/src/com/android/settings/development/qstile/DevelopmentTiles.java b/src/com/android/settings/development/qstile/DevelopmentTiles.java
+index 975f067..3768e37 100644
+--- a/src/com/android/settings/development/qstile/DevelopmentTiles.java
++++ b/src/com/android/settings/development/qstile/DevelopmentTiles.java
+@@ -96,12 +96,20 @@ public abstract class DevelopmentTiles extends TileService {
+         } else {
+             state = isEnabled() ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE;
+         }
+-        getQsTile().setState(state);
+-        getQsTile().updateTile();
++        Tile tile = getQsTile();
++        if (tile != null) {
++            tile.setState(state);
++            tile.updateTile();
++        }
+     }
+ 
+     @Override
+     public void onClick() {
++        if (!DevelopmentSettingsEnabler.isDevelopmentSettingsEnabled(this)
++                || getQsTile() == null) {
++            refresh();
++            return;
++        }
+         setIsEnabled(getQsTile().getState() == Tile.STATE_INACTIVE);
+         SystemPropPoker.getInstance().poke(); // Settings app magic
+         refresh();
+diff --git a/src/com/android/settings/development/qstile/PlaitDevelopmentTiles.java b/src/com/android/settings/development/qstile/PlaitDevelopmentTiles.java
+new file mode 100644
+index 0000000..95c0a60
+--- /dev/null
++++ b/src/com/android/settings/development/qstile/PlaitDevelopmentTiles.java
+@@ -0,0 +1,262 @@
++/*
++ * Copyright (C) 2026 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.settings.development.qstile;
++
++import android.app.AlertDialog;
++import android.content.ContentResolver;
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.database.ContentObserver;
++import android.hardware.display.DisplayManager;
++import android.net.Uri;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.UserManager;
++import android.provider.Settings;
++import android.view.Display;
++import android.view.accessibility.AccessibilityManager;
++
++import com.android.settings.R;
++import com.android.settingslib.development.DevelopmentSettingsEnabler;
++
++import java.util.Map;
++import java.util.TreeMap;
++
++/** PlaitOS controls exposed through the existing developer tile configuration. */
++public final class PlaitDevelopmentTiles {
++    private PlaitDevelopmentTiles() {}
++
++    public abstract static class ObservedTile extends DevelopmentTiles {
++        private final ContentObserver mObserver = new ContentObserver(
++                new Handler(Looper.getMainLooper())) {
++            @Override
++            public void onChange(boolean selfChange) {
++                refresh();
++            }
++        };
++
++        protected abstract Uri[] observedSettings();
++
++        @Override
++        public void onStartListening() {
++            for (Uri uri : observedSettings()) {
++                getContentResolver().registerContentObserver(uri, false, mObserver);
++            }
++            super.onStartListening();
++        }
++
++        @Override
++        public void onStopListening() {
++            getContentResolver().unregisterContentObserver(mObserver);
++            super.onStopListening();
++        }
++    }
++
++    public static final class UsbDebugging extends ObservedTile {
++        @Override
++        protected Uri[] observedSettings() {
++            return new Uri[] {Settings.Global.getUriFor(Settings.Global.ADB_ENABLED)};
++        }
++
++        @Override
++        protected boolean isEnabled() {
++            return Settings.Global.getInt(getContentResolver(), Settings.Global.ADB_ENABLED, 0)
++                    != 0;
++        }
++
++        @Override
++        protected void setIsEnabled(boolean enabled) {
++            if (enabled && (!DevelopmentSettingsEnabler.isDevelopmentSettingsEnabled(this)
++                    || isLocked() || getSystemService(UserManager.class)
++                            .hasUserRestriction(UserManager.DISALLOW_DEBUGGING_FEATURES))) {
++                return;
++            }
++            Settings.Global.putInt(getContentResolver(), Settings.Global.ADB_ENABLED,
++                    enabled ? 1 : 0);
++        }
++
++        @Override
++        public void onClick() {
++            if (!DevelopmentSettingsEnabler.isDevelopmentSettingsEnabled(this)) {
++                refresh();
++                return;
++            }
++            if (isLocked()) {
++                unlockAndRun(this::onClick);
++                return;
++            }
++            if (isEnabled()) {
++                super.onClick();
++                return;
++            }
++
++            showDialog(new AlertDialog.Builder(this)
++                    .setTitle(com.android.settingslib.R.string.adb_warning_title)
++                    .setMessage(com.android.settingslib.R.string.adb_warning_message)
++                    .setPositiveButton(android.R.string.ok, (dialog, which) -> {
++                        setIsEnabled(true);
++                        refresh();
++                    })
++                    .setNegativeButton(android.R.string.cancel, null)
++                    .create());
++        }
++    }
++
++    public static final class Grayscale extends ObservedTile {
++        private static final String ENABLED = Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED;
++        private static final String MODE = Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER;
++        private static final int MONOCHROME = AccessibilityManager.DALTONIZER_SIMULATE_MONOCHROMACY;
++
++        @Override
++        protected Uri[] observedSettings() {
++            return new Uri[] {Settings.Secure.getUriFor(ENABLED), Settings.Secure.getUriFor(MODE)};
++        }
++
++        @Override
++        protected boolean isEnabled() {
++            return Settings.Secure.getInt(getContentResolver(), ENABLED, 0) != 0
++                    && Settings.Secure.getInt(getContentResolver(), MODE, -1) == MONOCHROME;
++        }
++
++        @Override
++        protected void setIsEnabled(boolean enabled) {
++            SharedPreferences prefs = getSharedPreferences("grayscale_tile", MODE_PRIVATE);
++            if (enabled) {
++                prefs.edit()
++                        .putInt(ENABLED,
++                                Settings.Secure.getInt(getContentResolver(), ENABLED, 0))
++                        .putInt(MODE, Settings.Secure.getInt(getContentResolver(), MODE, -1))
++                        .apply();
++                Settings.Secure.putInt(getContentResolver(), MODE, MONOCHROME);
++                Settings.Secure.putInt(getContentResolver(), ENABLED, 1);
++            } else if (isEnabled()) {
++                Settings.Secure.putInt(getContentResolver(), ENABLED, prefs.getInt(ENABLED, 0));
++                if (prefs.contains(MODE)) {
++                    Settings.Secure.putInt(getContentResolver(), MODE, prefs.getInt(MODE, -1));
++                }
++                prefs.edit().clear().apply();
++            }
++        }
++    }
++
++    public static final class FrameRate extends ObservedTile {
++        private static final String MIN = Settings.System.MIN_REFRESH_RATE;
++        private static final String PEAK = Settings.System.PEAK_REFRESH_RATE;
++        private static final String SELECTED = "selected";
++        private static final String PREFS = "developer_refresh_rate_tile";
++
++        @Override
++        protected Uri[] observedSettings() {
++            return new Uri[] {Settings.System.getUriFor(MIN), Settings.System.getUriFor(PEAK)};
++        }
++
++        @Override
++        protected boolean isEnabled() {
++            return selectedRate(this) != 0f;
++        }
++
++        @Override
++        protected void setIsEnabled(boolean enabled) {
++            if (!enabled) {
++                restoreAdaptiveRate(this);
++            }
++        }
++
++        @Override
++        public void refresh() {
++            if (getQsTile() != null) {
++                float rate = selectedRate(this);
++                getQsTile().setSubtitle(rate == 0f
++                        ? getString(R.string.plait_refresh_rate_auto)
++                        : getString(R.string.screen_refresh_rate_displayed_text, Math.round(rate)));
++            }
++            super.refresh();
++        }
++
++        @Override
++        public void onClick() {
++            if (!DevelopmentSettingsEnabler.isDevelopmentSettingsEnabled(this)) {
++                refresh();
++                return;
++            }
++            Display display = getSystemService(DisplayManager.class)
++                    .getDisplay(Display.DEFAULT_DISPLAY);
++            if (display == null) {
++                return;
++            }
++            Map<Integer, Float> rates = new TreeMap<>();
++            for (float rate : display.getSupportedRefreshRates()) {
++                if (Math.round(rate) >= 30) {
++                    rates.putIfAbsent(Math.round(rate), rate);
++                }
++            }
++            float selected = selectedRate(this);
++            if (selected == 0f) {
++                restoreAdaptiveRate(this);
++            }
++            Float next = rates.entrySet().stream()
++                    .filter(entry -> entry.getKey() > Math.round(selected))
++                    .map(Map.Entry::getValue).findFirst().orElse(null);
++            if (next == null) {
++                restoreAdaptiveRate(this);
++            } else {
++                SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
++                var editor = prefs.edit();
++                if (selected == 0f) {
++                    editor.putString(MIN, Settings.System.getString(getContentResolver(), MIN))
++                            .putString(PEAK, Settings.System.getString(getContentResolver(), PEAK));
++                }
++                editor.putFloat(SELECTED, next).apply();
++                Settings.System.putFloat(getContentResolver(), MIN, next);
++                Settings.System.putFloat(getContentResolver(), PEAK, next);
++            }
++            refresh();
++        }
++
++        @Override
++        public void onTileRemoved() {
++            restoreAdaptiveRate(this);
++            super.onTileRemoved();
++        }
++
++        private static float selectedRate(Context context) {
++            float selected = context.getSharedPreferences(PREFS, MODE_PRIVATE)
++                    .getFloat(SELECTED, 0f);
++            var resolver = context.getContentResolver();
++            return matchesRate(resolver, MIN, selected) && matchesRate(resolver, PEAK, selected)
++                    ? selected : 0f;
++        }
++
++        private static boolean matchesRate(ContentResolver resolver, String key,
++                float rate) {
++            return rate != 0f && Settings.System.getFloat(resolver, key, 0f) == rate;
++        }
++
++        public static void restoreAdaptiveRate(Context context) {
++            SharedPreferences prefs = context.getSharedPreferences(PREFS, MODE_PRIVATE);
++            var resolver = context.getContentResolver();
++            float rate = prefs.getFloat(SELECTED, 0f);
++            if (matchesRate(resolver, MIN, rate)) {
++                Settings.System.putString(resolver, MIN, prefs.getString(MIN, null));
++            }
++            if (matchesRate(resolver, PEAK, rate)) {
++                Settings.System.putString(resolver, PEAK, prefs.getString(PEAK, null));
++            }
++            prefs.edit().clear().apply();
++        }
++    }
++}
+diff --git a/src/com/android/settings/qstile/QSTileLongPressGatewayActivity.kt b/src/com/android/settings/qstile/QSTileLongPressGatewayActivity.kt
+index b25e589..b934e94 100644
+--- a/src/com/android/settings/qstile/QSTileLongPressGatewayActivity.kt
++++ b/src/com/android/settings/qstile/QSTileLongPressGatewayActivity.kt
+@@ -23,14 +23,14 @@ import android.os.Bundle
+ import android.provider.Settings
+ import android.util.Log
+ import androidx.appcompat.app.AppCompatActivity
++import com.android.settings.SettingsActivity.EXTRA_FRAGMENT_ARG_KEY
+ import com.android.settings.core.SubSettingLauncher
+ import com.android.settings.development.AdbWirelessDebuggingFragment
+ import com.android.settings.development.AdbWirelessDebuggingPreferenceController
+ import com.android.settings.development.qstile.AdbWirelessDebuggingDevelopmentTile
+-import com.android.settings.network.telephony.satellite.quicksettings.SatelliteLandingPageActivity
++import com.android.settings.development.qstile.PlaitDevelopmentTiles
+ import com.android.settings.network.telephony.satellite.quicksettings.SatelliteTileService
+ import com.android.settings.network.telephony.satellite.quicksettings.SatelliteUtils
+-import com.android.settings.overlay.FeatureFactory
+ 
+ /** A gateway activity for handling long-press actions on Quick Settings tiles. */
+ class QSTileLongPressGatewayActivity : AppCompatActivity() {
+@@ -46,7 +46,13 @@ class QSTileLongPressGatewayActivity : AppCompatActivity() {
+ 
+         // Add more tiles here to launch specific activities. Otherwise, we will launch the
+         // Developer Options page by default for tiles in the same package.
+-        when (tileComponent?.className) {
++        when (tileComponent?.takeIf { it.packageName == packageName }?.className) {
++            PlaitDevelopmentTiles.FrameRate::class.java.name -> {
++                startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS)
++                    .putExtra(EXTRA_FRAGMENT_ARG_KEY, "peak_refresh_rate"))
++                finish()
++                return
++            }
+             SatelliteTileService::class.java.name -> {
+                 // If component is SatelliteTileService, launch the landing page.
+                 val intent = SatelliteUtils.resolveSatelliteSettingsIntent(this)
+@@ -68,9 +74,15 @@ class QSTileLongPressGatewayActivity : AppCompatActivity() {
+             }
+         }
+ 
+-        if (tileComponent?.packageName == packageName) {
++        if (tileComponent != null && tileComponent.packageName == packageName) {
+             // Default to launching Developer Options for other tiles in the package.
+             val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
++            when (tileComponent.className) {
++                PlaitDevelopmentTiles.UsbDebugging::class.java.name ->
++                    intent.putExtra(EXTRA_FRAGMENT_ARG_KEY, "enable_adb")
++                PlaitDevelopmentTiles.Grayscale::class.java.name ->
++                    intent.putExtra(EXTRA_FRAGMENT_ARG_KEY, "simulate_color_space")
++            }
+             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+             startActivity(intent)
+         }
+-- 
+2.56.1
+

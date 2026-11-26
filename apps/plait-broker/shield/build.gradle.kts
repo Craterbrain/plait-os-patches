@@ -10,10 +10,16 @@ android {
         applicationId = "app.plait.shield"
         minSdk = 31
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.7"
+        versionCode = 9
+        versionName = "0.9"
     }
     buildTypes {
+        create("screenshot") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".screenshot"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")

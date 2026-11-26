@@ -21,7 +21,11 @@ data class InstalledApp(val packageName: String, val label: String, val system: 
 /** How the Backup apps list is sorted (the filter sheet, as in DataBackup). */
 enum class AppSort(val label: String) { NAME("A-Z"), INSTALL_TIME("Installation time"), DATA_SIZE("Data size") }
 
-enum class Flow(val verb: String, val title: String) { BACKUP("Backing up", "Backup"), RESTORE("Restoring", "Restore") }
+enum class Flow(val verb: String, val title: String) {
+    BACKUP("Backing up", "Backup"), RESTORE("Restoring", "Restore"),
+    /** Deleting backups: picked from the same list as Restore, but with its own selection and no setup step. */
+    DELETE("Deleting", "Delete"),
+}
 
 enum class ItemState { WAITING, RUNNING, DONE, FAILED }
 
@@ -79,7 +83,46 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
     var parts by mutableStateOf(Part.entries.toSet())
     val selectedApps = mutableStateListOf<String>()
     val selectedArchives = mutableStateListOf<String>()
+    /** Backups picked for deleting: a list of its own, so a Restore selection never carries over into a delete. */
+    val selectedForDelete = mutableStateListOf<String>()
+    var deleting by mutableStateOf(false)
+        private set
     val modes = androidx.compose.runtime.mutableStateMapOf<String, AppMode>()
+
+    /** The list a flow's selection screen works on. */
+    fun selection(flow: Flow) = when (flow) {
+        Flow.BACKUP -> selectedApps
+        Flow.RESTORE -> selectedArchives
+        Flow.DELETE -> selectedForDelete
+    }
+
+    /**
+     * Deletes the backups in [selectedForDelete] (this user's), then reloads the list. Calls [done] with what to tell the
+     * person. The selection is cleared, and the backups are dropped from a Restore selection too.
+     */
+    fun deleteSelected(done: (String) -> Unit) {
+        if (deleting || running) return
+        val pkgs = selectedForDelete.toList()
+        if (pkgs.isEmpty()) return
+        deleting = true
+        viewModelScope.launch {
+            val problems = mutableListOf<String>()
+            val gone = withContext(Dispatchers.IO) {
+                pkgs.filter { pkg -> backend.deleteArchive(pkg, userId) { problems += it } }
+            }
+            archives = withContext(Dispatchers.IO) { backend.listArchives() }
+            selectedForDelete.clear()
+            selectedArchives.removeAll(gone.toSet())
+            recordHistory(HistoryEntry(System.currentTimeMillis(), Flow.DELETE, gone.size, pkgs.size, pkgs))
+            deleting = false
+            val failed = pkgs.size - gone.size
+            done(when {
+                failed == 0 -> "Deleted ${gone.size} backup${if (gone.size == 1) "" else "s"}"
+                gone.isEmpty() -> "Nothing deleted: ${problems.firstOrNull() ?: "the backups could not be removed"}"
+                else -> "Deleted ${gone.size}, $failed could not be removed"
+            })
+        }
+    }
 
     fun mode(pkg: String) = modes[pkg] ?: AppMode.FULL
     fun cycleMode(pkg: String) { modes[pkg] = mode(pkg).next() }
@@ -138,7 +181,6 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
     val log = mutableStateListOf<String>()
 
     var history by mutableStateOf(loadHistory())
-    val version: String = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: ""
 
     init {
         refresh()
@@ -425,7 +467,9 @@ class BackupViewModel(app: Application) : AndroidViewModel(app) {
         ctx.prefs().getString("history", "").orEmpty().lines().mapNotNull { line ->
             val f = line.split('|')
             if (f.size < 5) return@mapNotNull null
-            HistoryEntry(f[0].toLong(), Flow.valueOf(f[1]), f[2].toInt(), f[3].toInt(), f[4].split(',').filter { it.isNotEmpty() })
+            // An entry type this version does not know (written by a newer one) is skipped, not a crash
+            val flow = runCatching { Flow.valueOf(f[1]) }.getOrNull() ?: return@mapNotNull null
+            HistoryEntry(f[0].toLong(), flow, f[2].toInt(), f[3].toInt(), f[4].split(',').filter { it.isNotEmpty() })
         }
 
     private fun recordHistory(e: HistoryEntry) {

@@ -1,0 +1,156 @@
+From df85d4adf6a2bc9829c1fd2527b2aa9a2a9f4b93 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 18:41:16 -0600
+Subject: [PATCH] PlaitOS: open pages pick up a new icon style; a smaller Wi-Fi
+ symbol on its tile
+
+- A page that stayed open while the icon style changed (the home page, which
+  is never closed, or a page behind the PlaitOS page) is drawn again when it
+  comes back: each page remembers the icon settings it was drawn with
+  (PlaitIconStyler.signature) and recreates its activity if they changed.
+- The Wi-Fi level icons are a solid wedge that fills its whole 24 dp box
+  (Material symbols leave about 2 dp around them), which looked fat and
+  cramped on a tile: Wi-Fi network rows put an 18 dp wedge on the same tile.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../settings/SettingsPreferenceFragment.java  | 12 ++++++
+ .../android/settings/plait/PlaitIconStyler.kt | 37 +++++++++++++++----
+ 2 files changed, 42 insertions(+), 7 deletions(-)
+
+diff --git a/src/com/android/settings/SettingsPreferenceFragment.java b/src/com/android/settings/SettingsPreferenceFragment.java
+index 133c93f..f4ca229 100644
+--- a/src/com/android/settings/SettingsPreferenceFragment.java
++++ b/src/com/android/settings/SettingsPreferenceFragment.java
+@@ -133,6 +133,8 @@ public abstract class SettingsPreferenceFragment extends InstrumentedPreferenceF
+     @VisibleForTesting
+     public HighlightablePreferenceGroupAdapter mAdapter;
+     private boolean mPreferenceHighlighted = false;
++    // PlaitOS: the icon style this page was drawn with (PlaitIconStyler.signature)
++    private String mPlaitIconSignature;
+ 
+     private @Nullable UserRestrictionBindingHelper mUserRestrictionBindingHelper;
+ 
+@@ -148,6 +150,7 @@ public abstract class SettingsPreferenceFragment extends InstrumentedPreferenceF
+     @Override
+     public void onCreate(Bundle icicle) {
+         super.onCreate(icicle);
++        mPlaitIconSignature = com.android.settings.plait.PlaitIconStyler.signature(getContext());
+ 
+         mDevicePolicyManager = getContext().getSystemService(DevicePolicyManager.class);
+         if (icicle != null) {
+@@ -257,6 +260,15 @@ public abstract class SettingsPreferenceFragment extends InstrumentedPreferenceF
+     @Override
+     public void onResume() {
+         super.onResume();
++        // PlaitOS: a page that stayed open (the home page, or one behind the PlaitOS page) while the icon style
++        // changed is drawn again, so every page shows the new style when you come back to it
++        String iconSignature = com.android.settings.plait.PlaitIconStyler.signature(getContext());
++        if (mPlaitIconSignature != null && !mPlaitIconSignature.equals(iconSignature)
++                && getActivity() != null) {
++            mPlaitIconSignature = iconSignature;
++            getActivity().recreate();
++            return;
++        }
+         highlightPreferenceIfNeeded();
+     }
+ 
+diff --git a/src/com/android/settings/plait/PlaitIconStyler.kt b/src/com/android/settings/plait/PlaitIconStyler.kt
+index df2ec6a..78afe07 100644
+--- a/src/com/android/settings/plait/PlaitIconStyler.kt
++++ b/src/com/android/settings/plait/PlaitIconStyler.kt
+@@ -107,6 +107,25 @@ object PlaitIconStyler {
+                 DEFAULT_STYLE.ordinal, UserHandle.USER_CURRENT)
+         ) { DEFAULT_STYLE }
+ 
++    /** The icon settings in one string, so a page can tell that they changed while it was open. */
++    @JvmStatic
++    fun signature(context: Context?): String? {
++        if (context == null) return null
++        val resolver = context.contentResolver
++        fun get(key: String, def: Int) = Settings.System.getIntForUser(resolver, key, def, UserHandle.USER_CURRENT)
++        return "${get(KEY_STYLE, DEFAULT_STYLE.ordinal)}/${get(KEY_CORNER, DEFAULT_CORNER)}/${get(KEY_RANDOM, 0)}"
++    }
++
++    /** Rows that keep the icon Android draws for them: app rows (their own artwork). */
++    private fun keepsOwnIcon(preference: Preference): Boolean = preference.javaClass.simpleName.startsWith("App")
++
++    /**
++     * The Wi-Fi level icons are a solid wedge that fills its whole 24 dp box, where Material symbols leave about 2 dp
++     * around them; on a tile at full size the wedge looked fat and cramped, so Wi-Fi network rows get a smaller one.
++     */
++    private fun symbolDp(preference: Preference): Int =
++        if (preference.javaClass.simpleName.contains("WifiEntryPreference")) 18 else 24
++
+     /** Whether a non-stock style is chosen. */
+     @JvmStatic
+     fun isActive(context: Context?): Boolean = context != null && style(context) != Style.STOCK
+@@ -127,6 +146,7 @@ object PlaitIconStyler {
+         if (context == null) return
+         val style = style(context)
+         if (style == Style.STOCK) return
++        if (keepsOwnIcon(preference)) return
+         if (preference.icon == null) {
+             val missing = MISSING_ICONS[preference.key] ?: return
+             preference.setIcon(missing)
+@@ -140,10 +160,10 @@ object PlaitIconStyler {
+             // Android 17's own colored tiles (the home page and some pages, e.g. Accessibility): their symbol goes on
+             // the chosen style's tile, so every icon follows the setting. Restyling the whole tile painted it white.
+             val copy = expressiveSymbol(icon, context) ?: return
+-            preference.icon = styled(copy, style, color, accent, context)
++            preference.icon = styled(copy, style, color, accent, context, symbolDp(preference))
+             return
+         }
+-        preference.icon = styled(icon.mutate(), style, color, accent, context)
++        preference.icon = styled(icon.mutate(), style, color, accent, context, symbolDp(preference))
+     }
+ 
+     /**
+@@ -158,7 +178,7 @@ object PlaitIconStyler {
+         val style = style(context)
+         if (style == Style.STOCK || preference == null) return
+         val icon = preference.icon ?: return
+-        if (icon is StyledIcon) return // already styled when the page loaded
++        if (icon is StyledIcon || keepsOwnIcon(preference)) return // styled at load, or keeps its own icon
+         val view = holder.findViewById(android.R.id.icon) as? ImageView ?: return
+         val copy: Drawable
+         if (isExpressiveTile(icon)) {
+@@ -170,7 +190,8 @@ object PlaitIconStyler {
+             copy.state = icon.state
+         }
+         // A row is bound again on every scroll: keep its color stable even with random colors on
+-        view.setImageDrawable(styled(copy, style, colorFor(preference.key, context, stable = true), accent(context), context))
++        view.setImageDrawable(styled(copy, style, colorFor(preference.key, context, stable = true), accent(context), context,
++            symbolDp(preference)))
+     }
+ 
+     /**
+@@ -179,7 +200,7 @@ object PlaitIconStyler {
+      * else, and any app row, keeps its own artwork.
+      */
+     private fun isLateSymbol(preference: Preference, icon: Drawable): Boolean {
+-        if (icon is StyledIcon || preference.javaClass.simpleName.startsWith("App")) return false
++        if (icon is StyledIcon || keepsOwnIcon(preference)) return false
+         return icon is android.graphics.drawable.VectorDrawable ||
+             icon is android.graphics.drawable.AnimatedVectorDrawable ||
+             icon is android.graphics.drawable.DrawableContainer ||
+@@ -200,12 +221,14 @@ object PlaitIconStyler {
+     private fun isExpressiveTile(icon: Drawable): Boolean =
+         icon is LayerDrawable && icon.numberOfLayers >= 2 && icon.getDrawable(0) is AdaptiveIconShapeDrawable
+ 
+-    private fun styled(icon: Drawable, style: Style, color: Int, accent: Int, context: Context):
++    private fun styled(icon: Drawable, style: Style, color: Int, accent: Int, context: Context, symbolDp: Int = 24):
+         Drawable {
+         val density = context.resources.displayMetrics.density
+         // The home page tile's measurements (40dp shape, 24dp symbol), so every page matches it
+         val size = context.resources.getDimensionPixelSize(R.dimen.dashboard_tile_image_size)
+-        val inset = context.resources.getDimensionPixelSize(R.dimen.dashboard_tile_foreground_image_inset)
++        val stockInset = context.resources.getDimensionPixelSize(R.dimen.dashboard_tile_foreground_image_inset)
++        // A smaller symbol (symbolDp) stays centred on the same tile
++        val inset = if (symbolDp == 24) stockInset else ((size - symbolDp * density) / 2).toInt()
+         val circle = Settings.System.getIntForUser(context.contentResolver, KEY_CORNER, DEFAULT_CORNER,
+             UserHandle.USER_CURRENT) == 0
+         fun shape() =
+-- 
+2.56.1
+

@@ -1,0 +1,131 @@
+diff --git a/java/com/android/dialer/app/calllog/CallLogAdapter.java b/java/com/android/dialer/app/calllog/CallLogAdapter.java
+index 485683b..5b15756 100644
+--- a/java/com/android/dialer/app/calllog/CallLogAdapter.java
++++ b/java/com/android/dialer/app/calllog/CallLogAdapter.java
+@@ -23,6 +23,7 @@ import android.content.DialogInterface.OnCancelListener;
+ import android.content.res.Resources;
+ import android.database.Cursor;
+ import android.net.Uri;
++import android.graphics.drawable.GradientDrawable;
+ import android.os.AsyncTask;
+ import android.os.Build.VERSION;
+ import android.os.Build.VERSION_CODES;
+@@ -824,12 +825,26 @@ public class CallLogAdapter extends GroupingListAdapter
+       views.callLogEntryView.setVisibility(View.VISIBLE);
+       // dayGroupHeader will be restored after loadAndRender() if it is needed.
+     }
++    final int day = getDayGroup(views.rowId);
++    final int cursorPosition = c.getPosition();
++    final Cursor next = position + 1 < getItemCount() ? (Cursor) getItem(position + 1) : null;
++    final boolean lastInGroup = next == null || getDayGroup(next.getLong(CallLogQuery.ID)) != day;
++    c.moveToPosition(cursorPosition);
++    styleCallLogGroup(views.callLogEntryView, day != details.previousGroup, lastInGroup);
+     if (currentlyExpandedRowId == views.rowId) {
+       views.inflateActionViewStub();
+     }
+     loadAndRender(views, views.rowId, details, callDetailsEntries);
+   }
+ 
++  private void styleCallLogGroup(View row, boolean first, boolean last) {
++    float density = row.getResources().getDisplayMetrics().density;
++    float top = (first ? 14f : 6f) * density;
++    float bottom = (last ? 14f : 6f) * density;
++    GradientDrawable background = (GradientDrawable) row.getBackground().mutate();
++    background.setCornerRadii(new float[] {top, top, top, top, bottom, bottom, bottom, bottom});
++  }
++
+   private void updateCheckMarkedStatusOfEntry(CallLogListItemViewHolder views) {
+     if (selectedItems.size() > 0 && views.voicemailUri != null) {
+       int id = getVoicemailId(views.voicemailUri);
+diff --git a/java/com/android/dialer/app/calllog/CallLogListItemViewHolder.java b/java/com/android/dialer/app/calllog/CallLogListItemViewHolder.java
+index 05011d1..37078d5 100644
+--- a/java/com/android/dialer/app/calllog/CallLogListItemViewHolder.java
++++ b/java/com/android/dialer/app/calllog/CallLogListItemViewHolder.java
+@@ -31,7 +31,6 @@ import android.support.annotation.IntDef;
+ import android.support.annotation.Nullable;
+ import android.support.annotation.RequiresPermission;
+ import android.support.annotation.VisibleForTesting;
+-import android.support.v7.widget.CardView;
+ import android.support.v7.widget.RecyclerView;
+ import android.telecom.PhoneAccount;
+ import android.telecom.PhoneAccountHandle;
+@@ -122,7 +121,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
+   /** The text of the header for a day grouping. */
+   public final TextView dayGroupHeader;
+   /** The view containing the details for the call log row, including the action buttons. */
+-  public final CardView callLogEntryView;
++  public final View callLogEntryView;
+   /** The actionable view which places a call to the number corresponding to the call log row. */
+   public final ImageView primaryActionButtonView;
+ 
+@@ -253,7 +252,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
+       DialerQuickContactBadge dialerQuickContactView,
+       View primaryActionView,
+       PhoneCallDetailsViews phoneCallDetailsViews,
+-      CardView callLogEntryView,
++      View callLogEntryView,
+       TextView dayGroupHeader,
+       ImageView primaryActionButtonView) {
+     super(rootView);
+@@ -346,7 +345,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
+         (DialerQuickContactBadge) view.findViewById(R.id.quick_contact_photo),
+         view.findViewById(R.id.primary_action_view),
+         PhoneCallDetailsViews.fromView(view),
+-        (CardView) view.findViewById(R.id.call_log_row),
++        view.findViewById(R.id.call_log_row),
+         (TextView) view.findViewById(R.id.call_log_day_group_label),
+         (ImageView) view.findViewById(R.id.primary_action_button));
+   }
+@@ -378,7 +377,7 @@ public final class CallLogListItemViewHolder extends RecyclerView.ViewHolder
+             new DialerQuickContactBadge(context),
+             new View(context),
+             PhoneCallDetailsViews.createForTest(context),
+-            new CardView(context),
++            new android.widget.FrameLayout(context),
+             new TextView(context),
+             new ImageView(context));
+     viewHolder.detailsButtonView = new TextView(context);
+diff --git a/java/com/android/dialer/app/res/layout/call_log_list_item.xml b/java/com/android/dialer/app/res/layout/call_log_list_item.xml
+index e871663..2aeebbd 100644
+--- a/java/com/android/dialer/app/res/layout/call_log_list_item.xml
++++ b/java/com/android/dialer/app/res/layout/call_log_list_item.xml
+@@ -33,9 +33,9 @@
+     android:paddingBottom="@dimen/call_log_day_group_padding_bottom"
+     style="@style/Dialer.TextAppearance.OVERLINE.Ellipsize"/>
+ 
+-  <android.support.v7.widget.CardView
++  <FrameLayout
+     android:id="@+id/call_log_row"
+-    style="@style/CallLogCardStyle">
++    style="@style/PlaitCallLogGroupRow">
+ 
+     <LinearLayout
+       android:layout_width="match_parent"
+@@ -237,6 +237,6 @@
+ 
+     </LinearLayout>
+ 
+-  </android.support.v7.widget.CardView>
++  </FrameLayout>
+ 
+ </LinearLayout>
+diff --git a/java/com/android/dialer/theme/common/res/values/styles.xml b/java/com/android/dialer/theme/common/res/values/styles.xml
+index 60b3c00..00fce14 100644
+--- a/java/com/android/dialer/theme/common/res/values/styles.xml
++++ b/java/com/android/dialer/theme/common/res/values/styles.xml
+@@ -27,6 +27,15 @@
+     <item name="cardBackgroundColor">@color/plait_surface_container</item>
+   </style>
+ 
++  <style name="PlaitCallLogGroupRow">
++    <item name="android:layout_width">match_parent</item>
++    <item name="android:layout_height">wrap_content</item>
++    <item name="android:layout_marginHorizontal">4dp</item>
++    <item name="android:layout_marginVertical">1dp</item>
++    <item name="android:background">@drawable/plait_card</item>
++    <item name="android:clipToOutline">true</item>
++  </style>
++
+   <!-- This Checkbox style helps align checkboxes with the common list element layout(Image + text) -->
+   <style name="DialerCheckboxStyle" parent="Widget.AppCompat.CompoundButton.CheckBox">
+     <item name="android:layout_marginStart">20dp</item>

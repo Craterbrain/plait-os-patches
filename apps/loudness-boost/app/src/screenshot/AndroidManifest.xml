@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" tools:node="remove" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS_PRIVILEGED" tools:node="remove" />
+    <application android:label="Boost &amp; EQ (Screenshot)" tools:replace="android:label" tools:remove="android:name">
+        <activity android:name=".MainActivity" tools:node="remove" />
+        <activity android:name=".ScreenshotActivity" android:exported="true" />
+    </application>
+</manifest>

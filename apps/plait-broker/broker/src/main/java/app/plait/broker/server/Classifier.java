@@ -156,6 +156,11 @@ final class Classifier {
         default int userId() {
             return 0;
         }
+
+        /** The user in the foreground (what {@code --user current} means), or -1 if it cannot be told. */
+        default int currentUserId() {
+            return 0;
+        }
     }
 
     /** Would hide what really runs, or run code as (or inside) something else. */
@@ -375,8 +380,34 @@ final class Classifier {
         List<String> ops = operands(args.subList(1, args.size()), "--user");
         if (PM_READ.contains(sub)) return Decision.normal();
         if (PM_INSTALL.contains(sub)) {
-            for (String a : args) {
-                if (PM_INSTALL_REFUSED.contains(a)) return Decision.never("pm " + sub + " " + a + " is a shell-only install option");
+            // Options that name something (a user, an installer) are judged by their value; the rest are refused by name.
+            // What real installer apps send through Shizuku (Droid-ify, Neo Store, ...) is covered by the allowed values:
+            //   --user current | --user <the caller's own user>   --install-reason 4 (user)   -i <the calling app itself>
+            for (int i = 1; i < args.size(); i++) {
+                String a = args.get(i);
+                String v = i + 1 < args.size() ? args.get(i + 1) : null;
+                switch (a) {
+                    case "--user":
+                        if (v == null || !(v.equals(String.valueOf(apps.userId()))
+                                || (v.equals("current") && apps.currentUserId() == apps.userId()))) {
+                            return Decision.never("pm " + sub + " --user " + v + " would install for another user");
+                        }
+                        i++;
+                        break;
+                    case "-i":
+                        // Recorded as the installer of the app: the calling app's own name is what an installer app sends
+                        if (v == null || !v.equals(caller)) {
+                            return Decision.never("pm " + sub + " -i " + v + " names another app as the installer");
+                        }
+                        i++;
+                        break;
+                    case "--install-reason":
+                        if (v == null || !v.equals("4")) return Decision.never("pm " + sub + " --install-reason " + v + " is a shell-only install option");
+                        i++;
+                        break;
+                    default:
+                        if (PM_INSTALL_REFUSED.contains(a)) return Decision.never("pm " + sub + " " + a + " is a shell-only install option");
+                }
             }
             return Decision.install("pm " + sub);
         }

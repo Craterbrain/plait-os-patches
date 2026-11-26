@@ -1,0 +1,51 @@
+From 6a22847fa1ef2a768a56db5bcc83d4689ae3ca4c Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 09:36:38 -0600
+Subject: [PATCH] PlaitOS: label private restore journals before extraction
+
+---
+ cmds/installd/PlaitBackup.cpp | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/cmds/installd/PlaitBackup.cpp b/cmds/installd/PlaitBackup.cpp
+index dd2e3e4..9525961 100644
+--- a/cmds/installd/PlaitBackup.cpp
++++ b/cmds/installd/PlaitBackup.cpp
+@@ -11,6 +11,7 @@
+ #include <poll.h>
+ #include <pthread.h>
+ #include <signal.h>
++#include <selinux/selinux.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/stat.h>
+@@ -707,10 +708,25 @@ int stageTreeTarZst(int inFd, const std::string& parent, const std::string& name
+         return -errno;
+     }
+     unique_fd stage = openPrivateDirectory(parentFd.get(), stageName(name));
+-    if (stage < 0 || mkdirat(stage.get(), kIncoming, 0700) != 0 || fsync(parentFd.get()) != 0) {
++    if (stage < 0) {
+         *err = "could not open protected restore staging";
+         return -errno;
+     }
++    // A journal beside private app data starts with system_data_file, where installd may
++    // create directories but not regular files. Apply the private journal label before
++    // creating any children, including the commit markers. Shared storage keeps its media label.
++    if (!external && fsetfilecon(stage.get(), "u:object_r:plait_restore_stage_file:s0") != 0) {
++        const int error = errno;
++        *err = StringPrintf("could not label protected restore staging: %s", strerror(error));
++        discardOrRecoverStage(parentFd.get(), name, skipCaches);
++        return -error;
++    }
++    if (mkdirat(stage.get(), kIncoming, 0700) != 0 || fsync(parentFd.get()) != 0) {
++        const int error = errno;
++        *err = "could not initialize protected restore staging";
++        discardOrRecoverStage(parentFd.get(), name, skipCaches);
++        return -error;
++    }
+     unique_fd incoming = openDirectory(stage.get(), kIncoming);
+     if (incoming < 0) {
+         *err = "could not open the staged data directory";
+-- 
+2.56.1
+

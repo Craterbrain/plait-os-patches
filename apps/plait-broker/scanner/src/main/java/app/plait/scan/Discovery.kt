@@ -225,7 +225,7 @@ object Discovery {
     private fun fetchUpnp(location: String): Upnp? = runCatching {
         val c = URL(location).openConnection() as HttpURLConnection
         c.connectTimeout = 1200; c.readTimeout = 1500; c.instanceFollowRedirects = false
-        val xml = c.inputStream.use { it.readNBytes(32 * 1024) }.toString(Charsets.UTF_8)
+        val xml = c.inputStream.use { it.readUpTo(32 * 1024) }.toString(Charsets.UTF_8)
         fun tag(t: String) = Regex("<$t>([^<]*)</$t>").find(xml)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
         Upnp(tag("friendlyName"), tag("manufacturer"), tag("modelName"), tag("modelNumber"), tag("deviceType"))
     }.getOrNull()
@@ -246,7 +246,7 @@ object Discovery {
         c.connectTimeout = 1000; c.readTimeout = 1500; c.instanceFollowRedirects = false
         c.setRequestProperty("User-Agent", "PlaitScan")
         c.responseCode
-        val body = (c.errorStream ?: c.inputStream).use { it.readNBytes(8192) }.toString(Charsets.UTF_8)
+        val body = (c.errorStream ?: c.inputStream).use { it.readUpTo(8192) }.toString(Charsets.UTF_8)
         Http(
             port, c.getHeaderField("Server"),
             Regex("<title[^>]*>([^<]*)</title>", RegexOption.IGNORE_CASE).find(body)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() },

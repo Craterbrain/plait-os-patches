@@ -1,0 +1,71 @@
+From d86adc5cb1b600215a7ee8a9223b293cada6f9a0 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 22:22:29 -0600
+Subject: [PATCH] PlaitOS: make Peek touchable and recheck breathing alarms
+
+---
+ .../systemui/peek/PeekDisplayController.kt    | 28 +++++++++++++------
+ 1 file changed, 20 insertions(+), 8 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+index 329e8927b..0fe4aef67 100644
+--- a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
++++ b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+@@ -228,25 +228,35 @@ constructor(
+     // Breathing
+ 
+     private fun scheduleBreath() {
+-        if (!isEnabled() || !isDozing || isPulsing) return
++        val intervalMs = readSeconds(SETTING_BREATHING_INTERVAL, DEFAULT_INTERVAL_S) * 1000L
++        if (remainingBreathingTimeMs() <= intervalMs) return
++        breathAlarm.schedule(intervalMs, AlarmTimeout.MODE_RESCHEDULE_IF_SCHEDULED)
++    }
++
++    /** Zero if there is no visible unseen notification eligible for a breath. */
++    private fun remainingBreathingTimeMs(): Long {
++        if (!isEnabled() || !isDozing || isPulsing ||
++            !lockscreenUserManager.shouldShowLockscreenNotifications()
++        ) {
++            return 0
++        }
+         if (Settings.Secure.getIntForUser(
+                 context.contentResolver, SETTING_BREATHING, 1, UserHandle.USER_CURRENT) == 0
+         ) {
+-            return
++            return 0
+         }
+         val newest = allNotifications.values
++            .asSequence()
+             .filter { isPeekable(it) }
+             .mapNotNull { notifCollection.getEntry(it.key)?.sbn?.postTime }
+             .filter { it >= screenOffTime }
+-            .maxOrNull() ?: return
++            .maxOrNull() ?: return 0
+         val durationMs = readSeconds(SETTING_BREATHING_DURATION, DEFAULT_DURATION_MIN * 60) * 1000L
+-        if (System.currentTimeMillis() - newest > durationMs) return
+-        val intervalMs = readSeconds(SETTING_BREATHING_INTERVAL, DEFAULT_INTERVAL_S) * 1000L
+-        breathAlarm.schedule(intervalMs, AlarmTimeout.MODE_RESCHEDULE_IF_SCHEDULED)
++        return (newest + durationMs - System.currentTimeMillis()).coerceAtLeast(0)
+     }
+ 
+     private fun onBreathAlarm() {
+-        if (!isDozing || isPulsing || !isEnabled()) return
++        if (remainingBreathingTimeMs() == 0L) return
+         // The same pulse request the always-on schedule uses; DozeTriggers does the proximity
+         // (pocket) check and the pulse itself
+         context.sendBroadcastAsUser(
+@@ -279,8 +289,10 @@ constructor(
+             LayoutParams(
+                 LayoutParams.MATCH_PARENT,
+                 windowHeight(),
+-                LayoutParams.TYPE_SECURE_SYSTEM_OVERLAY,
++                // The sub-panel sits above the shade and can receive pointer events.
++                LayoutParams.TYPE_STATUS_BAR_SUB_PANEL,
+                 LayoutParams.FLAG_NOT_FOCUSABLE or
++                    LayoutParams.FLAG_SECURE or
+                     LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                     LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                     LayoutParams.FLAG_HARDWARE_ACCELERATED,
+-- 
+2.56.1
+

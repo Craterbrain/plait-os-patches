@@ -1,0 +1,118 @@
+From 0ee33ceba2a9af36c6d355942fba3d8fef229905 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 10:49:59 -0600
+Subject: [PATCH] PlaitOS: load optional full AppOps traces after GmsCompat
+ startup
+
+---
+ core/java/android/app/ActivityThread.java     |  4 ++++
+ core/java/android/app/AppOpsManager.java      | 17 ++++++++++++++-
+ .../util/SynchronousServiceBinding.java       | 21 +++++++++++++++++++
+ 3 files changed, 41 insertions(+), 1 deletion(-)
+
+diff --git a/core/java/android/app/ActivityThread.java b/core/java/android/app/ActivityThread.java
+index 2c9b544a8..0970565ac 100644
+--- a/core/java/android/app/ActivityThread.java
++++ b/core/java/android/app/ActivityThread.java
+@@ -250,6 +250,7 @@ import com.android.internal.annotations.VisibleForTesting;
+ import com.android.internal.app.IVoiceInteractor;
+ import com.android.internal.content.ReferrerIntent;
+ import com.android.internal.gmscompat.GmcDebug;
++import com.android.internal.gmscompat.GmsHooks;
+ import com.android.internal.os.ApplicationSharedMemory;
+ import com.android.internal.os.BackgroundThread;
+ import com.android.internal.os.BinderCallsStats;
+@@ -8352,6 +8353,9 @@ public final class ActivityThread extends ClientTransactionHandler
+             try {
+                 timestampApplicationOnCreateNs = SystemClock.uptimeNanos();
+                 mInstrumentation.callApplicationOnCreate(app);
++                if (GmsCompat.isEnabled()) {
++                    GmsHooks.getBackgroundHandler().post(AppOpsManager::loadGmsCompatFullLog);
++                }
+             } catch (Exception e) {
+                 timestampApplicationOnCreateNs = 0;
+                 if (!mInstrumentation.onException(app, e)) {
+diff --git a/core/java/android/app/AppOpsManager.java b/core/java/android/app/AppOpsManager.java
+index 7e980271b..a5aa478d3 100644
+--- a/core/java/android/app/AppOpsManager.java
++++ b/core/java/android/app/AppOpsManager.java
+@@ -93,6 +93,8 @@ import android.util.Pools;
+ import android.util.SparseArray;
+ import android.util.SparseBooleanArray;
+ 
++import com.android.internal.gmscompat.GmcPrivSettingsHooks;
++import com.android.internal.gmscompat.GmsCompatApp;
+ import com.android.internal.annotations.GuardedBy;
+ import com.android.internal.annotations.Immutable;
+ import com.android.internal.app.IAppOpsActiveCallback;
+@@ -236,6 +238,7 @@ public class AppOpsManager {
+     private static final int MAX_UNFORWARDED_OPS = 10;
+ 
+     private static Boolean sFullLog = null;
++    private static volatile boolean sGmsCompatFullLog;
+ 
+     final Context mContext;
+     private PermissionUsageHelper mUsageHelper;
+@@ -11798,6 +11801,18 @@ public class AppOpsManager {
+         }
+     };
+ 
++    /** Reads the optional private flag after startup using the existing GmsCompat connection. */
++    static void loadGmsCompatFullLog() {
++        try {
++            String namespace = GmcPrivSettingsHooks.deviceConfigNamespace(DeviceConfig.NAMESPACE_PRIVACY);
++            String value = GmsCompatApp.gms2GcaBinding().callIfConnected(
++                    service -> service.privSettingsGetString(namespace, FULL_LOG));
++            sGmsCompatFullLog = Boolean.parseBoolean(value);
++        } catch (RemoteException | RuntimeException e) {
++            // Diagnostics use short traces if the optional lookup is unavailable.
++        }
++    }
++
+     /**
+      * Generate a stack trace used for noted app-ops logging.
+      *
+@@ -11848,7 +11863,7 @@ public class AppOpsManager {
+                 sFullLog = false;
+             }
+         }
+-        final boolean fullLog = Boolean.TRUE.equals(sFullLog);
++        final boolean fullLog = GmsCompat.isEnabled() ? sGmsCompatFullLog : Boolean.TRUE.equals(sFullLog);
+         StringBuilder sb = new StringBuilder();
+         for (int i = firstInteresting; i <= lastInteresting; i++) {
+             if (i != firstInteresting) {
+diff --git a/core/java/com/android/internal/gmscompat/util/SynchronousServiceBinding.java b/core/java/com/android/internal/gmscompat/util/SynchronousServiceBinding.java
+index 9709bf422..bc374d9bb 100644
+--- a/core/java/com/android/internal/gmscompat/util/SynchronousServiceBinding.java
++++ b/core/java/com/android/internal/gmscompat/util/SynchronousServiceBinding.java
+@@ -130,6 +130,27 @@ public abstract class SynchronousServiceBinding<T> implements IBinder.DeathRecip
+         }
+     }
+ 
++    /** Uses the cached service for optional work. Returns null if there is no live connection. */
++    public <R> R callIfConnected(BinderCall<T, R> callFn) throws RemoteException {
++        RefCountedService<T> service;
++        serviceLock.lock();
++        try {
++            ServiceConnectionImpl connection = cachedConnection;
++            service = connection == null || connection.isUnbound ? null : connection.service;
++            if (service == null || !service.binder.isBinderAlive()) {
++                return null;
++            }
++            service.acquire();
++        } finally {
++            serviceLock.unlock();
++        }
++        try {
++            return callFn.call(service.service);
++        } finally {
++            service.release();
++        }
++    }
++
+     public <R> R callOrExit(BinderCall<T, R> callFn) {
+         try {
+             return call(callFn);
+-- 
+2.56.1
+

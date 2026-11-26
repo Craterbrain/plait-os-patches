@@ -1,0 +1,53 @@
+From 9c3eb0edb143f0e3b63f4336a259e30a1b024aaa Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 09:45:54 -0600
+Subject: [PATCH] PlaitOS: avoid recursive AppOps tracing during GmsCompat
+ startup
+
+---
+ core/java/android/app/AppOpsManager.java | 23 ++++++++++++-----------
+ 1 file changed, 12 insertions(+), 11 deletions(-)
+
+diff --git a/core/java/android/app/AppOpsManager.java b/core/java/android/app/AppOpsManager.java
+index 1d7763019..7e980271b 100644
+--- a/core/java/android/app/AppOpsManager.java
++++ b/core/java/android/app/AppOpsManager.java
+@@ -11838,23 +11838,24 @@ public class AppOpsManager {
+             }
+         }
+ 
++        // A sandboxed Google process redirects DeviceConfig reads through GmsCompat. Its
++        // service bind can itself deliver noted app ops before AppOpsManager is initialized.
++        // Keep the default bounded trace in that path instead of recursively binding the service.
++        if (sFullLog == null && !GmsCompat.isEnabled()) {
++            try {
++                sFullLog = DeviceConfig.getBoolean(DeviceConfig.NAMESPACE_PRIVACY, FULL_LOG, false);
++            } catch (Exception e) {
++                sFullLog = false;
++            }
++        }
++        final boolean fullLog = Boolean.TRUE.equals(sFullLog);
+         StringBuilder sb = new StringBuilder();
+         for (int i = firstInteresting; i <= lastInteresting; i++) {
+-            if (sFullLog == null) {
+-                try {
+-                    sFullLog = DeviceConfig.getBoolean(DeviceConfig.NAMESPACE_PRIVACY,
+-                            FULL_LOG, false);
+-                } catch (Exception e) {
+-                    // This should not happen, but it may, in rare cases
+-                    sFullLog = false;
+-                }
+-            }
+-
+             if (i != firstInteresting) {
+                 sb.append('\n');
+             }
+             final String traceString = trace[i].toString();
+-            if (!sFullLog && sb.length() + traceString.length() > 600) {
++            if (!fullLog && sb.length() + traceString.length() > 600) {
+                 break;
+             }
+             sb.append(traceString);
+-- 
+2.56.1
+

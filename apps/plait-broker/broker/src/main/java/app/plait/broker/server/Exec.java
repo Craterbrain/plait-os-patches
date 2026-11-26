@@ -103,6 +103,19 @@ final class Exec {
         return new Command(argv, resolver.resolve(argv.get(0)));
     }
 
+    /** Aurora asks for Play attribution. Run its session under the verified caller's name. */
+    static Command normalizeAuroraInstall(Command command, String caller) {
+        List<String> argv = command.argv;
+        if (!"com.aurora.store".equals(caller) || argv.size() < 4
+                || !base(argv.get(0)).equals("pm") || !argv.get(1).equals("install-create")
+                || !argv.get(2).equals("-i") || !argv.get(3).equals("com.android.vending")) {
+            return command;
+        }
+        List<String> normalized = new ArrayList<>(argv);
+        normalized.set(3, caller);
+        return new Command(normalized, command.path);
+    }
+
     /** The single simple command in a {@code sh -c} script, as an argument list. */
     static List<String> script(String script) throws Refused {
         List<Token> tokens = tokenize(script, false);

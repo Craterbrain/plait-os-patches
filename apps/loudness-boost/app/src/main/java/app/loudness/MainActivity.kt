@@ -20,7 +20,8 @@ import android.widget.TextView
  * One screen of cards: a master processing switch, Boost (switch, big readout, slider) and Equalizer (switch, preset
  * chips, a draggable 15-band curve). Every change is saved and applied live; a card whose switch is off is dimmed.
  */
-class MainActivity : Activity() {
+open class MainActivity : Activity() {
+    protected open val screenshotSettings: Boost.Settings? = null
 
     private lateinit var settings: Boost.Settings
     private lateinit var colors: Palette
@@ -43,12 +44,20 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        settings = Boost.load(this)
+        settings = screenshotSettings ?: Boost.load(this)
         colors = Palette(this)
         window.decorView.setBackgroundColor(colors.background)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(text("Boost & EQ", 32f, colors.text, medium), LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(12) })
+        val heading = LinearLayout(this).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        heading.addView(text("Boost & EQ", 32f, colors.text, medium))
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
+        if (!version.isNullOrBlank()) {
+            heading.addView(text(version, 12f, colors.textSecondary), LinearLayout.LayoutParams(wrap, wrap).apply {
+                marginStart = px(10)
+            })
+        }
+        root.addView(heading, LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(12) })
         root.addView(text("Louder, clearer sound for every app", 15f, colors.textSecondary), LinearLayout.LayoutParams(match, wrap).apply { topMargin = px(4); bottomMargin = px(20) })
 
         // ---- Master ----
@@ -198,8 +207,10 @@ class MainActivity : Activity() {
         preset: String = settings.preset
     ) {
         settings = Boost.Settings(processing, eqOn, gainOn, gainDb, bands, preset)
-        Boost.save(this, settings)
-        Boost.ensure(this)
+        if (screenshotSettings == null) {
+            Boost.save(this, settings)
+            Boost.ensure(this)
+        }
         gainValue.text = "+%.1f dB".format(settings.gainDb)
         showEnabled()
     }

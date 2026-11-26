@@ -67,6 +67,23 @@ object ArchiveCheck {
         return null
     }
 
+    /** Read-only verification always requires a valid signature, including for another install's archives. */
+    fun verifyStored(
+        pkg: String, userId: Int, text: String, signature: String, signer: String, ourKey: () -> String?,
+        verifySignature: (ByteArray, String, String) -> Boolean, sums: () -> Map<String, String>,
+    ): String {
+        val manifest = parse(text) ?: error("Invalid archive manifest")
+        require(manifest.pkg == pkg && manifest.userId == userId) { "Manifest does not match the selected archive" }
+        require(signature.isNotEmpty() && verifySignature(text.toByteArray(), signature, signer)) {
+            "Invalid archive signature"
+        }
+        val actual = sums()
+        compare(manifest, actual)?.let { error(it) }
+        val trust = if (signer == ourKey()) "Trusted signer" else "Signed by another install"
+        val count = if (actual.size == 1) "1 file matches" else "${actual.size} files match"
+        return "Verified · $count · $trust"
+    }
+
     /** Parses `sha256sum` output ("hash  name" lines). */
     fun parseSums(out: String): Map<String, String> = out.lines().mapNotNull { line ->
         val m = Regex("^([0-9a-f]{64})\\s+\\*?(.+)$").find(line.trim()) ?: return@mapNotNull null

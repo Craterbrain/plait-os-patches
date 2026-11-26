@@ -125,6 +125,8 @@ private fun App(vm: BackupViewModel) {
                 screen = Screen.Select(Flow.BACKUP)
             },
             onRestore = { vm.query = ""; screen = Screen.Select(Flow.RESTORE) },
+            // Always starts empty: nothing picked elsewhere is ever pre-selected for deleting
+            onDelete = { vm.query = ""; vm.selectedForDelete.clear(); screen = Screen.Select(Flow.DELETE) },
             onHistory = { screen = Screen.History },
             onSettings = { screen = Screen.Settings },
         )

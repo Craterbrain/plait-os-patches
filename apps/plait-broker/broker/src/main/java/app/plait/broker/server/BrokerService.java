@@ -9,7 +9,6 @@ import static rikka.shizuku.ShizukuApiConstants.BIND_APPLICATION_SERVER_UID;
 import static rikka.shizuku.ShizukuApiConstants.BIND_APPLICATION_SERVER_VERSION;
 import static rikka.shizuku.ShizukuApiConstants.BIND_APPLICATION_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE;
 import static rikka.shizuku.ShizukuApiConstants.REQUEST_PERMISSION_REPLY_ALLOWED;
-import static rikka.shizuku.ShizukuApiConstants.REQUEST_PERMISSION_REPLY_IS_ONETIME;
 
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -84,6 +83,7 @@ public class BrokerService extends IShizukuService.Stub {
     public static final int TX_ANSWER = 10014; // answers a question the daemon asked through a dialog
     public static final int TX_SET_GATES = 10015; // master switch for gated functions
     public static final int TX_RESET_HOSTS = 10016; // puts the stock hosts file back
+    public static final int TX_SET_SHIZUKU_VISIBLE = 10017; // the manager's per-app "Show Shizuku" switch
 
     private static final Logger LOGGER = new Logger("BrokerService");
 
@@ -121,7 +121,8 @@ public class BrokerService extends IShizukuService.Stub {
         final IShizukuApplication app;
         final String packageName;
         final int apiVersion;
-        boolean allowed;
+        volatile boolean allowed;
+        String pendingPermission;
 
         Client(int uid, int pid, IShizukuApplication app, String packageName, int apiVersion) {
             this.uid = uid;
@@ -178,6 +179,15 @@ public class BrokerService extends IShizukuService.Stub {
             System.exit(51);
         }
         managerAppId = ai.uid;
+        policy.onVisibleChanged(ShizukuPlaceholder::publish);
+        // Apps come and go without telling the Broker: re-check who may see the Shizuku placeholder once a minute
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                policy.republishVisible();
+                mainHandler.postDelayed(this, 60_000);
+            }
+        }, 60_000);
         BinderPusher.register(this);
         mainHandler.post(() -> BinderPusher.sendToAllClients(this));
     }
@@ -239,7 +249,7 @@ public class BrokerService extends IShizukuService.Stub {
     /** Timed "allow" answers: uid -> elapsedRealtime when they end. In memory only: a restart asks again. */
     private final Map<Integer, Long> suAllowedUntil = new HashMap<>();
     private final Map<Integer, Object> suLocks = new HashMap<>();
-    private final Map<Integer, Client> suClients = new HashMap<>();
+    private final Map<Integer, Client> suClients = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * The app behind a fake-root request, once it has been allowed to use su; else null and [why] holds the reason.
@@ -262,6 +272,7 @@ public class BrokerService extends IShizukuService.Stub {
         synchronized (suLocks) {
             lock = suLocks.computeIfAbsent(uid, k -> new Object());
         }
+        final long generation = revocationGeneration(uid);
         synchronized (lock) { // one question at a time per app: parallel commands wait for the same answer
             String relay = Relays.reason(pkg, userId);
             if (relay != null) {
@@ -275,6 +286,11 @@ public class BrokerService extends IShizukuService.Stub {
                 }
                 suClients.remove(uid);
             }
+            Policy.Entry current = policy.find(uid);
+            if (current != null && current.denied()) {
+                why[0] = "Broker access is denied for this app";
+                return null;
+            }
             Boolean remembered = policy.decision(uid, Policy.CAP_ASK, SU_KEY);
             if (Boolean.FALSE.equals(remembered)) {
                 why[0] = "su is denied for this app in Broker";
@@ -282,6 +298,7 @@ public class BrokerService extends IShizukuService.Stub {
             }
             boolean allowed = Boolean.TRUE.equals(remembered);
             boolean rememberAlways = false;
+            long allowForSeconds = 0;
             if (!allowed) {
                 synchronized (suAllowedUntil) {
                     Long until = suAllowedUntil.get(uid);
@@ -291,6 +308,10 @@ public class BrokerService extends IShizukuService.Stub {
             if (!allowed) {
                 policy.log(uid, pkg, "su", null, "asking");
                 int answer = ask(uid, pkg, "su", SU_WHAT, SU_DETAIL);
+                if (generation != revocationGeneration(uid)) {
+                    why[0] = "su authorization was revoked";
+                    return null;
+                }
                 if (answer == SU_DENY_ALWAYS) {
                     policy.setCap(uid, Policy.CAP_ASK, SU_KEY, false);
                     policy.log(uid, pkg, "su", null, "denied for good");
@@ -301,9 +322,7 @@ public class BrokerService extends IShizukuService.Stub {
                     rememberAlways = true; // saved below, once the app has its place in the policy
                     allowed = true;
                 } else if (answer > 0) {
-                    synchronized (suAllowedUntil) {
-                        suAllowedUntil.put(uid, SystemClock.elapsedRealtime() + TimeUnit.SECONDS.toMillis(answer));
-                    }
+                    allowForSeconds = answer;
                     allowed = true;
                 }
                 if (!allowed) {
@@ -313,25 +332,36 @@ public class BrokerService extends IShizukuService.Stub {
                 }
                 policy.log(uid, pkg, "su", null, answer == SU_ALWAYS ? "allowed for good" : "allowed for " + answer + " s");
             }
-            // the app now has a place in the policy, so the usual lists (what its commands may do) apply to it
-            Policy.Entry e = policy.find(uid);
-            if (e == null || !e.allowed()) {
-                if (!policy.setMode(uid, pkg, Policy.MODE_RESTRICTED)) {
-                    why[0] = "this app is blocked in Broker";
+            synchronized (authorizationLock) {
+                if (generation != revocationGeneration(uid)) {
+                    why[0] = "su authorization was revoked";
                     return null;
                 }
+                if (allowForSeconds > 0) {
+                    synchronized (suAllowedUntil) {
+                        suAllowedUntil.put(uid, SystemClock.elapsedRealtime() + TimeUnit.SECONDS.toMillis(allowForSeconds));
+                    }
+                }
+                // the app now has a place in the policy, so the usual lists (what its commands may do) apply to it
+                Policy.Entry e = policy.find(uid);
+                if (e == null || !e.allowed()) {
+                    if (!policy.setMode(uid, pkg, Policy.MODE_RESTRICTED)) {
+                        why[0] = "this app is blocked in Broker";
+                        return null;
+                    }
+                }
+                // after setMode: an app with no commands yet gets the default list when it is first set to restricted
+                if (rememberAlways) policy.setCap(uid, Policy.CAP_ASK, SU_KEY, true);
+                Client attached = findClientByUid(uid);
+                if (attached != null) return attached;
+                Client c = suClients.get(uid);
+                if (c == null) {
+                    c = new Client(uid, -1, null, pkg, 0);
+                    c.allowed = true;
+                    suClients.put(uid, c);
+                }
+                return c;
             }
-            // after setMode: an app with no commands yet gets the default list when it is first set to restricted
-            if (rememberAlways) policy.setCap(uid, Policy.CAP_ASK, SU_KEY, true);
-            Client attached = findClientByUid(uid);
-            if (attached != null) return attached;
-            Client c = suClients.get(uid);
-            if (c == null) {
-                c = new Client(uid, -1, null, pkg, 0);
-                c.allowed = true;
-                suClients.put(uid, c);
-            }
-            return c;
         }
     }
 
@@ -363,7 +393,7 @@ public class BrokerService extends IShizukuService.Stub {
             policy.log(uid, null, func, null, "refused: not attached");
             throw new SecurityException("Not an attached client");
         }
-        if (!c.allowed) {
+        if (!c.allowed || !policy.isAllowed(uid)) {
             policy.log(uid, c.packageName, func, null, "refused: no permission");
             throw new SecurityException("Permission denied for " + func);
         }
@@ -425,11 +455,14 @@ public class BrokerService extends IShizukuService.Stub {
     }
 
     private IRemoteProcess newProcessFor(Client c, int uid, String[] cmd, String[] env, String dir) {
+        final long generation = revocationGeneration(uid);
+        if (c != null && !policy.isAllowed(uid)) return finished(c, 126, "", "Broker access was revoked");
         if (c != null && cmd != null && cmd.length > 0 && cmd[0].equals("plait-overlay")) return overlayCommand(c, uid, cmd);
         // What is checked is exactly what runs: sh -c is unwrapped, the program resolved on the system partitions
         Exec.Command command;
         try {
             command = Exec.parse(cmd, Exec::resolveOnDevice);
+            if (c != null) command = Exec.normalizeAuroraInstall(command, c.packageName);
         } catch (Exec.Refused r) {
             String shown = Arrays.toString(cmd);
             policy.log(uid, callerLabel(), "exec", shown, "refused: " + r.getMessage());
@@ -459,9 +492,12 @@ public class BrokerService extends IShizukuService.Stub {
             return finished(c, 126, "", "plait-broker: not allowed for this app: " + key + "\n");
         }
         policy.log(uid, callerLabel(), "exec", key, "allowed" + (d != null && d.tier != Classifier.Tier.NORMAL ? " (" + d + ")" : ""));
+        if (c != null && (generation != revocationGeneration(uid) || !policy.isAllowed(uid))) {
+            return finished(c, 126, "", "Broker access was revoked");
+        }
         try {
             Process process = Runtime.getRuntime().exec(command.execArgv(), Exec.environment(env), dir != null ? new File(dir) : null);
-            return new RemoteProcessHolder(process, token(c), callingUid());
+            return holdProcess(process, c, uid, generation);
         } catch (IOException e) {
             return finished(c, 127, "", "plait-broker: " + e.getMessage() + "\n");
         }
@@ -477,6 +513,7 @@ public class BrokerService extends IShizukuService.Stub {
      */
     private IRemoteProcess overlayCommand(Client c, int uid, String[] cmd) {
         String shown = String.join(" ", cmd);
+        final long generation = revocationGeneration(uid);
         final Overlays.Request[] parsedHolder = new Overlays.Request[1];
         int userId = UserHandleCompat.getUserId(uid);
         try {
@@ -508,6 +545,7 @@ public class BrokerService extends IShizukuService.Stub {
                             return refusal;
                         }
                     }
+                    if (generation != revocationGeneration(uid) || !policy.isAllowed(uid)) return "Broker access was revoked";
                     String err = applyOverlay(r, userId);
                     policy.log(uid, c.packageName, "overlay", shown + (r.register ? " (" + r.entries.size() + " colors)" : ""),
                             err == null ? "allowed" : "failed: " + err);
@@ -517,7 +555,7 @@ public class BrokerService extends IShizukuService.Stub {
                     return e.getMessage();
                 }
             });
-            return new RemoteProcessHolder(p, token(c), callingUid());
+            return holdProcess(p, c, uid, generation);
         } catch (IOException e) {
             return finished(c, 1, "", "plait-overlay: " + e.getMessage() + "\n");
         }
@@ -580,6 +618,9 @@ public class BrokerService extends IShizukuService.Stub {
             + "Only blocking entries are kept: the list can block names, never send them to another address.";
 
     private IRemoteProcess hostsWrite(Client c, int uid, SystemWrites.Plan plan) {
+        final long generation = revocationGeneration(uid);
+        java.util.function.BooleanSupplier stillAllowed =
+                () -> generation == revocationGeneration(uid) && policy.isAllowed(uid);
         String refusal = decide(c, uid, Classifier.Decision.ask("hosts", "replace the phone's DNS blocklist"), new ArrayList<>());
         if (refusal != null) {
             policy.log(uid, c.packageName, "hosts", null, "refused: " + refusal);
@@ -591,10 +632,10 @@ public class BrokerService extends IShizukuService.Stub {
         }
         try {
             if (plan.kind == SystemWrites.Kind.STDIN) {
-                Process p = HostsFile.fromStdin(result -> policy.log(uid, c.packageName, "hosts", "from stdin", result));
-                return new RemoteProcessHolder(p, token(c), callingUid());
+                Process p = HostsFile.fromStdin(stillAllowed, result -> policy.log(uid, c.packageName, "hosts", "from stdin", result));
+                return holdProcess(p, c, uid, generation);
             }
-            HostsFile.Filtered f = HostsFile.write(new java.io.File(plan.sources.get(0)));
+            HostsFile.Filtered f = HostsFile.write(new java.io.File(plan.sources.get(0)), stillAllowed);
             policy.log(uid, c.packageName, "hosts", plan.sources.get(0),
                     f.entries + " names" + (f.dropped > 0 ? ", " + f.dropped + " redirecting lines dropped" : ""));
             return finished(c, 0, "", "");
@@ -627,7 +668,7 @@ public class BrokerService extends IShizukuService.Stub {
         if (uid == OsUtils.getUid() || isManager(uid)) return true;
         Client c = findClient(uid, pid);
         if (c == null) throw new IllegalStateException("Not an attached client");
-        return c.allowed;
+        return c.allowed && policy.isAllowed(uid);
     }
 
     @Override
@@ -642,7 +683,7 @@ public class BrokerService extends IShizukuService.Stub {
         int uid = Binder.getCallingUid(), pid = Binder.getCallingPid();
         Client c = findClient(uid, pid);
         if (c == null) throw new IllegalStateException("Not an attached client");
-        if (c.allowed) {
+        if (c.allowed && policy.isAllowed(uid)) {
             c.dispatchResult(requestCode, true);
             return;
         }
@@ -654,6 +695,10 @@ public class BrokerService extends IShizukuService.Stub {
         int userId = UserHandleCompat.getUserId(uid);
         ApplicationInfo ai = PackageManagerApis.getApplicationInfoNoThrow(c.packageName, 0, userId);
         if (ai == null) return;
+        final String permissionToken = java.util.UUID.randomUUID().toString();
+        synchronized (authorizationLock) {
+            c.pendingPermission = permissionToken;
+        }
         policy.log(uid, c.packageName, "requestPermission", null, "asking the user");
         Intent intent = new Intent(REQUEST_PERMISSION_ACTION)
                 .setPackage(MANAGER_PACKAGE)
@@ -661,6 +706,7 @@ public class BrokerService extends IShizukuService.Stub {
                 .putExtra("uid", uid)
                 .putExtra("pid", pid)
                 .putExtra("requestCode", requestCode)
+                .putExtra("permissionToken", permissionToken)
                 .putExtra("applicationInfo", ai);
         ActivityManagerApis.startActivityNoThrow(intent, null, userId);
     }
@@ -668,11 +714,80 @@ public class BrokerService extends IShizukuService.Stub {
     // ------------------------------------------------------------------ questions a waiting call asks the user
 
     private static final class Question {
+        final int uid;
+
+        Question(int uid) {
+            this.uid = uid;
+        }
+
         final CountDownLatch answered = new CountDownLatch(1);
         volatile int answer = InstallGuard.Asker.NO_ANSWER;
     }
 
     private final Map<Integer, Question> questions = new HashMap<>();
+    private final Object authorizationLock = new Object();
+    private final Map<Integer, Long> revocations = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Integer, Set<Process>> runningProcesses = new HashMap<>();
+
+    private IRemoteProcess holdProcess(Process process, Client client, int uid, long generation) {
+        if (client != null) {
+            synchronized (authorizationLock) {
+                if (generation != revocationGeneration(uid) || !policy.isAllowed(uid)) {
+                    process.destroyForcibly();
+                    return finished(client, 126, "", "Broker access was revoked");
+                }
+                Set<Process> running = runningProcesses.computeIfAbsent(uid,
+                        ignored -> Collections.newSetFromMap(new java.util.WeakHashMap<>()));
+                running.removeIf(p -> !p.isAlive());
+                running.add(process);
+            }
+        }
+        return new RemoteProcessHolder(process, token(client), callingUid());
+    }
+
+
+    private long revocationGeneration(int uid) {
+        return revocations.getOrDefault(uid, 0L);
+    }
+
+    // Called under authorizationLock after a manager revokes or forgets an app.
+    private void invalidateAuthorization(int uid) {
+        revocations.merge(uid, 1L, Long::sum);
+        synchronized (clients) {
+            for (Client client : clients) {
+                if (client.uid == uid) {
+                    client.allowed = false;
+                    client.pendingPermission = null;
+                }
+            }
+        }
+        synchronized (questions) {
+            questions.entrySet().removeIf(entry -> {
+                Question question = entry.getValue();
+                if (question.uid != uid) return false;
+                question.answer = InstallGuard.Asker.NO_ANSWER;
+                question.answered.countDown();
+                return true;
+            });
+        }
+        synchronized (openGates) {
+            openGates.keySet().removeIf(key -> key.startsWith(uid + ":"));
+        }
+        synchronized (suAllowedUntil) {
+            suAllowedUntil.remove(uid);
+        }
+        suClients.remove(uid);
+        Set<Process> running = runningProcesses.remove(uid);
+        if (running != null) {
+            for (Process process : running) {
+                try {
+                    process.destroyForcibly();
+                } catch (RuntimeException e) {
+                    LOGGER.w(e, "could not stop a revoked process");
+                }
+            }
+        }
+    }
     /** Apps with a question on screen. Each waiting question holds a Binder thread, so: one per app, a few overall. */
     private final Set<Integer> asking = new HashSet<>();
     private static final int MAX_QUESTIONS = 3;
@@ -721,9 +836,13 @@ public class BrokerService extends IShizukuService.Stub {
         ApplicationInfo ai = PackageManagerApis.getApplicationInfoNoThrow(pkg, 0, userId);
         if (ai == null) return InstallGuard.Asker.NO_ANSWER;
         int id = nextQuestion.incrementAndGet();
-        Question q = new Question();
+        final long generation = revocationGeneration(uid);
+        Question q = new Question(uid);
         synchronized (questions) {
-            if (asking.contains(uid) || asking.size() >= MAX_QUESTIONS) return InstallGuard.Asker.NO_ANSWER;
+            if (generation != revocationGeneration(uid) || asking.contains(uid) || asking.size() >= MAX_QUESTIONS
+                    || (!"su".equals(kind) && !policy.isAllowed(uid))) {
+                return InstallGuard.Asker.NO_ANSWER;
+            }
             asking.add(uid);
             questions.put(id, q);
         }
@@ -739,7 +858,7 @@ public class BrokerService extends IShizukuService.Stub {
                     .putExtra("applicationInfo", ai);
             ActivityManagerApis.startActivityNoThrow(intent, null, userId);
             q.answered.await(ANSWER_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            return q.answer;
+            return generation == revocationGeneration(uid) ? q.answer : InstallGuard.Asker.NO_ANSWER;
         } catch (InterruptedException e) {
             return InstallGuard.Asker.NO_ANSWER;
         } finally {
@@ -761,6 +880,8 @@ public class BrokerService extends IShizukuService.Stub {
      */
     private String decide(Client c, int uid, Classifier.Decision d, List<String> targets) {
         String pkg = c.packageName;
+        if (!policy.isAllowed(uid)) return "Broker access was revoked";
+        final long generation = revocationGeneration(uid);
         switch (d.tier) {
             case NEVER:
                 notifyManager("refused", uid, pkg, d.reason, null);
@@ -784,6 +905,7 @@ public class BrokerService extends IShizukuService.Stub {
                 if (seconds <= 0) return "not allowed: " + d.gate.description;
                 seconds = Math.min(seconds, MAX_GATE_SECONDS);
                 synchronized (openGates) {
+                    if (generation != revocationGeneration(uid) || !policy.isAllowed(uid)) return "Broker access was revoked";
                     openGates.put(gate, SystemClock.elapsedRealtime() + TimeUnit.SECONDS.toMillis(seconds));
                 }
                 policy.log(uid, pkg, "gate", d.gate.id(), "opened for " + seconds + " s");
@@ -793,8 +915,11 @@ public class BrokerService extends IShizukuService.Stub {
                 Boolean allowed = policy.decision(uid, Policy.CAP_ASK, d.key);
                 if (allowed == null) {
                     int answer = ask(uid, pkg, "ask", d.reason, d.key.equals("hosts") ? HOSTS_DETAIL : d.key);
-                    if (answer != InstallGuard.Asker.NO_ANSWER) policy.setCap(uid, Policy.CAP_ASK, d.key, answer > 0);
-                    allowed = answer > 0;
+                    synchronized (authorizationLock) {
+                        if (generation != revocationGeneration(uid) || !policy.isAllowed(uid)) return "Broker access was revoked";
+                        if (answer != InstallGuard.Asker.NO_ANSWER) policy.setCap(uid, Policy.CAP_ASK, d.key, answer > 0);
+                        allowed = answer > 0;
+                    }
                 }
                 return allowed ? null : "not allowed: " + d.reason;
             }
@@ -939,37 +1064,39 @@ public class BrokerService extends IShizukuService.Stub {
             return;
         }
         if (data == null) return;
-        boolean allowed = data.getBoolean(REQUEST_PERMISSION_REPLY_ALLOWED);
-        boolean onetime = data.getBoolean(REQUEST_PERMISSION_REPLY_IS_ONETIME);
-        String mode = data.getString(EXTRA_MODE, Policy.MODE_RESTRICTED);
-        String pkg = null;
-        synchronized (clients) {
-            for (Client c : clients) {
-                if (c.uid == requestUid) pkg = c.packageName;
+        Client requester;
+        boolean allowed;
+        synchronized (authorizationLock) {
+            allowed = data.getBoolean(REQUEST_PERMISSION_REPLY_ALLOWED);
+            String mode = data.getString(EXTRA_MODE, Policy.MODE_RESTRICTED);
+            requester = findClient(requestUid, requestPid);
+            if (requester == null || requester.pendingPermission == null
+                    || !requester.pendingPermission.equals(data.getString("permissionToken"))) return;
+            requester.pendingPermission = null;
+            String pkg = requester.packageName;
+            if (!policy.setMode(requestUid, pkg, allowed ? mode : Policy.MODE_DENIED)) return;
+            if (pkg != null) policy.checkIdentity(requestUid, pkg, Identity.signingCert(pkg, UserHandleCompat.getUserId(requestUid)));
+            // What the app declared in its manifest and the user saw in the dialog: switched on with the consent, before
+            // the app hears the answer (the broker's tiers still apply to each use)
+            String[] declared = allowed ? data.getStringArray(EXTRA_DECLARED) : null;
+            if (declared != null) {
+                for (String d : declared) {
+                    int nl = d.indexOf('\n');
+                    String type = nl > 0 ? d.substring(0, nl) : "";
+                    if (type.equals(Policy.CAP_EXEC) || type.equals(Policy.CAP_ASK)) policy.setCap(requestUid, type, d.substring(nl + 1), true);
+                }
             }
-        }
-        policy.setMode(requestUid, pkg, allowed ? mode : Policy.MODE_DENIED);
-        if (pkg != null) policy.checkIdentity(requestUid, pkg, Identity.signingCert(pkg, UserHandleCompat.getUserId(requestUid)));
-        // What the app declared in its manifest and the user saw in the dialog: switched on with the consent, before
-        // the app hears the answer (the broker's tiers still apply to each use)
-        String[] declared = allowed ? data.getStringArray(EXTRA_DECLARED) : null;
-        if (declared != null) {
-            for (String d : declared) {
-                int nl = d.indexOf('\n');
-                String type = nl > 0 ? d.substring(0, nl) : "";
-                if (type.equals(Policy.CAP_EXEC) || type.equals(Policy.CAP_ASK)) policy.setCap(requestUid, type, d.substring(nl + 1), true);
-            }
-        }
-        policy.log(requestUid, pkg, "consent", allowed ? mode : "denied",
-                "recorded" + (declared != null && declared.length > 0 ? " with " + declared.length + " declared" : ""));
-        synchronized (clients) {
-            for (Client c : clients) {
-                if (c.uid == requestUid) {
-                    c.allowed = allowed;
-                    if (c.pid == requestPid) c.dispatchResult(requestCode, allowed);
+            policy.log(requestUid, pkg, "consent", allowed ? mode : "denied",
+                    "recorded" + (declared != null && declared.length > 0 ? " with " + declared.length + " declared" : ""));
+            synchronized (clients) {
+                for (Client c : clients) {
+                    if (c.uid == requestUid) {
+                        c.allowed = allowed;
+                        }
                 }
             }
         }
+        requester.dispatchResult(requestCode, allowed && policy.isAllowed(requestUid));
     }
 
     @Override
@@ -983,20 +1110,26 @@ public class BrokerService extends IShizukuService.Stub {
     @Override
     public void updateFlagsForUid(int uid, int mask, int value) {
         if (!isManager(Binder.getCallingUid())) return;
-        synchronized (clients) {
-            for (Client c : clients) {
-                if (c.uid == uid) c.allowed = (value & 2) != 0;
+        synchronized (authorizationLock) {
+            if ((value & 2) != 0) {
+                if (policy.setMode(uid, null, Policy.MODE_RESTRICTED)) {
+                    synchronized (clients) {
+                        for (Client c : clients) if (c.uid == uid) c.allowed = true;
+                    }
+                }
+            } else {
+                if ((value & 4) != 0) policy.setMode(uid, null, Policy.MODE_DENIED);
+                else policy.remove(uid);
+                invalidateAuthorization(uid);
             }
         }
-        if ((value & 2) != 0) policy.setMode(uid, null, Policy.MODE_RESTRICTED);
-        else if ((value & 4) != 0) policy.setMode(uid, null, Policy.MODE_DENIED);
-        else policy.remove(uid);
     }
 
     // ------------------------------------------------------------------ Binder wrapper (system service calls)
     private void transactRemote(Parcel data, Parcel reply, int flags) throws RemoteException {
         Client c = requireAllowed("transactRemote");
         int uid = Binder.getCallingUid();
+        final long generation = revocationGeneration(uid);
         IBinder target = data.readStrongBinder();
         int code = data.readInt();
         String descriptor = target.getInterfaceDescriptor();
@@ -1022,7 +1155,12 @@ public class BrokerService extends IShizukuService.Stub {
                 }
             }
             // The call runs as the shell user: installer calls get extra checks (and may be rebuilt)
-            if (c != null) send = installGuard.before(uid, c.packageName, key, newData);
+            if (c != null) {
+                send = installGuard.before(uid, c.packageName, key, newData);
+                if (generation != revocationGeneration(uid) || !policy.isAllowed(uid)) {
+                    throw new SecurityException("Broker access was revoked");
+                }
+            }
             long id = Binder.clearCallingIdentity();
             try {
                 target.transact(code, send, reply, targetFlags);
@@ -1070,14 +1208,18 @@ public class BrokerService extends IShizukuService.Stub {
                 int uid = data.readInt();
                 String pkg = data.readString();
                 String mode = data.readString();
-                if (!policy.setMode(uid, pkg, mode)) {
-                    policy.log(uid, pkg, "mode", mode, "refused: blocked apps stay blocked");
-                    reply.writeNoException();
-                    return true;
-                }
-                synchronized (clients) {
-                    for (Client c : clients) {
-                        if (c.uid == uid) c.allowed = !Policy.MODE_DENIED.equals(mode);
+                synchronized (authorizationLock) {
+                    if (!policy.setMode(uid, pkg, mode)) {
+                        policy.log(uid, pkg, "mode", mode, "refused: blocked apps stay blocked");
+                        reply.writeNoException();
+                        return true;
+                    }
+                    if (!policy.isAllowed(uid)) {
+                        invalidateAuthorization(uid);
+                    } else {
+                        synchronized (clients) {
+                            for (Client c : clients) if (c.uid == uid) c.allowed = true;
+                        }
                     }
                 }
                 policy.log(uid, pkg, "mode", mode, "set by manager");
@@ -1136,6 +1278,17 @@ public class BrokerService extends IShizukuService.Stub {
                 }
                 return true;
             }
+            case TX_SET_SHIZUKU_VISIBLE: {
+                data.enforceInterface(ShizukuApiConstants.BINDER_DESCRIPTOR);
+                requireManager("setShizukuVisible");
+                int shizukuUid = data.readInt();
+                boolean visible = data.readInt() != 0;
+                if (policy.setShizukuVisible(shizukuUid, visible)) {
+                    policy.log(shizukuUid, null, "Shizuku", null, visible ? "shown" : "hidden");
+                }
+                reply.writeNoException();
+                return true;
+            }
             case TX_SET_GATES: {
                 data.enforceInterface(ShizukuApiConstants.BINDER_DESCRIPTOR);
                 requireManager("setGates");
@@ -1153,7 +1306,11 @@ public class BrokerService extends IShizukuService.Stub {
             case TX_REMOVE:
                 data.enforceInterface(ShizukuApiConstants.BINDER_DESCRIPTOR);
                 requireManager("remove");
-                policy.remove(data.readInt());
+                int removedUid = data.readInt();
+                synchronized (authorizationLock) {
+                    policy.remove(removedUid);
+                    invalidateAuthorization(removedUid);
+                }
                 reply.writeNoException();
                 return true;
             default:
