@@ -1,0 +1,164 @@
+From 76bed0e61782dadd12789d928f92ede734eee1ae Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 22:50:23 -0600
+Subject: [PATCH] PlaitOS: Cut / Copy / Paste here finished; Home stays in the
+ path
+
+- Cut and Copy taps were ignored with Material 3 (the menu showed them but the folder view
+  only handled them under the desktop UX flag): handled now
+- Cut and Copy end the selection, so the Paste here bar shows straight away
+- No Paste here in the folder a cut came from (moving files into their own folder does
+  nothing; Copy still offers it there, for a duplicate)
+- The Home crumb sits outside the scrolling path, so it stays in view in deep folders
+
+Checked on the phone: copy two files from Download, paste in Documents; cut them in
+Documents (no bar there), paste in another folder (moved, gone from Documents).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ src/com/android/documentsui/PlaitPathBar.kt           | 11 ++++++++---
+ .../android/documentsui/clipping/DocumentClipper.java |  7 +++++++
+ .../documentsui/clipping/RuntimeDocumentClipper.java  |  8 ++++++++
+ .../documentsui/dirlist/DirectoryFragment.java        |  3 ++-
+ src/com/android/documentsui/files/ActionHandler.java  | 10 ++++------
+ src/com/android/documentsui/files/FilesActivity.java  |  6 +++++-
+ 6 files changed, 34 insertions(+), 11 deletions(-)
+
+diff --git a/src/com/android/documentsui/PlaitPathBar.kt b/src/com/android/documentsui/PlaitPathBar.kt
+index d323996..576e794 100644
+--- a/src/com/android/documentsui/PlaitPathBar.kt
++++ b/src/com/android/documentsui/PlaitPathBar.kt
+@@ -43,10 +43,14 @@ internal class PlaitPathBar(context: Context) : LinearLayout(context) {
+         overScrollMode = OVER_SCROLL_NEVER
+         addView(row, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+     }
++    /** Home stays put; the folders after it scroll (the current one kept in view). */
++    private val home = android.widget.FrameLayout(context)
++
+     init {
+-        orientation = VERTICAL
++        orientation = HORIZONTAL
+         gravity = Gravity.CENTER_VERTICAL
+-        addView(scroll, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
++        addView(home, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
++        addView(scroll, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+     }
+ 
+     /**
+@@ -55,7 +59,8 @@ internal class PlaitPathBar(context: Context) : LinearLayout(context) {
+      */
+     fun show(home: Runnable?, title: String?, version: String?, parts: List<Part>) {
+         row.removeAllViews()
+-        row.addView(crumb(null, context.getDrawable(app.plait.design.R.drawable.ps_home), home,
++        this.home.removeAllViews()
++        this.home.addView(crumb(null, context.getDrawable(app.plait.design.R.drawable.ps_home), home,
+             context.getString(R.string.plait_home), parts.isEmpty()))
+         if (parts.isEmpty() && title != null) {
+             row.addView(label(title, true, 20f).apply { setPadding(dp(2), 0, dp(6), 0) })
+diff --git a/src/com/android/documentsui/clipping/DocumentClipper.java b/src/com/android/documentsui/clipping/DocumentClipper.java
+index 3641c4a..70b7961 100644
+--- a/src/com/android/documentsui/clipping/DocumentClipper.java
++++ b/src/com/android/documentsui/clipping/DocumentClipper.java
+@@ -21,6 +21,8 @@ import android.content.ClipboardManager;
+ import android.content.Context;
+ import android.net.Uri;
+ 
++import androidx.annotation.Nullable;
++
+ import androidx.recyclerview.selection.Selection;
+ 
+ import com.android.documentsui.base.DocumentInfo;
+@@ -52,6 +54,11 @@ public interface DocumentClipper {
+         return 0;
+     }
+ 
++    /** PlaitOS: the folder a pending cut came from (null if unknown or not a cut). */
++    default @Nullable Uri plaitSourceParent() {
++        return null;
++    }
++
+     /** PlaitOS: whether the pending operation is a move (cut) rather than a copy. */
+     default boolean plaitIsMove() {
+         return false;
+diff --git a/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java b/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
+index 4dffc76..8e9aa78 100644
+--- a/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
++++ b/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
+@@ -111,6 +111,14 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+         return clip == null ? 0 : clip.getItemCount();
+     }
+ 
++    @Override
++    public @Nullable Uri plaitSourceParent() {
++        ClipDescription description = mClipboard.getPrimaryClipDescription();
++        if (description == null || description.getExtras() == null) return null;
++        String parent = description.getExtras().getString(SRC_PARENT_KEY);
++        return parent == null ? null : Uri.parse(parent);
++    }
++
+     @Override
+     public boolean plaitIsMove() {
+         ClipDescription description = mClipboard.getPrimaryClipDescription();
+diff --git a/src/com/android/documentsui/dirlist/DirectoryFragment.java b/src/com/android/documentsui/dirlist/DirectoryFragment.java
+index 0276ddd..f960b0e 100644
+--- a/src/com/android/documentsui/dirlist/DirectoryFragment.java
++++ b/src/com/android/documentsui/dirlist/DirectoryFragment.java
+@@ -1619,7 +1619,8 @@ public class DirectoryFragment extends Fragment implements SwipeRefreshLayout.On
+ 
+         final boolean showCopyToMoveTo =
+                 getResources().getBoolean(R.bool.show_copy_to_move_to_menus);
+-        if (isDesktopUxPhase2FlagEnabled() && !showCopyToMoveTo) {
++        // PlaitOS: Cut and Copy are the selection bar's (MenuManager shows them with Material 3)
++        if (isUseMaterial3FlagEnabled() || (isDesktopUxPhase2FlagEnabled() && !showCopyToMoveTo)) {
+             if (id == getRes(R.id.action_menu_cut_to_clipboard)) {
+                 mActions.cutToClipboard();
+                 return true;
+diff --git a/src/com/android/documentsui/files/ActionHandler.java b/src/com/android/documentsui/files/ActionHandler.java
+index 2cdd55e..eb9cd8c 100644
+--- a/src/com/android/documentsui/files/ActionHandler.java
++++ b/src/com/android/documentsui/files/ActionHandler.java
+@@ -335,9 +335,8 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+             }
+         }
+ 
+-        if (!isUseMaterial3FlagEnabled()) {
+-            mSelectionMgr.clearSelection();
+-        }
++        // PlaitOS: always end the selection, so the Paste here bar shows (FX's clipboard)
++        mSelectionMgr.clearSelection();
+ 
+         mClipper.clipDocumentsForCut(
+                 mModel::getItemUri, selection, mState.stack.peek(), mState.stack.isRecents());
+@@ -372,9 +371,8 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+             }
+         }
+ 
+-        if (!isUseMaterial3FlagEnabled()) {
+-            mSelectionMgr.clearSelection();
+-        }
++        // PlaitOS: always end the selection, so the Paste here bar shows (FX's clipboard)
++        mSelectionMgr.clearSelection();
+ 
+         mClipper.clipDocumentsForCopy(mModel::getItemUri, selection);
+ 
+diff --git a/src/com/android/documentsui/files/FilesActivity.java b/src/com/android/documentsui/files/FilesActivity.java
+index 068735a..8e47c7c 100644
+--- a/src/com/android/documentsui/files/FilesActivity.java
++++ b/src/com/android/documentsui/files/FilesActivity.java
+@@ -373,7 +373,11 @@ public class FilesActivity extends BaseActivity implements AbstractActionHandler
+     private void updatePlaitPaste() {
+         if (mPlaitPaste == null || mPlaitClipper == null) return;
+         DirectoryFragment directory = getDirectoryFragment();
+-        boolean visible = !mDismissedPaste && !isPlaitPlacesVisible()
++        // Not where a cut came from: moving files into their own folder does nothing
++        DocumentInfo here = getCurrentDirectory();
++        boolean intoSource = mPlaitClipper.plaitIsMove() && here != null
++                && java.util.Objects.equals(mPlaitClipper.plaitSourceParent(), here.getDocumentUri());
++        boolean visible = !mDismissedPaste && !isPlaitPlacesVisible() && !intoSource
+                 && !mInjector.selectionMgr.hasSelection() && directory != null
+                 && mPlaitClipper.hasDocumentOperation() && canCreateDirectory();
+         mPlaitPaste.setVisibility(visible ? View.VISIBLE : View.GONE);
+-- 
+2.56.1
+

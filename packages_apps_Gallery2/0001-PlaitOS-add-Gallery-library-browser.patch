@@ -1,0 +1,629 @@
+From 60a54918c2e4279875c76edf134b378ea3f51e5d Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 16:52:16 -0600
+Subject: [PATCH] PlaitOS: add Gallery library browser
+
+---
+ AndroidManifest.xml                           |  14 +-
+ res/drawable/plait_gallery_settings.xml       |   6 +
+ res/values/plait_gallery.xml                  |  22 +
+ .../gallery3d/app/PlaitGalleryActivity.java   | 520 ++++++++++++++++++
+ 4 files changed, 558 insertions(+), 4 deletions(-)
+ create mode 100644 res/drawable/plait_gallery_settings.xml
+ create mode 100644 res/values/plait_gallery.xml
+ create mode 100644 src/com/android/gallery3d/app/PlaitGalleryActivity.java
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 7d79f45..a9f4f38 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40030"
+-        android:versionName="1.1.40030"
++<manifest android:versionCode="40031"
++        android:versionName="1.1.40031"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+@@ -27,6 +27,7 @@
+     <uses-permission android:name="android.permission.USE_CREDENTIALS" />
+     <uses-permission android:name="android.permission.VIBRATE" />
+     <uses-permission android:name="android.permission.WAKE_LOCK" />
++    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+     <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
+@@ -92,15 +93,20 @@
+              </intent-filter>
+         </activity>
+ 
+-        <activity android:name="com.android.gallery3d.app.GalleryActivity" android:label="@string/app_name"
++        <activity android:name="com.android.gallery3d.app.PlaitGalleryActivity"
+                 android:exported="true"
+-                android:configChanges="keyboardHidden|orientation|screenSize">
++                android:theme="@style/Theme.PlaitGallery">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.DEFAULT" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+                 <category android:name="android.intent.category.APP_GALLERY" />
+             </intent-filter>
++        </activity>
++
++        <activity android:name="com.android.gallery3d.app.GalleryActivity" android:label="@string/app_name"
++                android:exported="true"
++                android:configChanges="keyboardHidden|orientation|screenSize">
+             <intent-filter>
+                 <action android:name="android.intent.action.GET_CONTENT" />
+                 <category android:name="android.intent.category.OPENABLE" />
+diff --git a/res/drawable/plait_gallery_settings.xml b/res/drawable/plait_gallery_settings.xml
+new file mode 100644
+index 0000000..9eff93b
+--- /dev/null
++++ b/res/drawable/plait_gallery_settings.xml
+@@ -0,0 +1,6 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="?android:attr/textColorPrimary"
++        android:pathData="M19.43,12.98c0.04,-0.32 0.07,-0.65 0.07,-0.98s-0.03,-0.66 -0.08,-0.98l2.11,-1.65 -2,-3.46 -2.49,1a7.4,7.4 0,0 0,-1.69,-0.98L15,3h-4l-0.38,2.93a7.4,7.4 0,0 0,-1.69,0.98l-2.49,-1 -2,3.46 2.11,1.65a6.6,6.6 0,0 0,0 1.96l-2.11,1.65 2,3.46 2.49,-1a7.4,7.4 0,0 0,1.69,0.98L11,21h4l0.37,-2.93a7.4,7.4 0,0 0,1.69,-0.98l2.49,1 2,-3.46zM13,15.5a3.5,3.5 0,1 1,0 -7,3.5 3.5,0 0,1 0,7z"/>
++</vector>
+diff --git a/res/values/plait_gallery.xml b/res/values/plait_gallery.xml
+new file mode 100644
+index 0000000..0c3110b
+--- /dev/null
++++ b/res/values/plait_gallery.xml
+@@ -0,0 +1,22 @@
++<resources>
++    <style name="Theme.PlaitGallery" parent="android:style/Theme.DeviceDefault.NoActionBar">
++        <item name="android:windowBackground">?android:attr/colorBackground</item>
++    </style>
++    <string name="plait_gallery_photos">Photos</string>
++    <string name="plait_gallery_albums">Albums</string>
++    <string name="plait_gallery_explore">Explore</string>
++    <string name="plait_gallery_search">Search filenames or albums</string>
++    <string name="plait_gallery_settings">Settings</string>
++    <string name="plait_gallery_empty">No matching media</string>
++    <string name="plait_gallery_unavailable">Couldn’t read your media</string>
++    <string name="plait_gallery_images">Images</string>
++    <string name="plait_gallery_videos">Videos</string>
++    <string name="plait_gallery_screenshots">Screenshots</string>
++    <string name="plait_gallery_downloads">Downloads</string>
++    <string name="plait_gallery_group_dates">Group photos by date</string>
++    <string name="plait_gallery_edit">Edit</string>
++    <string name="plait_gallery_details">Details</string>
++    <string name="plait_gallery_open">Open</string>
++    <string name="plait_gallery_share">Share</string>
++    <string name="plait_gallery_back">Back</string>
++</resources>
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+new file mode 100644
+index 0000000..e4add2b
+--- /dev/null
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -0,0 +1,520 @@
++/*
++ * SPDX-License-Identifier: Apache-2.0
++ */
++package com.android.gallery3d.app;
++
++import android.app.Activity;
++import android.app.AlertDialog;
++import android.content.ContentUris;
++import android.content.Intent;
++import android.content.pm.PackageManager;
++import android.database.Cursor;
++import android.graphics.Bitmap;
++import android.net.Uri;
++import android.os.Bundle;
++import android.provider.MediaStore;
++import android.provider.MediaStore.Files.FileColumns;
++import android.text.Editable;
++import android.text.TextWatcher;
++import android.text.SpannableString;
++import android.text.Spanned;
++import android.text.style.ForegroundColorSpan;
++import android.text.style.RelativeSizeSpan;
++import android.text.format.DateUtils;
++import android.util.LruCache;
++import android.util.Size;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.BaseAdapter;
++import android.widget.Button;
++import android.widget.EditText;
++import android.widget.GridView;
++import android.widget.ImageButton;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++import android.widget.Toast;
++
++import com.android.gallery3d.R;
++import com.android.gallery3d.filtershow.FilterShowActivity;
++
++import java.io.IOException;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Locale;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++
++public final class PlaitGalleryActivity extends Activity {
++    private static final String GROUP_DATES = "group_dates";
++    private static final int PHOTOS = 0;
++    private static final int ALBUMS = 1;
++    private static final int EXPLORE = 2;
++    private final ExecutorService mediaLoader = Executors.newSingleThreadExecutor();
++    private final ExecutorService thumbnails = Executors.newFixedThreadPool(2);
++    private final LruCache<Uri, Bitmap> cache = new LruCache<Uri, Bitmap>(12 * 1024 * 1024) {
++        @Override protected int sizeOf(Uri key, Bitmap image) {
++            return image.getAllocationByteCount();
++        }
++    };
++    private final List<Media> media = new ArrayList<>();
++    private final List<Tile> tiles = new ArrayList<>();
++    private int tab;
++    private String category;
++    private String query = "";
++    private Media selected;
++    private LinearLayout root;
++    private GridView grid;
++    private TextView status;
++    private boolean loading;
++    private boolean failed;
++    private int generation;
++
++    private static final class Media {
++        final Uri uri;
++        final String name;
++        final String album;
++        final String folder;
++        final String mime;
++        final long date;
++        final int width;
++        final int height;
++        final boolean video;
++
++        Media(Uri uri, String name, String album, String folder, String mime, long date,
++                int width, int height, boolean video) {
++            this.uri = uri;
++            this.name = name;
++            this.album = album;
++            this.folder = folder;
++            this.mime = mime;
++            this.date = date;
++            this.width = width;
++            this.height = height;
++            this.video = video;
++        }
++    }
++
++    private static final class Tile {
++        final Media media;
++        final String label;
++        final String category;
++        Tile(Media media, String label, String category) {
++            this.media = media;
++            this.label = label;
++            this.category = category;
++        }
++    }
++
++    @Override public void onCreate(Bundle state) {
++        super.onCreate(state);
++        if (state != null) {
++            tab = state.getInt("tab");
++            category = state.getString("category");
++            query = state.getString("query", "");
++        }
++        showLibrary();
++        String permission = android.Manifest.permission.READ_EXTERNAL_STORAGE;
++        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
++            requestPermissions(new String[]{permission}, 1);
++        }
++    }
++
++    @Override protected void onSaveInstanceState(Bundle state) {
++        super.onSaveInstanceState(state);
++        state.putInt("tab", tab);
++        state.putString("category", category);
++        state.putString("query", query);
++    }
++
++    @Override public void onRequestPermissionsResult(int request, String[] permissions,
++            int[] results) {
++        super.onRequestPermissionsResult(request, permissions, results);
++        refresh();
++    }
++
++    @Override protected void onResume() {
++        super.onResume();
++        if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
++                == PackageManager.PERMISSION_GRANTED) {
++            refresh();
++        }
++    }
++
++    @Override protected void onDestroy() {
++        super.onDestroy();
++        mediaLoader.shutdownNow();
++        thumbnails.shutdownNow();
++    }
++
++    private void refresh() {
++        int request = ++generation;
++        loading = true;
++        updateTiles();
++        mediaLoader.execute(() -> {
++            List<Media> loaded = new ArrayList<>();
++            boolean error = false;
++            String[] columns = {"_id", "volume_name", "media_type", "_display_name",
++                    "bucket_display_name", "relative_path", "mime_type", "datetaken",
++                    "date_added", "width", "height"};
++            Uri files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL);
++            try (Cursor cursor = getContentResolver().query(files, columns,
++                    "media_type IN (?,?)", new String[]{
++                            Integer.toString(FileColumns.MEDIA_TYPE_IMAGE),
++                            Integer.toString(FileColumns.MEDIA_TYPE_VIDEO)},
++                    "datetaken DESC, date_added DESC, _id DESC")) {
++                if (cursor == null) {
++                    error = true;
++                } else while (cursor.moveToNext() && !Thread.currentThread().isInterrupted()) {
++                    boolean video = cursor.getInt(2) == FileColumns.MEDIA_TYPE_VIDEO;
++                    Uri collection = video
++                            ? MediaStore.Video.Media.getContentUri(cursor.getString(1))
++                            : MediaStore.Images.Media.getContentUri(cursor.getString(1));
++                    long date = cursor.getLong(7);
++                    loaded.add(new Media(ContentUris.withAppendedId(collection, cursor.getLong(0)),
++                            string(cursor, 3), string(cursor, 4), string(cursor, 5),
++                            string(cursor, 6), date > 0 ? date : cursor.getLong(8) * 1000,
++                            cursor.getInt(9), cursor.getInt(10), video));
++                }
++            } catch (RuntimeException exception) {
++                error = true;
++            }
++            loaded.sort((a, b) -> Long.compare(b.date, a.date));
++            boolean loadError = error;
++            runOnUiThread(() -> {
++                if (isDestroyed() || request != generation) return;
++                media.clear();
++                media.addAll(loaded);
++                loading = false;
++                failed = loadError;
++                updateTiles();
++            });
++        });
++    }
++
++    private static String string(Cursor cursor, int column) {
++        String value = cursor.getString(column);
++        return value == null ? "" : value;
++    }
++
++    private int dp(int value) {
++        return Math.round(value * getResources().getDisplayMetrics().density);
++    }
++
++    private LinearLayout column() {
++        LinearLayout view = new LinearLayout(this);
++        view.setOrientation(LinearLayout.VERTICAL);
++        return view;
++    }
++
++    private Button action(int label, Runnable callback) {
++        Button button = new Button(this, null, android.R.attr.borderlessButtonStyle);
++        button.setText(label);
++        button.setAllCaps(false);
++        button.setOnClickListener(view -> callback.run());
++        return button;
++    }
++
++    private LinearLayout header(CharSequence title, boolean library) {
++        LinearLayout header = new LinearLayout(this);
++        header.setGravity(Gravity.CENTER_VERTICAL);
++        header.setPadding(dp(16), 0, dp(8), 0);
++        if (!library) header.addView(action(R.string.plait_gallery_back, this::onBackPressed));
++        TextView name = new TextView(this);
++        name.setText(title);
++        name.setTextSize(library ? 28 : 18);
++        name.setMaxLines(1);
++        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
++        header.addView(name, new LinearLayout.LayoutParams(0, dp(56), 1));
++        name.setGravity(Gravity.CENTER_VERTICAL);
++        if (library) {
++            ImageButton gear = new ImageButton(this, null, android.R.attr.borderlessButtonStyle);
++            gear.setImageResource(R.drawable.plait_gallery_settings);
++            gear.setContentDescription(getText(R.string.plait_gallery_settings));
++            gear.setOnClickListener(view -> settings());
++            header.addView(gear, new LinearLayout.LayoutParams(dp(48), dp(48)));
++        }
++        return header;
++    }
++
++    private CharSequence title() {
++        try {
++            String name = getString(R.string.app_name);
++            String version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
++            if (version == null) return name;
++            SpannableString label = new SpannableString(name + "  " + version);
++            int start = name.length() + 2;
++            label.setSpan(new RelativeSizeSpan(0.48f), start, label.length(),
++                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++            label.setSpan(new ForegroundColorSpan(color(android.R.attr.textColorSecondary)),
++                    start, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++            return label;
++        } catch (PackageManager.NameNotFoundException exception) {
++            return getString(R.string.app_name);
++        }
++    }
++
++    private void showLibrary() {
++        selected = null;
++        root = column();
++        root.addView(header(title(), true));
++        EditText search = new EditText(this);
++        search.setSingleLine(true);
++        search.setHint(R.string.plait_gallery_search);
++        search.setText(query);
++        search.setPadding(dp(16), 0, dp(16), 0);
++        search.addTextChangedListener(new TextWatcher() {
++            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
++            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
++                query = s.toString().trim();
++                updateTiles();
++            }
++            @Override public void afterTextChanged(Editable s) {}
++        });
++        root.addView(search, new LinearLayout.LayoutParams(-1, dp(48)));
++        status = new TextView(this);
++        status.setPadding(dp(16), dp(12), dp(16), dp(12));
++        root.addView(status);
++        grid = new GridView(this);
++        grid.setHorizontalSpacing(dp(4));
++        grid.setVerticalSpacing(dp(4));
++        grid.setPadding(dp(12), dp(4), dp(12), dp(4));
++        grid.setClipToPadding(false);
++        grid.setAdapter(new TileAdapter());
++        grid.setOnItemClickListener((parent, view, position, id) -> {
++            Tile tile = tiles.get(position);
++            if (tile.category == null) {
++                showPhoto(tile.media);
++            } else {
++                category = tile.category;
++                showLibrary();
++            }
++        });
++        root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
++        LinearLayout navigation = new LinearLayout(this);
++        int[] labels = {R.string.plait_gallery_photos, R.string.plait_gallery_albums,
++                R.string.plait_gallery_explore};
++        for (int index = 0; index < labels.length; index++) {
++            final int destination = index;
++            Button button = action(labels[index], () -> {
++                tab = destination;
++                category = null;
++                query = "";
++                showLibrary();
++            });
++            button.setSelected(tab == index);
++            if (tab == index) {
++                button.setTextColor(color(android.R.attr.colorAccent));
++                button.setTypeface(null, android.graphics.Typeface.BOLD);
++            }
++            navigation.addView(button, new LinearLayout.LayoutParams(0, dp(56), 1));
++        }
++        root.addView(navigation);
++        root.setFocusableInTouchMode(true);
++        root.requestFocus();
++        setContentView(root);
++        updateTiles();
++    }
++
++    private int color(int attr) {
++        android.content.res.TypedArray values = obtainStyledAttributes(new int[]{attr});
++        try {
++            return values.getColor(0, 0);
++        } finally {
++            values.recycle();
++        }
++    }
++
++    private void updateTiles() {
++        if (grid == null || selected != null) return;
++        tiles.clear();
++        boolean folders = tab == ALBUMS && category == null && query.isEmpty();
++        boolean topics = tab == EXPLORE && category == null && query.isEmpty();
++        grid.setNumColumns(folders || topics ? 2 : 3);
++        LinkedHashMap<String, Media> albums = new LinkedHashMap<>();
++        String previousDate = null;
++        boolean groupDates = tab == PHOTOS && getPreferences(MODE_PRIVATE)
++                .getBoolean(GROUP_DATES, true);
++        for (Media item : media) {
++            if (!matches(item)) continue;
++            if (folders) {
++                albums.putIfAbsent(item.folder, item);
++            } else if (!topics) {
++                String label = item.video ? "▶" : "";
++                if (groupDates) {
++                    String date = DateUtils.formatDateTime(this, item.date,
++                            DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_YEAR);
++                    if (!date.equals(previousDate)) label = date + (item.video ? "  ▶" : "");
++                    previousDate = date;
++                }
++                tiles.add(new Tile(item, label, null));
++            }
++        }
++        for (Media item : albums.values()) {
++            tiles.add(new Tile(item, item.album.isEmpty() ? item.folder : item.album, item.folder));
++        }
++        if (topics) {
++            String[] keys = {"images", "videos", "screenshots", "downloads"};
++            int[] labels = {R.string.plait_gallery_images, R.string.plait_gallery_videos,
++                    R.string.plait_gallery_screenshots, R.string.plait_gallery_downloads};
++            for (int index = 0; index < keys.length; index++) {
++                String key = keys[index];
++                for (Media item : media) {
++                    if (inTopic(item, key)) {
++                        tiles.add(new Tile(item, getString(labels[index]), key));
++                        break;
++                    }
++                }
++            }
++        }
++        status.setText(failed ? R.string.plait_gallery_unavailable : R.string.plait_gallery_empty);
++        status.setVisibility(tiles.isEmpty() && !loading ? View.VISIBLE : View.GONE);
++        ((BaseAdapter) grid.getAdapter()).notifyDataSetChanged();
++    }
++
++    private boolean matches(Media item) {
++        if (category != null && (tab == ALBUMS ? !category.equals(item.folder)
++                : !inTopic(item, category))) return false;
++        String term = query.toLowerCase(Locale.ROOT);
++        return item.name.toLowerCase(Locale.ROOT).contains(term)
++                || item.album.toLowerCase(Locale.ROOT).contains(term);
++    }
++
++    private static boolean inTopic(Media item, String topic) {
++        String folder = item.folder.toLowerCase(Locale.ROOT);
++        switch (topic) {
++            case "images": return !item.video;
++            case "videos": return item.video;
++            case "screenshots": return folder.contains("screenshots/");
++            case "downloads": return folder.startsWith("download/");
++            default: return false;
++        }
++    }
++
++    private void settings() {
++        boolean enabled = getPreferences(MODE_PRIVATE).getBoolean(GROUP_DATES, true);
++        new AlertDialog.Builder(this).setTitle(R.string.plait_gallery_settings)
++                .setMultiChoiceItems(new String[]{getString(R.string.plait_gallery_group_dates)},
++                        new boolean[]{enabled}, (dialog, which, checked) -> {
++                            getPreferences(MODE_PRIVATE).edit().putBoolean(GROUP_DATES, checked)
++                                    .apply();
++                            updateTiles();
++                        })
++                .setPositiveButton(android.R.string.ok, null).show();
++    }
++
++    private void showPhoto(Media item) {
++        if (item.video) {
++            open(item, false);
++            return;
++        }
++        selected = item;
++        LinearLayout photo = column();
++        photo.addView(header(item.name, false));
++        ImageView image = new ImageView(this);
++        image.setContentDescription(item.name);
++        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
++        loadImage(image, item.uri, 1200, false);
++        photo.addView(image, new LinearLayout.LayoutParams(-1, 0, 1));
++        LinearLayout actions = new LinearLayout(this);
++        addAction(actions, R.string.plait_gallery_open, () -> open(item, false));
++        addAction(actions, R.string.plait_gallery_edit, () -> open(item, true));
++        addAction(actions, R.string.plait_gallery_details, () -> details(item));
++        addAction(actions, R.string.plait_gallery_share, () -> {
++            Intent share = new Intent(Intent.ACTION_SEND).setType(item.mime)
++                    .putExtra(Intent.EXTRA_STREAM, item.uri)
++                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++            startActivity(Intent.createChooser(share, getText(R.string.plait_gallery_share)));
++        });
++        photo.addView(actions);
++        setContentView(photo);
++    }
++
++    private void addAction(LinearLayout row, int label, Runnable runnable) {
++        row.addView(action(label, runnable), new LinearLayout.LayoutParams(0, dp(56), 1));
++    }
++
++    private void open(Media item, boolean edit) {
++        Class<?> activity = edit ? FilterShowActivity.class
++                : item.video ? MovieActivity.class : GalleryActivity.class;
++        Intent intent = new Intent(this, activity)
++                .setAction(edit ? Intent.ACTION_EDIT : Intent.ACTION_VIEW)
++                .setDataAndType(item.uri, item.mime);
++        startActivity(intent);
++    }
++
++    private void details(Media item) {
++        String date = DateUtils.formatDateTime(this, item.date,
++                DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_TIME);
++        new AlertDialog.Builder(this).setTitle(item.name)
++                .setMessage(item.folder + "\n" + date + "\n" + item.width + " × " + item.height
++                        + "\n" + item.mime)
++                .setPositiveButton(android.R.string.ok, null).show();
++    }
++
++    @Override public void onBackPressed() {
++        if (selected != null) {
++            showLibrary();
++        } else if (category != null || !query.isEmpty()) {
++            category = null;
++            query = "";
++            showLibrary();
++        } else {
++            super.onBackPressed();
++        }
++    }
++
++    private void loadImage(ImageView view, Uri uri, int size, boolean thumbnail) {
++        Object binding = new Object();
++        view.setTag(binding);
++        Bitmap existing = thumbnail ? cache.get(uri) : null;
++        view.setImageBitmap(existing);
++        if (existing != null) return;
++        thumbnails.execute(() -> {
++            if (thumbnail && view.getTag() != binding) return;
++            try {
++                Bitmap bitmap = getContentResolver().loadThumbnail(uri, new Size(size, size), null);
++                if (thumbnail) cache.put(uri, bitmap);
++                runOnUiThread(() -> {
++                    if (isDestroyed() || view.getTag() != binding) return;
++                    view.setImageBitmap(bitmap);
++                });
++            } catch (IOException | RuntimeException exception) {
++                if (!thumbnail) runOnUiThread(() -> {
++                    if (!isDestroyed() && view.isAttachedToWindow()) {
++                        Toast.makeText(this, R.string.plait_gallery_unavailable,
++                                Toast.LENGTH_SHORT).show();
++                    }
++                });
++            }
++        });
++    }
++
++    private final class TileAdapter extends BaseAdapter {
++        @Override public int getCount() { return tiles.size(); }
++        @Override public Tile getItem(int position) { return tiles.get(position); }
++        @Override public long getItemId(int position) { return position; }
++
++        @Override public View getView(int position, View convertView, ViewGroup parent) {
++            LinearLayout cell = (LinearLayout) convertView;
++            if (cell == null) {
++                cell = column();
++                ImageView thumbnail = new ImageView(PlaitGalleryActivity.this);
++                thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
++                cell.addView(thumbnail, new LinearLayout.LayoutParams(-1, dp(110)));
++                TextView label = new TextView(PlaitGalleryActivity.this);
++                label.setSingleLine(true);
++                label.setEllipsize(android.text.TextUtils.TruncateAt.END);
++                cell.addView(label, new LinearLayout.LayoutParams(-1, dp(22)));
++            }
++            Tile tile = getItem(position);
++            ImageView thumbnail = (ImageView) cell.getChildAt(0);
++            thumbnail.setContentDescription(tile.media.name);
++            loadImage(thumbnail, tile.media.uri, dp(180), true);
++            ((TextView) cell.getChildAt(1)).setText(tile.label);
++            return cell;
++        }
++    }
++}
+-- 
+2.56.1
+

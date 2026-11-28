@@ -4,6 +4,7 @@ Date: Sat, 21 Nov 2026 21:13:56 -0600
 Subject: [PATCH] PlaitOS: hide the Recordings tab when another tab is shown
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3UdaCB3bu67ZPQkVe
 ---
  java/com/android/dialer/main/impl/OldMainActivityPeer.java | 5 +++++
  1 file changed, 5 insertions(+)

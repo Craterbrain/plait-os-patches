@@ -8,6 +8,7 @@ Read the switch from a plain Settings.System key, plait_notification_kill_app_bu
 constant; drop the unused CentralSurfaces and PackageInfo imports.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../notification/row/NotificationConversationInfo.java      | 6 +++---
  .../statusbar/notification/row/NotificationInfo.java        | 6 +++---

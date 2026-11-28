@@ -1,0 +1,1166 @@
+From 7acf6ae5ec720f13fc5e7cbe7c2a351b43c3fadb Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 11:14:44 -0600
+Subject: [PATCH] PlaitOS: one always-on display model, Peek Display as the
+ always-on screen
+
+Always-on display:
+- doze_always_on is only the user's switch. plait_doze_always_on_auto_mode
+  says when it shows: 0 always, 1-4 schedules, 5 only while charging (new);
+  plait_doze_on_charge now means "also while charging" outside a schedule
+- AutoAODService no longer flips doze_always_on (and its override/prefs
+  bookkeeping); it publishes plait_doze_always_on_schedule_active.
+  AmbientDisplayConfiguration combines switch, mode, schedule and plug state
+- Old settings migrate once (plait_aod_model=2): a schedule turns the switch
+  on; "while charging" with the switch off becomes "only while charging"
+- SystemUI DozeSuppressor moves DOZE <-> DOZE_AOD when plugging in or out or
+  the schedule window opens or closes; before, AOD-on-charge only appeared at
+  the next screen off and the schedule had to fake a pulse
+- DozeParameters refreshes AOD availability (keyguard transitions, screen-off
+  animation) on plug and schedule changes
+- PowerManagerService does not wake on plug or unplug while dozing when the
+  always-on display is or was showing (no lighting up in a pocket on unplug)
+
+Peek Display:
+- With the always-on display on, Peek Display draws the always-on screen:
+  clock, date, a charging line and the icons stay up in DOZE_AOD, the clock
+  follows the doze time tick and shifts every minute against burn-in
+- Every pulse but fingerprint ones keeps it up and touchable; fingerprint
+  pulses get the stock screen; no breathing while the always-on screen shows
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ .../display/AmbientDisplayConfiguration.java  |  76 +++--
+ .../systemui/doze/DozeSuppressorTest.java     |   8 +-
+ .../SystemUI/res/values/plait_strings.xml     |   2 +
+ .../android/systemui/doze/DozeSuppressor.java |  79 ++++-
+ .../systemui/peek/PeekDisplayController.kt    |  95 +++++-
+ .../systemui/peek/PeekDisplayWindow.kt        |  24 +-
+ .../statusbar/phone/DozeParameters.java       |  26 ++
+ .../server/display/AutoAODService.java        | 282 ++++++------------
+ .../server/power/PowerManagerService.java     |  41 ++-
+ 9 files changed, 394 insertions(+), 239 deletions(-)
+
+diff --git a/core/java/android/hardware/display/AmbientDisplayConfiguration.java b/core/java/android/hardware/display/AmbientDisplayConfiguration.java
+index 325c39008..eb20c607a 100644
+--- a/core/java/android/hardware/display/AmbientDisplayConfiguration.java
++++ b/core/java/android/hardware/display/AmbientDisplayConfiguration.java
+@@ -45,8 +45,23 @@ import java.util.Map;
+ public class AmbientDisplayConfiguration {
+     private static final IntentFilter sIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+ 
+-    /** PlaitOS: Settings.Secure key (written by Plait Settings): AOD while plugged in. */
+-    private static final String DOZE_ON_CHARGE = "plait_doze_on_charge";
++    /**
++     * PlaitOS always-on display model. doze_always_on is the user's switch and nothing else
++     * writes it. {@link #AOD_MODE} says when it shows: always (0), on a schedule (1-4, see
++     * AutoAODService, which publishes {@link #AOD_SCHEDULE_ACTIVE}) or only while plugged in
++     * ({@link #AOD_MODE_CHARGING}). With a schedule, {@link #AOD_ON_CHARGE} also shows it
++     * outside the schedule while plugged in. Settings.Secure keys, written by Plait Settings.
++     * @hide
++     */
++    public static final String AOD_MODE = "plait_doze_always_on_auto_mode";
++    /** @hide */
++    public static final String AOD_ON_CHARGE = "plait_doze_on_charge";
++    /** @hide Written by AutoAODService only. */
++    public static final String AOD_SCHEDULE_ACTIVE = "plait_doze_always_on_schedule_active";
++    /** @hide */
++    public static final int AOD_MODE_ALWAYS = 0;
++    /** @hide */
++    public static final int AOD_MODE_CHARGING = 5;
+ 
+     private final Context mContext;
+     private final boolean mAlwaysOnByDefault;
+@@ -66,7 +81,7 @@ public class AmbientDisplayConfiguration {
+             Settings.Secure.DOZE_WAKE_LOCK_SCREEN_GESTURE,
+             Settings.Secure.DOZE_WAKE_DISPLAY_GESTURE,
+             Settings.Secure.DOZE_TAP_SCREEN_GESTURE,
+-            DOZE_ON_CHARGE
++            AOD_ON_CHARGE
+     };
+ 
+     /** Non-user configurable doze settings */
+@@ -263,10 +278,30 @@ public class AmbientDisplayConfiguration {
+      */
+     @TestApi
+     public boolean alwaysOnEnabled(int user) {
+-        return alwaysOnEnabledSetting(user) || alwaysOnChargingEnabled(user);
++        // PlaitOS: the switch, then when it shows (mode, schedule, plug state)
++        if (!alwaysOnEnabledSetting(user)) return false;
++        final int mode = alwaysOnMode(user);
++        if (mode == AOD_MODE_ALWAYS) return true;
++        return alwaysOnEnabled(user, isPluggedIn());
+     }
+ 
+-    /** @hide */
++    /**
++     * PlaitOS: {@link #alwaysOnEnabled(int)} for a given plug state, for callers that know it
++     * (PowerManagerService must not query the battery broadcast: it deadlocks with
++     * ActivityManager).
++     * @hide
++     */
++    public boolean alwaysOnEnabled(int user, boolean pluggedIn) {
++        if (!alwaysOnEnabledSetting(user)) return false;
++        final int mode = alwaysOnMode(user);
++        if (mode == AOD_MODE_ALWAYS) return true;
++        if (mode == AOD_MODE_CHARGING) return pluggedIn;
++        if (mode < 1 || mode > 4) return true; // unknown value: behave as "always"
++        return boolSetting(AOD_SCHEDULE_ACTIVE, user, 0)
++                || (pluggedIn && boolSetting(AOD_ON_CHARGE, user, 0));
++    }
++
++    /** @hide The user's always-on switch (doze_always_on), if the display supports it. */
+     public boolean alwaysOnEnabledSetting(int user) {
+         final boolean alwaysOnEnabled = Settings.Secure.getIntForUser(
+                 mContext.getContentResolver(), Settings.Secure.DOZE_ALWAYS_ON,
+@@ -274,25 +309,18 @@ public class AmbientDisplayConfiguration {
+         return alwaysOnEnabled && alwaysOnAvailable() && !accessibilityInversionEnabled(user);
+     }
+ 
+-    /** @hide */
+-    public boolean alwaysOnChargingEnabledSetting(int user) {
+-        return Settings.Secure.getIntForUser(mContext.getContentResolver(),
+-            DOZE_ON_CHARGE, 0, user) == 1;
+-    }
+-
+-    private boolean alwaysOnChargingEnabled(int user) {
+-        // PlaitOS: same conditions as the normal AOD switch (display support, no color inversion)
+-        if (alwaysOnChargingEnabledSetting(user) && alwaysOnAvailable()
+-                && !accessibilityInversionEnabled(user)) {
+-            final Intent intent = mContext.registerReceiver(null, sIntentFilter, Context.RECEIVER_NOT_EXPORTED);
+-            if (intent != null) {
+-                // PlaitOS: plugged in is enough. A charge limit (GrapheneOS can hold the
+-                // battery at 80%) reports "not charging" while on the charger, which would
+-                // turn AOD off there; PowerManagerService also only checks mIsPowered.
+-                return intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0;
+-            }
+-        }
+-        return false;
++    /** @hide When the always-on display shows: {@link #AOD_MODE_ALWAYS}, 1-4 or charging. */
++    public int alwaysOnMode(int user) {
++        return Settings.Secure.getIntForUser(mContext.getContentResolver(), AOD_MODE,
++                AOD_MODE_ALWAYS, user);
++    }
++
++    private boolean isPluggedIn() {
++        // Plugged in is enough: with a charge limit GrapheneOS reports "not charging" on the
++        // charger, which must not turn the always-on display off there
++        final Intent intent = mContext.registerReceiver(null, sIntentFilter,
++                Context.RECEIVER_NOT_EXPORTED);
++        return intent != null && intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0;
+     }
+ 
+     /**
+diff --git a/packages/SystemUI/multivalentTests/src/com/android/systemui/doze/DozeSuppressorTest.java b/packages/SystemUI/multivalentTests/src/com/android/systemui/doze/DozeSuppressorTest.java
+index 6c55bac70..c810be873 100644
+--- a/packages/SystemUI/multivalentTests/src/com/android/systemui/doze/DozeSuppressorTest.java
++++ b/packages/SystemUI/multivalentTests/src/com/android/systemui/doze/DozeSuppressorTest.java
+@@ -56,6 +56,10 @@ public class DozeSuppressorTest extends SysuiTestCase {
+ 
+     DozeSuppressor mDozeSuppressor;
+     @Mock
++    private com.android.systemui.statusbar.policy.BatteryController mBatteryController;
++    @Mock
++    private com.android.systemui.util.settings.SecureSettings mSecureSettings;
++    @Mock
+     private DozeLog mDozeLog;
+     @Mock
+     private DozeHost mDozeHost;
+@@ -90,7 +94,9 @@ public class DozeSuppressorTest extends SysuiTestCase {
+                 mConfig,
+                 mDozeLog,
+                 mBiometricUnlockControllerLazy,
+-                mUserTracker);
++                mUserTracker,
++                mBatteryController,
++                mSecureSettings);
+ 
+         mDozeSuppressor.setDozeMachine(mDozeMachine);
+     }
+diff --git a/packages/SystemUI/res/values/plait_strings.xml b/packages/SystemUI/res/values/plait_strings.xml
+index d55f81bdf..2a86d466c 100644
+--- a/packages/SystemUI/res/values/plait_strings.xml
++++ b/packages/SystemUI/res/values/plait_strings.xml
+@@ -58,4 +58,6 @@
+     <string name="plait_peek_hint">Slide up to open, down to dismiss</string>
+     <string name="plait_peek_release_to_open">Release to open</string>
+     <string name="plait_peek_release_to_dismiss">Release to dismiss</string>
++    <!-- Peek Display on the always-on screen while plugged in; %1$s is the battery level, e.g. 80% -->
++    <string name="plait_peek_charging">Charging · <xliff:g id="level" example="80%">%1$s</xliff:g></string>
+ </resources>
+diff --git a/packages/SystemUI/src/com/android/systemui/doze/DozeSuppressor.java b/packages/SystemUI/src/com/android/systemui/doze/DozeSuppressor.java
+index 8d612d168..c52d109a1 100644
+--- a/packages/SystemUI/src/com/android/systemui/doze/DozeSuppressor.java
++++ b/packages/SystemUI/src/com/android/systemui/doze/DozeSuppressor.java
+@@ -16,13 +16,19 @@
+ 
+ package com.android.systemui.doze;
+ 
++import android.database.ContentObserver;
+ import android.hardware.display.AmbientDisplayConfiguration;
++import android.os.Handler;
++import android.os.Looper;
+ import android.os.PowerManager;
++import android.os.UserHandle;
+ import android.text.TextUtils;
+ 
+ import com.android.systemui.doze.dagger.DozeScope;
+ import com.android.systemui.settings.UserTracker;
+ import com.android.systemui.statusbar.phone.BiometricUnlockController;
++import com.android.systemui.statusbar.policy.BatteryController;
++import com.android.systemui.util.settings.SecureSettings;
+ 
+ import dagger.Lazy;
+ 
+@@ -43,6 +49,9 @@ import javax.inject.Inject;
+  *      - no always-on-display (DOZE_AOD)
+  *      - allow doze triggers (DOZE), but disallow notifications (handled by {@link DozeTriggers})
+  *      - See extra check in {@link DozeMachine} to guarantee device never enters always-on states
++ * 4. PlaitOS: the always-on display turning on or off while dozing (plugged in or unplugged with
++ *      "only while charging" / "also while charging", the schedule window opening or closing):
++ *      DOZE <-> DOZE_AOD, without waking the screen. Stock only decides that when doze starts.
+  */
+ @DozeScope
+ public class DozeSuppressor implements DozeMachine.Part {
+@@ -53,6 +62,29 @@ public class DozeSuppressor implements DozeMachine.Part {
+     private final DozeLog mDozeLog;
+     private final Lazy<BiometricUnlockController> mBiometricUnlockControllerLazy;
+     private final UserTracker mUserTracker;
++    private final BatteryController mBatteryController;
++    private final SecureSettings mSecureSettings;
++    private boolean mListening;
++    private Boolean mPluggedIn;
++
++    private final BatteryController.BatteryStateChangeCallback mBatteryCallback =
++            new BatteryController.BatteryStateChangeCallback() {
++                @Override
++                public void onBatteryLevelChanged(int level, boolean pluggedIn, boolean charging) {
++                    if (mPluggedIn != null && mPluggedIn == pluggedIn) return;
++                    final boolean first = mPluggedIn == null;
++                    mPluggedIn = pluggedIn;
++                    if (!first) updateAlwaysOn("plugged=" + pluggedIn);
++                }
++            };
++
++    private final ContentObserver mAlwaysOnObserver =
++            new ContentObserver(new Handler(Looper.getMainLooper())) {
++                @Override
++                public void onChange(boolean selfChange) {
++                    updateAlwaysOn("settings");
++                }
++            };
+ 
+     @Inject
+     public DozeSuppressor(
+@@ -60,12 +92,16 @@ public class DozeSuppressor implements DozeMachine.Part {
+             AmbientDisplayConfiguration config,
+             DozeLog dozeLog,
+             Lazy<BiometricUnlockController> biometricUnlockControllerLazy,
+-            UserTracker userTracker) {
++            UserTracker userTracker,
++            BatteryController batteryController,
++            SecureSettings secureSettings) {
+         mDozeHost = dozeHost;
+         mConfig = config;
+         mDozeLog = dozeLog;
+         mBiometricUnlockControllerLazy = biometricUnlockControllerLazy;
+         mUserTracker = userTracker;
++        mBatteryController = batteryController;
++        mSecureSettings = secureSettings;
+     }
+ 
+     @Override
+@@ -78,6 +114,7 @@ public class DozeSuppressor implements DozeMachine.Part {
+         switch (newState) {
+             case INITIALIZED:
+                 mDozeHost.addCallback(mHostCallback);
++                startListeningForAlwaysOn();
+                 checkShouldImmediatelyEndDoze();
+                 break;
+             case FINISH:
+@@ -90,6 +127,46 @@ public class DozeSuppressor implements DozeMachine.Part {
+     @Override
+     public void destroy() {
+         mDozeHost.removeCallback(mHostCallback);
++        if (mListening) {
++            mListening = false;
++            mBatteryController.removeCallback(mBatteryCallback);
++            mSecureSettings.unregisterContentObserverAsync(mAlwaysOnObserver);
++            mPluggedIn = null;
++        }
++    }
++
++    private void startListeningForAlwaysOn() {
++        if (mListening) return;
++        mListening = true;
++        mBatteryController.addCallback(mBatteryCallback);
++        for (String key : new String[] {AmbientDisplayConfiguration.AOD_MODE,
++                AmbientDisplayConfiguration.AOD_ON_CHARGE,
++                AmbientDisplayConfiguration.AOD_SCHEDULE_ACTIVE}) {
++            mSecureSettings.registerContentObserverForUserAsync(key, mAlwaysOnObserver,
++                    UserHandle.USER_ALL);
++        }
++    }
++
++    /** PlaitOS: the always-on display turned on or off while dozing (see class comment). */
++    private void updateAlwaysOn(String why) {
++        if (mMachine == null) return;
++        final DozeMachine.State state = mMachine.getState();
++        final boolean alwaysOn = mConfig.alwaysOnEnabled(mUserTracker.getUserId())
++                && !mDozeHost.isPowerSaveActive() && !mDozeHost.isAlwaysOnSuppressed();
++        DozeMachine.State next = null;
++        if (state == DozeMachine.State.DOZE && alwaysOn) {
++            next = DozeMachine.State.DOZE_AOD;
++        } else if (!alwaysOn && (state == DozeMachine.State.DOZE_AOD
++                || state == DozeMachine.State.DOZE_AOD_PAUSED
++                || state == DozeMachine.State.DOZE_AOD_PAUSING)) {
++            next = DozeMachine.State.DOZE;
++        }
++        // Pulses end in DOZE_PULSE_DONE, which picks AOD or DOZE from the same config
++        if (next != null) {
++            android.util.Log.i("DozeSuppressor", "always-on " + alwaysOn + " (" + why + "): "
++                    + state + " -> " + next);
++            mMachine.requestState(next);
++        }
+     }
+ 
+     private void checkShouldImmediatelyEndDoze() {
+diff --git a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+index 0fe4aef67..01ec2b7f4 100644
+--- a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
++++ b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayController.kt
+@@ -25,6 +25,7 @@ import com.android.systemui.dagger.qualifiers.Application
+ import com.android.systemui.dagger.qualifiers.Main
+ import com.android.systemui.doze.DozeLog
+ import com.android.systemui.keyguard.domain.interactor.KeyguardInteractor
++import com.android.systemui.keyguard.shared.model.DozeStateModel
+ import com.android.systemui.plugins.ActivityStarter
+ import com.android.systemui.power.domain.interactor.PowerInteractor
+ import com.android.systemui.statusbar.NotificationClickNotifier
+@@ -36,7 +37,9 @@ import com.android.systemui.statusbar.notification.collection.provider.Notificat
+ import com.android.systemui.statusbar.notification.collection.render.NotificationVisibilityProvider
+ import com.android.systemui.statusbar.notification.domain.interactor.ActiveNotificationsInteractor
+ import com.android.systemui.statusbar.notification.shared.ActiveNotificationModel
++import com.android.systemui.statusbar.phone.DozeParameters
+ import com.android.systemui.statusbar.phone.DozeServiceHost
++import com.android.systemui.statusbar.policy.BatteryController
+ import com.android.systemui.util.AlarmTimeout
+ import dagger.Lazy
+ import javax.inject.Inject
+@@ -51,6 +54,12 @@ import kotlinx.coroutines.launch
+  * that app's newest notification; sliding up opens it (unlocking first when needed), sliding down
+  * dismisses it. Off unless Settings.Secure [SETTING_ENABLED] is 1.
+  *
++ * With the always-on display also on, Peek Display is what the always-on screen shows: the same
++ * clock, date, charging line and icons stay up for as long as the display is in always-on doze,
++ * and any pulse (notification, tap, pick-up) keeps them up and makes them touchable. Fingerprint
++ * pulses always get the stock screen, so the sensor and its prompts stay usable. Breathing is off
++ * while the always-on screen is up (the icons are already showing).
++ *
+  * Design: plait-os docs/peek-display-design.md.
+  */
+ @SysUISingleton
+@@ -73,10 +82,19 @@ constructor(
+     private val powerInteractor: PowerInteractor,
+     private val authController: AuthController,
+     private val dozeServiceHost: Lazy<DozeServiceHost>,
++    private val dozeParameters: DozeParameters,
++    private val batteryController: BatteryController,
+ ) : CoreStartable, DozeServiceHost.PulseListener {
+ 
+     /** What the overlay shows; updated while it is up. */
+     internal val items = MutableStateFlow<List<PeekItem>>(emptyList())
++    /** Battery level and plug state, for the charging line. */
++    internal val battery = MutableStateFlow(PeekBattery(level = 0, pluggedIn = false))
++    /** Bumped on every always-on time tick (once a minute): the clock and burn-in shift follow. */
++    internal val minuteTick = MutableStateFlow(0L)
++
++    /** Last doze state; DOZE_AOD means the always-on screen is what is showing. */
++    private var dozeState = DozeStateModel.UNINITIALIZED
+ 
+     private var allNotifications: Map<String, ActiveNotificationModel> = emptyMap()
+     private var isDozing = false
+@@ -104,6 +122,17 @@ constructor(
+                 if (window != null) items.value = buildItems()
+             }
+         }
++        scope.launch { keyguardInteractor.dozeTransitionModel.collect { onDozeState(it.to) } }
++        scope.launch {
++            keyguardInteractor.dozeTimeTick.collect { minuteTick.value = System.currentTimeMillis() }
++        }
++        batteryController.addCallback(
++            object : BatteryController.BatteryStateChangeCallback {
++                override fun onBatteryLevelChanged(level: Int, pluggedIn: Boolean, charging: Boolean) {
++                    battery.value = PeekBattery(level, pluggedIn)
++                }
++            }
++        )
+         scope.launch {
+             keyguardInteractor.isDozing.collect { dozing ->
+                 if (dozing && !isDozing) screenOffTime = System.currentTimeMillis()
+@@ -118,14 +147,53 @@ constructor(
+         }
+     }
+ 
++    // Always-on screen
++
++    private fun onDozeState(state: DozeStateModel) {
++        dozeState = state
++        when (state) {
++            DozeStateModel.DOZE_AOD -> {
++                breathAlarm.cancel()
++                if (isEnabled() && !isPulsing) {
++                    items.value = buildItems()
++                    minuteTick.value = System.currentTimeMillis()
++                    showWindow()
++                }
++            }
++            // Dark doze (always-on off, e.g. unplugged with "only while charging"), or the
++            // always-on screen paused (proximity covered): nothing of ours on screen
++            DozeStateModel.DOZE,
++            DozeStateModel.DOZE_SUSPEND_TRIGGERS,
++            DozeStateModel.DOZE_AOD_PAUSING,
++            DozeStateModel.DOZE_AOD_PAUSED -> {
++                if (!isPulsing) {
++                    hideWindow()
++                    if (isDozing) scheduleBreath()
++                }
++            }
++            DozeStateModel.FINISH -> hideWindow()
++            else -> {} // pulses: see the PulseListener below
++        }
++    }
++
++    /** Whether Peek Display draws the always-on screen right now. */
++    private fun isAlwaysOnProvider(): Boolean =
++        isEnabled() && isDozing && dozeParameters.alwaysOn
++
+     // DozeServiceHost.PulseListener (main thread)
+ 
+     override fun onPulseStarted(reason: Int) {
+         isPulsing = true
+         breathAlarm.cancel()
+-        // Only notification pulses and our own breaths; never cover fingerprint or other pulses
+-        if (!isEnabled() ||
+-            (reason != DozeLog.PULSE_REASON_NOTIFICATION && reason != DozeLog.PULSE_REASON_INTENT)
++        // Fingerprint pulses always get the stock screen (sensor icon and prompts)
++        if (!isEnabled() || reason in AUTH_PULSE_REASONS) {
++            hideWindow()
++            return
++        }
++        // Notification pulses and our own breaths; with the always-on screen ours, every pulse
++        if (reason != DozeLog.PULSE_REASON_NOTIFICATION &&
++            reason != DozeLog.PULSE_REASON_INTENT &&
++            !isAlwaysOnProvider()
+         ) {
+             return
+         }
+@@ -136,7 +204,13 @@ constructor(
+     override fun onPulseFinished() {
+         isPulsing = false
+         mainHandler.removeCallbacks(extendPulseRunnable)
+-        hideWindow()
++        if (isAlwaysOnProvider()) {
++            // Back to the always-on screen: keep ours up instead of flashing the stock one
++            items.value = buildItems()
++            showWindow()
++        } else {
++            hideWindow()
++        }
+         if (isDozing) scheduleBreath()
+     }
+ 
+@@ -236,6 +310,7 @@ constructor(
+     /** Zero if there is no visible unseen notification eligible for a breath. */
+     private fun remainingBreathingTimeMs(): Long {
+         if (!isEnabled() || !isDozing || isPulsing ||
++            dozeState == DozeStateModel.DOZE_AOD || // the always-on screen shows the icons
+             !lockscreenUserManager.shouldShowLockscreenNotifications()
+         ) {
+             return 0
+@@ -349,6 +424,15 @@ constructor(
+         private const val MAX_INTERVAL_S = 600
+         private const val DEFAULT_DURATION_MIN = 10
+ 
++        /** Pulses that must show the stock screen (fingerprint sensor and auth prompts). */
++        private val AUTH_PULSE_REASONS =
++            setOf(
++                DozeLog.PULSE_REASON_FINGERPRINT_ACTIVATED,
++                DozeLog.PULSE_REASON_FINGERPRINT_PULSE_SHOW_AUTH_UI,
++                DozeLog.PULSE_REASON_FINGERPRINT_PULSE_SHOW_FULL_UI,
++                DozeLog.REASON_SENSOR_UDFPS_LONG_PRESS,
++            )
++
+         private const val MAX_ICONS = 6
+         private const val EXTEND_PULSE_EVERY_MS = 2000L
+         private const val UDFPS_GAP_DP = 24f
+@@ -371,3 +455,6 @@ internal data class PeekItem(
+     val canOpen: Boolean,
+     val canDismiss: Boolean,
+ )
++
++/** The battery as the charging line shows it. */
++internal data class PeekBattery(val level: Int, val pluggedIn: Boolean)
+diff --git a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayWindow.kt b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayWindow.kt
+index 6df5e6cdb..afe9c1c0a 100644
+--- a/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayWindow.kt
++++ b/packages/SystemUI/src/com/android/systemui/peek/PeekDisplayWindow.kt
+@@ -92,6 +92,8 @@ private enum class HoldAction {
+ @Composable
+ private fun PeekDisplayContent(controller: PeekDisplayController) {
+     val items by controller.items.collectAsState()
++    val minute by controller.minuteTick.collectAsState()
++    val battery by controller.battery.collectAsState()
+     val context = LocalContext.current
+     val density = LocalDensity.current
+     val slidePx = with(density) { SLIDE_DISTANCE.toPx() }
+@@ -99,8 +101,9 @@ private fun PeekDisplayContent(controller: PeekDisplayController) {
+     var heldKey by remember { mutableStateOf<String?>(null) }
+     var action by remember { mutableStateOf(HoldAction.NONE) }
+     val iconBounds = remember { mutableStateMapOf<String, Rect>() }
+-    // Burn-in: a new small offset every time the window appears (once per pulse or breath)
+-    val shift = remember {
++    // Burn-in: a new small offset every time the window appears (once per pulse or breath) and,
++    // on the always-on screen, every minute
++    val shift = remember(minute) {
+         Pair(Random.nextInt(-MAX_SHIFT_DP, MAX_SHIFT_DP + 1), Random.nextInt(-MAX_SHIFT_DP, MAX_SHIFT_DP + 1))
+     }
+     val held = items.firstOrNull { it.key == heldKey }
+@@ -166,7 +169,17 @@ private fun PeekDisplayContent(controller: PeekDisplayController) {
+             horizontalAlignment = Alignment.CenterHorizontally,
+             verticalArrangement = Arrangement.Center,
+         ) {
+-            Clock(context)
++            Clock(context, minute)
++            if (battery.pluggedIn) {
++                Spacer(Modifier.height(6.dp))
++                BasicText(
++                    context.getString(
++                        R.string.plait_peek_charging,
++                        java.text.NumberFormat.getPercentInstance().format(battery.level / 100.0),
++                    ),
++                    style = TextStyle(color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp),
++                )
++            }
+             Spacer(Modifier.height(24.dp))
+             // Fixed height so the icons don't jump when the card appears
+             Box(Modifier.fillMaxWidth().height(CARD_HEIGHT), contentAlignment = Alignment.Center) {
+@@ -193,8 +206,9 @@ private fun PeekDisplayContent(controller: PeekDisplayController) {
+ }
+ 
+ @Composable
+-private fun Clock(context: Context) {
+-    val now = remember { Date() }
++private fun Clock(context: Context, minute: Long) {
++    // The always-on time tick bumps [minute]; a pulse or breath shows the time it starts at
++    val now = remember(minute) { Date() }
+     val is24 = DateFormat.is24HourFormat(context, UserHandle.myUserId())
+     val time = DateFormat.format(if (is24) "HH:mm" else "h:mm", now).toString()
+     val locale = context.resources.configuration.locales[0]
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeParameters.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeParameters.java
+index 0d8106c00..7fcbffdfc 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeParameters.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/DozeParameters.java
+@@ -99,6 +99,9 @@ public class DozeParameters implements
+     private final Optional<MinModeManager> mMinModeManager;
+ 
+     private boolean mControlScreenOffAnimation;
++    private final Executor mUiExecutor;
++    /** PlaitOS: last plug state, for "only while charging" / "also while charging". */
++    private Boolean mPluggedIn;
+     private boolean mIsQuickPickupEnabled;
+ 
+     private boolean mKeyguardVisible;
+@@ -162,6 +165,7 @@ public class DozeParameters implements
+         mTransitionInteractor = transitionInteractor;
+         mSecureSettings = secureSettings;
+         mMinModeManager = minModeManager;
++        mUiExecutor = uiExecutor;
+ 
+         if (DisplayComponentRepositoryFlag.INSTANCE.isEagerInitializationEnabled()) {
+             uiExecutor.execute(
+@@ -192,6 +196,15 @@ public class DozeParameters implements
+                 public void onPowerSaveChanged(boolean isPowerSave) {
+                     dispatchAlwaysOnEvent();
+                 }
++
++                @Override
++                public void onBatteryLevelChanged(int level, boolean pluggedIn, boolean charging) {
++                    // PlaitOS: getAlwaysOn() can follow the plug state; keep AOD availability
++                    // (keyguard transitions, screen-off animation) in step with it
++                    if (mPluggedIn != null && mPluggedIn == pluggedIn) return;
++                    mPluggedIn = pluggedIn;
++                    dispatchAlwaysOnEvent();
++                }
+             });
+     }
+ 
+@@ -522,6 +535,11 @@ public class DozeParameters implements
+                 Settings.Secure.getUriFor(Settings.Secure.DOZE_PICK_UP_GESTURE);
+         private final Uri mAlwaysOnEnabled =
+                 Settings.Secure.getUriFor(Settings.Secure.DOZE_ALWAYS_ON);
++        // PlaitOS: when the always-on display shows (AmbientDisplayConfiguration.AOD_MODE)
++        private final Uri[] mAlwaysOnWhen = {
++                Settings.Secure.getUriFor(AmbientDisplayConfiguration.AOD_MODE),
++                Settings.Secure.getUriFor(AmbientDisplayConfiguration.AOD_ON_CHARGE),
++                Settings.Secure.getUriFor(AmbientDisplayConfiguration.AOD_SCHEDULE_ACTIVE)};
+         private final Context mContext;
+ 
+         private final Handler mHandler;
+@@ -539,6 +557,10 @@ public class DozeParameters implements
+                     this, UserHandle.USER_ALL);
+             mSecureSettings.registerContentObserverForUserAsync(mPickupGesture,
+                     this, UserHandle.USER_ALL);
++            for (Uri uri : mAlwaysOnWhen) {
++                mSecureSettings.registerContentObserverForUserAsync(uri, this,
++                        UserHandle.USER_ALL);
++            }
+             mSecureSettings.registerContentObserverForUserAsync(mAlwaysOnEnabled,
+                     this, UserHandle.USER_ALL,
+                     // The register calls are called in order, so this ensures that update()
+@@ -560,6 +582,10 @@ public class DozeParameters implements
+                 // the pickup gesture being enabled
+                 updateQuickPickupEnabled();
+             }
++            if (uri != null && java.util.Arrays.asList(mAlwaysOnWhen).contains(uri)) {
++                updateQuickPickupEnabled();
++                mUiExecutor.execute(DozeParameters.this::dispatchAlwaysOnEvent);
++            }
+         }
+     }
+ }
+diff --git a/services/core/java/com/android/server/display/AutoAODService.java b/services/core/java/com/android/server/display/AutoAODService.java
+index bef8479f3..f4d0abeba 100644
+--- a/services/core/java/com/android/server/display/AutoAODService.java
++++ b/services/core/java/com/android/server/display/AutoAODService.java
+@@ -22,14 +22,11 @@ import android.content.ContentResolver;
+ import android.content.Context;
+ import android.content.Intent;
+ import android.content.IntentFilter;
+-import android.content.SharedPreferences;
+ import android.database.ContentObserver;
++import android.hardware.display.AmbientDisplayConfiguration;
+ import android.net.Uri;
+-import android.os.Environment;
+ import android.os.Handler;
+ import android.os.Looper;
+-import android.os.PowerManager;
+-import android.os.PowerManager.WakeLock;
+ import android.os.UserHandle;
+ import android.provider.Settings;
+ import android.util.Slog;
+@@ -39,46 +36,38 @@ import com.android.server.twilight.TwilightListener;
+ import com.android.server.twilight.TwilightManager;
+ import com.android.server.twilight.TwilightState;
+ 
+-import java.io.File;
+ import java.lang.IllegalArgumentException;
+ import java.util.Calendar;
+ 
++/**
++ * The always-on display schedule.
++ *
++ * PlaitOS: the schedule no longer writes the user's always-on switch (doze_always_on). It
++ * publishes whether the schedule window is open in Settings.Secure
++ * {@link AmbientDisplayConfiguration#AOD_SCHEDULE_ACTIVE}; AmbientDisplayConfiguration combines
++ * that with the switch, the "while charging" option and the plug state, and SystemUI switches
++ * between the always-on and the dark doze screen when the result changes (no pulse or wake-up).
++ */
+ public class AutoAODService extends SystemService {
+ 
+     private static final String TAG = "AutoAODService";
+-    private static final String PULSE_ACTION = "com.android.systemui.doze.pulse";
+-    private static final String PREF_DIR_NAME = "shared_prefs";
+-    private static final String PREF_FILE_NAME = TAG + "_preferences.xml";
+-    private static final String PREF_STATE_KEY = TAG + "_last_state";
+-    private static final String PREF_TIME_KEY = TAG + "_last_time";
+-    private static final int WAKELOCK_TIMEOUT_MS = 3000;
+     private static final String DEFAULT_TIME = "20:00,07:00";
+ 
+-    // PlaitOS: Settings.Secure keys (written by Plait Settings) instead of new Settings API
+-    // constants. Mode: 0 off (default), 1 sunset to sunrise, 2 custom time, 3 sunset to a time,
+-    // 4 a time to sunrise. Time: "HH:mm,HH:mm" (from, till).
+-    private static final String AUTO_MODE = "plait_doze_always_on_auto_mode";
++    private static final String AUTO_MODE = AmbientDisplayConfiguration.AOD_MODE;
+     private static final String AUTO_TIME = "plait_doze_always_on_auto_time";
++    private static final String SCHEDULE_ACTIVE = AmbientDisplayConfiguration.AOD_SCHEDULE_ACTIVE;
++    /** One-time move from the crDroid model (the schedule flipped doze_always_on). */
++    private static final String MODEL_VERSION = "plait_aod_model";
++    private static final int CURRENT_MODEL = 2;
+ 
+-    /**
+-     * Disabled state (default)
+-     */
+-    private static final int MODE_DISABLED = 0;
+-    /**
+-     * Active from sunset to sunrise
+-     */
++    private static final int MODE_DISABLED = AmbientDisplayConfiguration.AOD_MODE_ALWAYS;
++    /** Active from sunset to sunrise */
+     private static final int MODE_NIGHT = 1;
+-    /**
+-     * Active at a user set time
+-     */
++    /** Active at a user set time */
+     private static final int MODE_TIME = 2;
+-    /**
+-     * Active from sunset till a time
+-     */
++    /** Active from sunset till a time */
+     private static final int MODE_MIXED_SUNSET = 3;
+-    /**
+-     * Active from a time till sunrise
+-     */
++    /** Active from a time till sunrise */
+     private static final int MODE_MIXED_SUNRISE = 4;
+ 
+     private final AlarmManager mAlarmManager;
+@@ -86,98 +75,68 @@ public class AutoAODService extends SystemService {
+     private final Handler mHandler = new Handler(Looper.getMainLooper());
+     private TwilightManager mTwilightManager;
+     private TwilightState mTwilightState;
+-    private SharedPreferences mSharedPreferences;
+ 
+-    /**
+-     * Current operation mode
+-     * Can either be {@link #MODE_DISABLED}, {@link #MODE_NIGHT} or {@link #MODE_TIME}
+-     */
++    /** Current schedule mode; anything other than 1-4 has no schedule. */
+     private int mMode = MODE_DISABLED;
+-    /**
+-     * Whether AOD is currently active
+-     */
+-    private boolean mActive = false;
+-    /**
+-     * Whether next alarm should enable or disable AOD
+-     */
++    /** Whether the next alarm opens (true) or closes the window */
+     private boolean mIsNextActivate = false;
+-    
++
+     private boolean mTwilightRegistered = false;
+     private boolean mTimeRegistered = false;
+-    private boolean mSelfChange = false;
+-    private boolean mOverrideOnce = false;
+-    /** PlaitOS: set at PHASE_BOOT_COMPLETED, when twilight and our prefs are available. */
++    /** PlaitOS: set at PHASE_BOOT_COMPLETED, when twilight is available. */
+     private boolean mBootCompleted = false;
+-    private long mLastSetTime = 0;
+ 
+     private final TwilightListener mTwilightListener = new TwilightListener() {
+         @Override
+         public void onTwilightStateChanged(@Nullable TwilightState state) {
+-            if (mMode != MODE_NIGHT && mMode < MODE_MIXED_SUNSET) {
+-                // just incase
++            if (mMode != MODE_NIGHT && mMode != MODE_MIXED_SUNSET && mMode != MODE_MIXED_SUNRISE) {
+                 setTwilightListener(false);
+                 return;
+             }
+             Slog.v(TAG, "onTwilightStateChanged state: " + state);
+             if (state == null) return;
+             mTwilightState = state;
+-            if (mMode < MODE_MIXED_SUNSET) mHandler.post(() -> maybeActivateNight(false));
+-            else mHandler.post(() -> maybeActivateTime(false));
++            if (mMode == MODE_NIGHT) mHandler.post(() -> maybeActivateNight(true));
++            else mHandler.post(() -> maybeActivateTime(true));
+         }
+     };
+ 
+     private final BroadcastReceiver mTimeChangedReceiver = new BroadcastReceiver() {
+         @Override
+         public void onReceive(Context context, Intent intent) {
+-            if (mMode != MODE_TIME && mMode < MODE_MIXED_SUNSET) {
+-                // just incase
++            if (mMode != MODE_TIME && mMode != MODE_MIXED_SUNSET && mMode != MODE_MIXED_SUNRISE) {
+                 setTimeReciever(false);
+                 return;
+             }
+             Slog.v(TAG, "mTimeChangedReceiver onReceive");
+-            mHandler.post(() -> maybeActivateTime(false));
++            // PlaitOS: a clock or time zone change can move us in or out of the window
++            mHandler.post(() -> maybeActivateTime(true));
+         }
+     };
+ 
+-    /**
+-     * A class to manage and handle alarms
+-     */
++    /** The one alarm at the next window edge. */
+     private class Alarm implements AlarmManager.OnAlarmListener {
+         @Override
+         public void onAlarm() {
+             Slog.v(TAG, "onAlarm");
+-            mHandler.post(() -> setAutoAODActive(mIsNextActivate));
+-            if (mMode == MODE_TIME || mMode >= MODE_MIXED_SUNSET)
+-                mHandler.post(() -> maybeActivateTime(false));
+-            else
+-                maybeActivateNight(false);
++            // Recompute from the clock rather than trusting mIsNextActivate: a late alarm
++            // (doze, time change) must not leave the window in the wrong state
++            if (mMode == MODE_NIGHT) maybeActivateNight(true);
++            else maybeActivateTime(true);
+         }
+ 
+-        /**
+-         * Set a new alarm using a Calendar
+-         * @param time time as Calendar
+-         */
+         public void set(Calendar time) {
+             set(time.getTimeInMillis());
+         }
+ 
+-        /**
+-         * Set a new alarm using ms since epoch
+-         * @param time time as ms since epoch
+-         */
+         public void set(long time) {
+             cancel(); // making sure there is no more than 1
+-            mAlarmManager.setExact(AlarmManager.RTC_WAKEUP,
+-                    time, TAG, this, mHandler);
+-            mLastSetTime = time;
+-            Slog.v(TAG, "new alarm set to " + time
+-                    + " mIsNextActivate=" + mIsNextActivate);
++            mAlarmManager.setExact(AlarmManager.RTC_WAKEUP, time, TAG, this, mHandler);
++            Slog.v(TAG, "new alarm set to " + time + " mIsNextActivate=" + mIsNextActivate);
+         }
+ 
+         public void cancel() {
+             mAlarmManager.cancel(this);
+-            mLastSetTime = 0;
+-            Slog.v(TAG, "alarm cancelled");
+         }
+     }
+ 
+@@ -190,47 +149,15 @@ public class AutoAODService extends SystemService {
+ 
+         void observe() {
+             ContentResolver resolver = mContext.getContentResolver();
+-            resolver.registerContentObserver(Settings.Secure.getUriFor(
+-                    AUTO_MODE),
++            resolver.registerContentObserver(Settings.Secure.getUriFor(AUTO_MODE),
+                     false, this, UserHandle.USER_ALL);
+-            resolver.registerContentObserver(Settings.Secure.getUriFor(
+-                    AUTO_TIME),
+-                    false, this, UserHandle.USER_ALL);
+-            resolver.registerContentObserver(Settings.Secure.getUriFor(
+-                    Settings.Secure.DOZE_ALWAYS_ON),
++            resolver.registerContentObserver(Settings.Secure.getUriFor(AUTO_TIME),
+                     false, this, UserHandle.USER_ALL);
+         }
+ 
+         @Override
+         public void onChange(boolean selfChange, Uri uri) {
+-            if (uri.getLastPathSegment().equals(Settings.Secure.DOZE_ALWAYS_ON)) {
+-                if (mSelfChange) {
+-                    mSelfChange = false;
+-                    return;
+-                }
+-
+-                mActive = Settings.Secure.getIntForUser(
+-                        mContext.getContentResolver(),
+-                        Settings.Secure.DOZE_ALWAYS_ON, 0,
+-                        UserHandle.USER_CURRENT) == 1;
+-
+-                if (mLastSetTime != 0 && mActive == mIsNextActivate) {
+-                    // we have a future alarm set and user left current state
+-                    // save the next alarm
+-                    Slog.v(TAG, "user abandoned state. active: " + mActive);
+-                    if (mSharedPreferences != null) {
+-                        mSharedPreferences.edit()
+-                                .putLong(PREF_TIME_KEY, mLastSetTime).apply();
+-                    }
+-                    return;
+-                }
+-                Slog.v(TAG, "removing PREF_TIME_KEY. active: " + mActive);
+-                if (mSharedPreferences != null) {
+-                    mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
+-                }
+-                return;
+-            }
+-            if (!mBootCompleted) return; // initState(true) runs at boot completed
++            if (!mBootCompleted) return; // initState() runs at boot completed
+             mHandler.post(() -> initState());
+         }
+     }
+@@ -242,10 +169,6 @@ public class AutoAODService extends SystemService {
+         mContext = context;
+         mAlarmManager = (AlarmManager) mContext.getSystemService(Context.ALARM_SERVICE);
+         mSettingsObserver = new SettingsObserver(mHandler);
+-        mActive = Settings.Secure.getIntForUser(
+-                mContext.getContentResolver(),
+-                Settings.Secure.DOZE_ALWAYS_ON, 0,
+-                UserHandle.USER_CURRENT) == 1;
+     }
+ 
+     @Override
+@@ -262,17 +185,38 @@ public class AutoAODService extends SystemService {
+             mTwilightManager = getLocalService(TwilightManager.class);
+         } else if (phase == SystemService.PHASE_BOOT_COMPLETED) {
+             Slog.v(TAG, "onBootPhase PHASE_BOOT_COMPLETED");
+-            // we want to access our shared preferences before unlock
+-            // use device encrypted storage & context for that
+-            // also make sure to not store any sensitive data there
+-            final File prefsFile = new File(
+-                    new File(Environment.getDataSystemDeDirectory(
+-                        UserHandle.USER_SYSTEM), PREF_DIR_NAME), PREF_FILE_NAME);
+-            mSharedPreferences = mContext.createDeviceProtectedStorageContext()
+-                    .getSharedPreferences(prefsFile, Context.MODE_PRIVATE);
+             mBootCompleted = true;
+-            mHandler.post(() -> initState(true));
++            mHandler.post(() -> {
++                migrate();
++                initState();
++            });
++        }
++    }
++
++    /**
++     * PlaitOS: settings from before the schedule stopped writing doze_always_on. A schedule
++     * meant "always-on display on a schedule", so the switch goes on; "AOD while charging" with
++     * the switch off meant "only while charging", which is now a mode of its own.
++     */
++    private void migrate() {
++        final ContentResolver cr = mContext.getContentResolver();
++        final int user = UserHandle.USER_CURRENT;
++        if (Settings.Secure.getIntForUser(cr, MODEL_VERSION, 0, user) >= CURRENT_MODEL) return;
++        final int mode = Settings.Secure.getIntForUser(cr, AUTO_MODE, MODE_DISABLED, user);
++        final boolean on = Settings.Secure.getIntForUser(cr,
++                Settings.Secure.DOZE_ALWAYS_ON, 0, user) == 1;
++        final boolean onCharge = Settings.Secure.getIntForUser(cr,
++                AmbientDisplayConfiguration.AOD_ON_CHARGE, 0, user) == 1;
++        if (mode >= MODE_NIGHT && mode <= MODE_MIXED_SUNRISE) {
++            Settings.Secure.putIntForUser(cr, Settings.Secure.DOZE_ALWAYS_ON, 1, user);
++        } else if (!on && onCharge) {
++            Settings.Secure.putIntForUser(cr, AUTO_MODE,
++                    AmbientDisplayConfiguration.AOD_MODE_CHARGING, user);
++            Settings.Secure.putIntForUser(cr, AmbientDisplayConfiguration.AOD_ON_CHARGE, 0, user);
++            Settings.Secure.putIntForUser(cr, Settings.Secure.DOZE_ALWAYS_ON, 1, user);
+         }
++        Settings.Secure.putIntForUser(cr, MODEL_VERSION, CURRENT_MODEL, user);
++        Slog.i(TAG, "migrated AOD settings: mode=" + mode + " on=" + on + " onCharge=" + onCharge);
+     }
+ 
+     /**
+@@ -319,43 +263,16 @@ public class AutoAODService extends SystemService {
+     }
+ 
+     /**
+-     * See {@link #initState(boolean)}
++     * Applies the schedule mode: registers the listeners it needs, sets the next alarm and
++     * publishes whether the window is open now.
+      */
+     private void initState() {
+-        initState(false);
+-    }
+-
+-    /**
+-     * Initiates the state according to user settings
+-     * Registers or unregisters listeners and calls {@link #maybeActivateAOD()}
+-     * @param boot true if triggered by boot
+-     */
+-    private void initState(boolean boot) {
+-        if (boot && mSharedPreferences != null && mSharedPreferences.contains(PREF_TIME_KEY)) {
+-            final long prefTime = mSharedPreferences.getLong(PREF_TIME_KEY, 0);
+-            Calendar cal = Calendar.getInstance();
+-            cal.setTimeInMillis(prefTime);
+-            // skip setting AOD once if we left the state before a reboot
+-            if (cal.after(Calendar.getInstance()))
+-                mOverrideOnce = true;
+-        }
+-
+-        final int mode = Settings.Secure.getIntForUser(mContext.getContentResolver(),
+-                AUTO_MODE, MODE_DISABLED,
+-                UserHandle.USER_CURRENT);
+-        mMode = mode;
+-        mAlarm.cancel(); // cancelling set alarm
+-        // unregister all registered listeners
++        mMode = Settings.Secure.getIntForUser(mContext.getContentResolver(),
++                AUTO_MODE, MODE_DISABLED, UserHandle.USER_CURRENT);
++        mAlarm.cancel();
+         if (mTimeRegistered) setTimeReciever(false);
+         if (mTwilightRegistered) setTwilightListener(false);
+-        // erase shared preferences
+-        if (!boot && mSharedPreferences != null) {
+-            mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
+-        }
+         switch (mMode) {
+-            default:
+-            case MODE_DISABLED:
+-                return;
+             case MODE_TIME:
+                 setTimeReciever(true);
+                 break;
+@@ -367,6 +284,9 @@ public class AutoAODService extends SystemService {
+                 setTwilightListener(true);
+                 setTimeReciever(true);
+                 break;
++            default: // always, only while charging: no window
++                setScheduleActive(false);
++                return;
+         }
+         maybeActivateAOD();
+     }
+@@ -377,7 +297,6 @@ public class AutoAODService extends SystemService {
+     private void maybeActivateAOD() {
+         switch (mMode) {
+             default:
+-            case MODE_DISABLED:
+                 break;
+             case MODE_NIGHT:
+                 maybeActivateNight();
+@@ -404,13 +323,14 @@ public class AutoAODService extends SystemService {
+      */
+     private void maybeActivateNight(boolean setActive) {
+         if (mTwilightState == null) {
++            // No location yet: twilight calls back when it has one
+             Slog.e(TAG, "aborting maybeActivateNight(). mTwilightState is null");
+             return;
+         }
+         mIsNextActivate = !mTwilightState.isNight();
+         mAlarm.set(mIsNextActivate ? mTwilightState.sunsetTimeMillis()
+                 : mTwilightState.sunriseTimeMillis());
+-        if (setActive) mHandler.post(() -> setAutoAODActive(!mIsNextActivate));
++        if (setActive) setScheduleActive(!mIsNextActivate);
+     }
+ 
+     /**
+@@ -481,7 +401,7 @@ public class AutoAODService extends SystemService {
+         mAlarm.set(mIsNextActivate ? since : till);
+ 
+         // activate or disable according to current time
+-        if (setActive) setAutoAODActive(currentTime.compareTo(since) >= 0
++        if (setActive) setScheduleActive(currentTime.compareTo(since) >= 0
+                 && currentTime.before(till));
+     }
+ 
+@@ -506,37 +426,13 @@ public class AutoAODService extends SystemService {
+         }
+     }
+ 
+-    /**
+-     * Activates or inactivates AOD
+-     * @param active Whether to enable or disable AOD
+-     */
+-    private void setAutoAODActive(boolean active) {
+-        if (mOverrideOnce) {
+-            Slog.v(TAG, "setAutoAODActive: user abandoned this session before, skipping");
+-            mOverrideOnce = false;
+-            return;
+-        }
+-        if (mSharedPreferences != null) {
+-            mSharedPreferences.edit().remove(PREF_TIME_KEY).apply();
+-        }
+-
+-        if (mActive == active) return;
+-        mActive = active;
+-        Slog.v(TAG, "setAutoAODActive: active=" + active);
+-        mSelfChange = true;
+-        Settings.Secure.putIntForUser(mContext.getContentResolver(),
+-                Settings.Secure.DOZE_ALWAYS_ON, active ? 1 : 0,
+-                UserHandle.USER_CURRENT);
+-
+-        // update the screen state
+-        PowerManager powerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
+-        if (powerManager.isInteractive()) return; // no need if the screen is already on
+-        WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+-        wakeLock.acquire(WAKELOCK_TIMEOUT_MS);
+-        // PlaitOS: refresh doze with a pulse; after it SystemUI re-reads the AOD setting.
+-        // Never wake the screen fully (crDroid did when pulsing was off), which would light
+-        // the phone up in a pocket at the scheduled time; AOD then starts at the next screen off.
+-        final Intent intent = new Intent(PULSE_ACTION);
+-        mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT);
++    /** Publishes whether the schedule window is open; SystemUI follows the setting. */
++    private void setScheduleActive(boolean active) {
++        final ContentResolver cr = mContext.getContentResolver();
++        final boolean current = Settings.Secure.getIntForUser(cr, SCHEDULE_ACTIVE, 0,
++                UserHandle.USER_CURRENT) == 1;
++        if (current == active) return;
++        Slog.v(TAG, "setScheduleActive: " + active);
++        Settings.Secure.putIntForUser(cr, SCHEDULE_ACTIVE, active ? 1 : 0, UserHandle.USER_CURRENT);
+     }
+ }
+diff --git a/services/core/java/com/android/server/power/PowerManagerService.java b/services/core/java/com/android/server/power/PowerManagerService.java
+index d0b10fa01..90de70dbb 100644
+--- a/services/core/java/com/android/server/power/PowerManagerService.java
++++ b/services/core/java/com/android/server/power/PowerManagerService.java
+@@ -727,8 +727,10 @@ public final class PowerManagerService extends SystemService
+     // True if always on display is enabled
+     private boolean mAlwaysOnEnabled;
+ 
+-    // True if always on charging is enabled
++    // PlaitOS: when the always-on display shows (see AmbientDisplayConfiguration.AOD_MODE)
++    private int mAlwaysOnMode;
+     private boolean mAlwaysOnChargingEnabled;
++    private boolean mAlwaysOnScheduleActive;
+ 
+     // True if double tap to wake is enabled
+     private boolean mDoubleTapWakeEnabled;
+@@ -1591,7 +1593,13 @@ public final class PowerManagerService extends SystemService
+                 Settings.Secure.DOZE_ALWAYS_ON),
+                 false, mSettingsObserver, UserHandle.USER_ALL);
+         resolver.registerContentObserver(Settings.Secure.getUriFor(
+-                "plait_doze_on_charge"),
++                AmbientDisplayConfiguration.AOD_ON_CHARGE),
++                false, mSettingsObserver, UserHandle.USER_ALL);
++        resolver.registerContentObserver(Settings.Secure.getUriFor(
++                AmbientDisplayConfiguration.AOD_MODE),
++                false, mSettingsObserver, UserHandle.USER_ALL);
++        resolver.registerContentObserver(Settings.Secure.getUriFor(
++                AmbientDisplayConfiguration.AOD_SCHEDULE_ACTIVE),
+                 false, mSettingsObserver, UserHandle.USER_ALL);
+         resolver.registerContentObserver(Settings.Secure.getUriFor(
+                 Settings.Secure.DOUBLE_TAP_TO_WAKE),
+@@ -1709,8 +1717,11 @@ public final class PowerManagerService extends SystemService
+         mTheaterModeEnabled = Settings.Global.getInt(mContext.getContentResolver(),
+                 Settings.Global.THEATER_MODE_ON, 0) == 1;
+         mAlwaysOnEnabled = mAmbientDisplayConfiguration.alwaysOnEnabledSetting(UserHandle.USER_CURRENT);
+-        mAlwaysOnChargingEnabled = mAmbientDisplayConfiguration.alwaysOnChargingEnabledSetting(
+-                    UserHandle.USER_CURRENT);
++        mAlwaysOnMode = mAmbientDisplayConfiguration.alwaysOnMode(UserHandle.USER_CURRENT);
++        mAlwaysOnChargingEnabled = Settings.Secure.getIntForUser(resolver,
++                AmbientDisplayConfiguration.AOD_ON_CHARGE, 0, UserHandle.USER_CURRENT) != 0;
++        mAlwaysOnScheduleActive = Settings.Secure.getIntForUser(resolver,
++                AmbientDisplayConfiguration.AOD_SCHEDULE_ACTIVE, 0, UserHandle.USER_CURRENT) != 0;
+ 
+         if (mSupportsDoubleTapWakeConfig) {
+             boolean doubleTapWakeEnabled = Settings.Secure.getIntForUser(resolver,
+@@ -2963,6 +2974,15 @@ public final class PowerManagerService extends SystemService
+         }
+     }
+ 
++    /** PlaitOS: AmbientDisplayConfiguration.alwaysOnEnabled(user, powered) from cached settings. */
++    @GuardedBy("mLock")
++    private boolean alwaysOnShownLocked(boolean powered) {
++        if (!mAlwaysOnEnabled) return false;
++        if (mAlwaysOnMode == AmbientDisplayConfiguration.AOD_MODE_CHARGING) return powered;
++        if (mAlwaysOnMode < 1 || mAlwaysOnMode > 4) return true;
++        return mAlwaysOnScheduleActive || (powered && mAlwaysOnChargingEnabled);
++    }
++
+     @GuardedBy("mLock")
+     private boolean shouldWakeUpWhenPluggedOrUnpluggedLocked(
+             boolean wasPowered, int oldPlugType, boolean dockedOnWirelessCharger) {
+@@ -3002,13 +3022,12 @@ public final class PowerManagerService extends SystemService
+             return false;
+         }
+ 
+-        // On Always On Display, SystemUI shows the charging indicator
+-        if (mAlwaysOnEnabled && getGlobalWakefulnessLocked() == WAKEFULNESS_DOZING) {
+-            return false;
+-        }
+-
+-        // On Always On Charging, SystemUI shows the charging indicator
+-        if (mAlwaysOnChargingEnabled && mIsPowered && getGlobalWakefulnessLocked() == WAKEFULNESS_DOZING) {
++        // On Always On Display, SystemUI shows the charging indicator. PlaitOS: also when the
++        // plug change turns the always-on display on or off ("only while charging", "also while
++        // charging"): SystemUI switches between the always-on and the dark doze screen itself,
++        // and waking here would light the phone up in a pocket on unplug.
++        if (getGlobalWakefulnessLocked() == WAKEFULNESS_DOZING
++                && (alwaysOnShownLocked(wasPowered) || alwaysOnShownLocked(mIsPowered))) {
+             return false;
+         }
+ 
+-- 
+2.56.1
+

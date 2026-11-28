@@ -12,6 +12,7 @@ avatar tones; the in-call background keeps the strong colours
 uses the primary container like PlaitFab (the support FAB stays round).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
 ---
  .../common/util/MaterialColorMapUtils.java    |  3 ++-
  .../lettertile/res/values-night/colors.xml    | 13 +++++++++--

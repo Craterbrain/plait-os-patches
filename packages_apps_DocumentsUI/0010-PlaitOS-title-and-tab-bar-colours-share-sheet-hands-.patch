@@ -1,0 +1,211 @@
+From 996a5b860b2cd308e2de2a9fb9f780da25f5b56f Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 22:21:25 -0600
+Subject: [PATCH] PlaitOS: title and tab bar colours; share sheet hands storage
+ files LocalSend can read
+
+- Top bar and tab row on one surface: the app bar paints the screen surface and does not lift
+  (it showed surfaceContainer behind the tabs); the section divider under the bar is gone
+- Top-bar icons in onSurface (Up/Close arrow was untinted black, search and overflow grey);
+  the tab strip sits on a Surface, so New tab's + is no longer black
+- Share sheet: storage documents go out as PlaitShareProvider stand-ins too (other providers
+  and virtual files unchanged), so Share > LocalSend works like the LocalSend button
+
+Checked on the phone.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ .../layout/directory_app_bar_m3.xml           |  4 ++++
+ .../values/styles_m3.xml                      |  4 +++-
+ src/com/android/documentsui/BaseActivity.java |  7 +++++++
+ .../documentsui/NavigationViewManager.java    | 15 +++++++++++++-
+ src/com/android/documentsui/PlaitCompose.kt   |  6 +++++-
+ .../documentsui/files/ActionHandler.java      | 20 +++++++++++++++----
+ 6 files changed, 49 insertions(+), 7 deletions(-)
+
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/layout/directory_app_bar_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/layout/directory_app_bar_m3.xml
+index dc76bf8..dceb8d8 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/layout/directory_app_bar_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/layout/directory_app_bar_m3.xml
+@@ -21,6 +21,8 @@
+     android:id="@+id/app_bar"
+     android:layout_width="match_parent"
+     android:layout_height="wrap_content"
++    android:background="?attr/colorSurface"
++    app:liftOnScroll="false"
+     android:touchscreenBlocksFocus="false">
+ 
+     <com.google.android.material.appbar.CollapsingToolbarLayout
+@@ -40,7 +42,9 @@
+ 
+             <include layout="@layout/directory_header_m3" />
+ 
++            <!-- PlaitOS: no band between the bar and the content (one surface, like Broker) -->
+             <com.google.android.material.divider.MaterialDivider
++                android:visibility="gone"
+                 android:layout_width="match_parent"
+                 android:layout_height="wrap_content"
+                 app:dividerColor="?attr/colorSurfaceContainer"
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/values/styles_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/values/styles_m3.xml
+index f38481c..bd03c9c 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/values/styles_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/values/styles_m3.xml
+@@ -16,7 +16,8 @@
+ 
+ <resources xmlns:android="http://schemas.android.com/apk/res/android">
+     <style name="ActionBarThemeCommonM3" parent="@style/ThemeOverlay.AppCompat.ActionBar">
+-        <item name="colorControlNormal">?android:textColorSecondary</item>
++        <!-- PlaitOS: top-bar icons in the readable on-surface colour, like Broker's -->
++        <item name="colorControlNormal">?attr/colorOnSurface</item>
+         <!-- Modern platform themes set actionMenuTextColor to textColorPrimary. For example,
+              see Theme.Material in frameworks/base/core/res/res/values/themes_material.xml.
+              However, if the platform theme does not set actionMenuTextColor we are going to
+@@ -116,6 +117,7 @@
+ 
+     <style name="OverflowButtonStyleM3" parent="@style/Widget.Material3.Search.ActionButton.Overflow">
+         <item name="android:minWidth">@dimen/button_touch_size_m3</item>
++        <item name="android:tint">?attr/colorOnSurface</item>
+     </style>
+ 
+     <style name="OverflowMenuStyleM3" parent="@style/Widget.Material3.PopupMenu.Overflow">
+diff --git a/src/com/android/documentsui/BaseActivity.java b/src/com/android/documentsui/BaseActivity.java
+index 0c7af55..761c45c 100644
+--- a/src/com/android/documentsui/BaseActivity.java
++++ b/src/com/android/documentsui/BaseActivity.java
+@@ -741,6 +741,13 @@ public abstract class BaseActivity
+      * applies there; folder actions (view, sort, new folder, select all) come back in a folder.
+      */
+     protected final void plaitPrepareMenu(Menu menu) {
++        // Top-bar icons in the readable on-surface colour, like Broker's
++        if (isUseMaterial3FlagEnabled()) {
++            android.content.res.ColorStateList onSurface = android.content.res.ColorStateList.valueOf(
++                    com.google.android.material.color.MaterialColors.getColor(this,
++                            com.google.android.material.R.attr.colorOnSurface, 0xffffffff));
++            for (int i = 0; i < menu.size(); i++) menu.getItem(i).setIconTintList(onSurface);
++        }
+         if (!isPlaitPlacesVisible()) return;
+         for (int id : new int[] {R.id.sub_menu_grid, R.id.sub_menu_list, R.id.option_menu_sort,
+                 R.id.option_menu_create_dir, R.id.option_menu_select_all,
+diff --git a/src/com/android/documentsui/NavigationViewManager.java b/src/com/android/documentsui/NavigationViewManager.java
+index 59c56ad..356576d 100644
+--- a/src/com/android/documentsui/NavigationViewManager.java
++++ b/src/com/android/documentsui/NavigationViewManager.java
+@@ -462,6 +462,12 @@ public class NavigationViewManager implements AppBarLayout.OnOffsetChangedListen
+             }
+         }
+         mPath.show(places ? null : mActivity::showPlaitPlaces, title, version, parts);
++        // Top-bar actions in the readable on-surface colour, like Broker's
++        android.content.res.ColorStateList onSurface =
++                android.content.res.ColorStateList.valueOf(plaitOnSurface());
++        for (int i = 0; i < mToolbar.getMenu().size(); i++) {
++            mToolbar.getMenu().getItem(i).setIconTintList(onSurface);
++        }
+         updatePlaitCaption();
+         if (!places) {
+             setPlaitNavigation(app.plait.design.R.drawable.ps_back, R.string.plait_up,
+@@ -502,6 +508,11 @@ public class NavigationViewManager implements AppBarLayout.OnOffsetChangedListen
+         mCaption.setVisibility(caption == null || mIsActionModeActivated ? GONE : VISIBLE);
+     }
+ 
++    private int plaitOnSurface() {
++        return com.google.android.material.color.MaterialColors.getColor(mToolbar,
++                com.google.android.material.R.attr.colorOnSurface);
++    }
++
+     private void plaitUp() {
+         if (mState.stack.size() > 1) {
+             onNavigationItemSelected(mState.stack.size() - 2);
+@@ -511,7 +522,9 @@ public class NavigationViewManager implements AppBarLayout.OnOffsetChangedListen
+     }
+ 
+     private void setPlaitNavigation(int icon, int description, Runnable action) {
+-        mToolbar.setNavigationIcon(icon);
++        Drawable drawable = mActivity.getDrawable(icon).mutate();
++        drawable.setTint(plaitOnSurface());
++        mToolbar.setNavigationIcon(drawable);
+         mToolbar.setNavigationContentDescription(description);
+         mToolbar.setNavigationOnClickListener(v -> action.run());
+     }
+diff --git a/src/com/android/documentsui/PlaitCompose.kt b/src/com/android/documentsui/PlaitCompose.kt
+index baec73c..63ffaaa 100644
+--- a/src/com/android/documentsui/PlaitCompose.kt
++++ b/src/com/android/documentsui/PlaitCompose.kt
+@@ -262,7 +262,10 @@ internal class PlaitTabs(context: android.content.Context) : android.widget.Fram
+                     androidx.compose.runtime.LaunchedEffect(selected) {
+                         if (selected >= 0) scroll.animateScrollToItem(selected)
+                     }
+-                    // Mock: compact pills (34 dp, 48 dp touch height) and a hairline under the row
++                    // Mock: compact pills (34 dp, 48 dp touch height) and a hairline under the row.
++                    // On the screen's surface, so the row matches the bar and New tab's icon gets
++                    // the readable on-surface colour
++                    androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.surface) {
+                     Column {
+                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                         androidx.compose.foundation.lazy.LazyRow(
+@@ -314,6 +317,7 @@ internal class PlaitTabs(context: android.content.Context) : android.widget.Fram
+                     androidx.compose.material3.HorizontalDivider(
+                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                     }
++                    }
+                 }
+             }
+         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+diff --git a/src/com/android/documentsui/files/ActionHandler.java b/src/com/android/documentsui/files/ActionHandler.java
+index d719909..2cdd55e 100644
+--- a/src/com/android/documentsui/files/ActionHandler.java
++++ b/src/com/android/documentsui/files/ActionHandler.java
+@@ -611,6 +611,10 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+             return;
+         }
+ 
++        // PlaitOS: storage files go out as read-only stand-ins too, so apps that turn a storage
++        // document address into a path (LocalSend's share handler) can read them
++        if (!intent.hasCategory(Intent.CATEGORY_TYPED_OPENABLE)) plaitWrap(intent, true);
++
+         Intent chooserIntent =
+                 Intent.createChooser(intent, mActivity.getResources().getText(R.string.share_via));
+ 
+@@ -626,11 +630,19 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+         return context.getPackageManager().queryIntentActivities(probe, 0).isEmpty() ? null : probe;
+     }
+ 
+-    private void plaitWrapForLocalSend(Intent intent) {
++    /** Storage documents (or, storageOnly false, every document) as PlaitShareProvider stand-ins. */
++    private static Uri plaitWrapOne(Uri doc, boolean storageOnly) {
++        if (storageOnly && !"com.android.externalstorage.documents".equals(doc.getAuthority())) {
++            return doc;
++        }
++        return com.android.documentsui.PlaitShareProvider.wrap(doc, null);
++    }
++
++    private void plaitWrap(Intent intent, boolean storageOnly) {
+         if (Intent.ACTION_SEND.equals(intent.getAction())) {
+             Uri doc = intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class);
+             if (doc != null) {
+-                Uri wrapped = com.android.documentsui.PlaitShareProvider.wrap(doc, null);
++                Uri wrapped = plaitWrapOne(doc, storageOnly);
+                 intent.putExtra(Intent.EXTRA_STREAM, wrapped);
+                 intent.setClipData(android.content.ClipData.newRawUri("", wrapped));
+             }
+@@ -639,7 +651,7 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+                     intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri.class);
+             if (docs != null && !docs.isEmpty()) {
+                 java.util.ArrayList<Uri> wrapped = new java.util.ArrayList<>();
+-                for (Uri doc : docs) wrapped.add(com.android.documentsui.PlaitShareProvider.wrap(doc, null));
++                for (Uri doc : docs) wrapped.add(plaitWrapOne(doc, storageOnly));
+                 intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, wrapped);
+                 android.content.ClipData clip = android.content.ClipData.newRawUri("", wrapped.get(0));
+                 for (int i = 1; i < wrapped.size(); i++) clip.addItem(new android.content.ClipData.Item(wrapped.get(i)));
+@@ -663,7 +675,7 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+         intent.setPackage(LOCALSEND);
+         // LocalSend can't read storage document addresses (it maps them to a wrong path); hand it
+         // read-only stand-ins it copies through a stream, like FX's FileProvider addresses
+-        plaitWrapForLocalSend(intent);
++        plaitWrap(intent, false);
+         // Its own task, as when FX hands files to it
+         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+         try {
+-- 
+2.56.1
+

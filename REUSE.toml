@@ -18,7 +18,9 @@ SPDX-License-Identifier = "Apache-2.0"
 [[annotations]]
 path = ["art/**", "frameworks_base/**", "frameworks_native/**", "frameworks_libs_systemui/**", "build_make/**", "build_soong/**",
         "external_zstd/**", "packages_apps_Contacts/**", "packages_apps_Dialer/**", "packages_apps_Launcher3/**",
-        "packages_apps_Settings/**", "packages_apps_ThemePicker/**", "packages_apps_Traceur/**", "apps/plait-messaging/**"]
+        "packages_apps_Settings/**", "packages_apps_ThemePicker/**", "packages_apps_Traceur/**", "apps/plait-messaging/**",
+        "packages_apps_DeskClock/**", "packages_apps_DocumentsUI/**", "packages_apps_ExactCalculator/**",
+        "packages_apps_Gallery2/**"]
 precedence = "override"
 SPDX-FileCopyrightText = ["The Android Open Source Project and the patch authors named in each patch's From: line", "2026 Craterbrain"]
 SPDX-License-Identifier = "Apache-2.0"

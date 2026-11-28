@@ -13,6 +13,7 @@ Subject: [PATCH 20/78] PlaitOS: Section 2 fixes from review
   shown and ignored; drop stray blank lines in the power menu imports
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../systemui/globalactions/GlobalActionsDialogLite.java  | 9 +++++----
  .../notification/row/NotificationConversationInfo.java   | 2 +-

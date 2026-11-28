@@ -17,6 +17,7 @@ Subject: [PATCH 2/3] installd: PlaitOS backup streams, review fixes
 - One copy buffer per stream; the extractor reuses the last parent dir.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  cmds/installd/InstalldNativeService.cpp |  12 +-
  cmds/installd/PlaitBackup.cpp           | 185 ++++++++++++++++++------

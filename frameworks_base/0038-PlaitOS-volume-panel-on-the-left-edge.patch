@@ -14,6 +14,7 @@ The panel timeout needs no patch: the new dialog already honors
 Settings.Secure.VOLUME_DIALOG_DISMISS_TIMEOUT.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../systemui/volume/dialog/VolumeDialog.kt    | 26 ++++++++++++++++++-
  .../ui/binder/VolumeDialogViewBinder.kt       |  6 ++++-

@@ -20,6 +20,7 @@ Subject: [PATCH 11/14] PlaitOS: Settings icon styles and icons for the PlaitOS
   packages_apps_crDroidSettings (Apache-2.0), copied as ic_plait_*
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  res/drawable/ic_plait_ambient.xml             |  27 +++
  res/drawable/ic_plait_answer_call.xml         |  27 +++

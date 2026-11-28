@@ -28,6 +28,7 @@ pickers, shown only for the modes that use them), Peek Display (also turns on
 the stock "Wake screen for notifications") and main-user-only rows.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  res/drawable/ic_settings_plait_filled.xml     |  12 +
  res/layout/plait_settings_tabs.xml            |  23 ++

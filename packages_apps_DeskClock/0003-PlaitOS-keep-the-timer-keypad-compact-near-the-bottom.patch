@@ -1,0 +1,61 @@
+From b74e505ce40468b1e15a797522f4ff29df9214c1 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 11:18:53 -0600
+Subject: [PATCH] PlaitOS: Keep the timer keypad compact near the bottom
+
+---
+ res/layout/timer_setup_view.xml | 35 ++++++++++++++++++++-------------
+ 1 file changed, 21 insertions(+), 14 deletions(-)
+
+diff --git a/res/layout/timer_setup_view.xml b/res/layout/timer_setup_view.xml
+index ec99b42..901a86a 100644
+--- a/res/layout/timer_setup_view.xml
++++ b/res/layout/timer_setup_view.xml
+@@ -15,23 +15,30 @@
+   limitations under the License.
+   -->
+ 
+-<LinearLayout
+-    xmlns:android="http://schemas.android.com/apk/res/android"
++<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+     android:layout_width="match_parent"
+     android:layout_height="match_parent"
+-    android:gravity="center_horizontal"
+-    android:orientation="vertical"
+-    android:paddingBottom="@dimen/fab_height"
+-    android:paddingTop="@dimen/timer_setup_top_margin">
++    android:fillViewport="true"
++    android:scrollbars="none">
+ 
+-    <include layout="@layout/timer_setup_time" />
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:gravity="bottom|center_horizontal"
++        android:orientation="vertical"
++        android:paddingBottom="@dimen/fab_height"
++        android:paddingTop="@dimen/timer_setup_top_margin">
+ 
+-    <include layout="@layout/timer_setup_divider" />
++        <include layout="@layout/timer_setup_time" />
+ 
+-    <include
+-        layout="@layout/timer_setup_digits"
+-        android:layout_width="match_parent"
+-        android:layout_height="0dp"
+-        android:layout_weight="1" />
++        <include layout="@layout/timer_setup_divider" />
++
++        <include
++            layout="@layout/timer_setup_digits"
++            android:layout_width="match_parent"
++            android:layout_height="224dp"
++            android:layout_marginHorizontal="16dp" />
++
++    </LinearLayout>
+ 
+-</LinearLayout>
++</ScrollView>
+-- 
+2.56.1
+

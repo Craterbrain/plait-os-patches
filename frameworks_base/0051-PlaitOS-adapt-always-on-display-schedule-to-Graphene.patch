@@ -17,6 +17,7 @@ Subject: [PATCH 51/78] PlaitOS: adapt always-on display schedule to GrapheneOS
   doze with the pulse broadcast only, and drop the now unused helpers
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../server/display/AutoAODService.java        | 99 +++++++++++--------
  1 file changed, 60 insertions(+), 39 deletions(-)

@@ -11,6 +11,7 @@ other apps load. Packs are found by the actions launchers use for icon
 packs (ADW, Nova, Apex, GO, ...), with "System icons" to turn it off.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  AndroidManifest.xml                           |  25 ++++
  res/layout/floating_sheet_app_icon.xml        |  25 ++++

@@ -1,0 +1,197 @@
+From 17835a95f70029e06a841e4dbdb82d0be2b9b1f2 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:12:13 -0600
+Subject: [PATCH] PlaitOS: collapse Gallery controls while scrolling
+
+---
+ AndroidManifest.xml                           |   4 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 113 ++++++++++++++++--
+ 2 files changed, 108 insertions(+), 9 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 06040d9..eb06247 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40040"
+-        android:versionName="1.1.40040"
++<manifest android:versionCode="40041"
++        android:versionName="1.1.40041"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index b393f61..228531b 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -3,6 +3,7 @@
+  */
+ package com.android.gallery3d.app;
+ 
++import android.animation.ValueAnimator;
+ import android.app.Activity;
+ import android.app.AlertDialog;
+ import android.content.ContentUris;
+@@ -381,7 +382,11 @@ public final class PlaitGalleryActivity extends Activity {
+         selected = null;
+         viewerPhotos.clear();
+         root = column();
+-        root.addView(header(title(), true));
++        LinearLayout titleBar = column();
++        titleBar.addView(header(title(), true));
++        root.addView(titleBar);
++        LinearLayout searchBar = column();
++        root.addView(searchBar);
+         EditText search = new EditText(this);
+         search.setSingleLine(true);
+         search.setHint(R.string.plait_gallery_search);
+@@ -401,7 +406,7 @@ public final class PlaitGalleryActivity extends Activity {
+         });
+         LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(48));
+         searchParams.setMargins(dp(16), dp(4), dp(16), dp(8));
+-        root.addView(search, searchParams);
++        searchBar.addView(search, searchParams);
+         if (tab == PHOTOS) {
+             android.widget.HorizontalScrollView scroller = new android.widget.HorizontalScrollView(this);
+             scroller.setHorizontalScrollBarEnabled(false);
+@@ -412,14 +417,15 @@ public final class PlaitGalleryActivity extends Activity {
+             addChip(filters, R.string.plait_gallery_videos, "videos", "videos".equals(category));
+             addChip(filters, R.string.plait_gallery_screenshots, "screenshots", "screenshots".equals(category));
+             scroller.addView(filters);
+-            root.addView(scroller);
++            searchBar.addView(scroller);
+         } else if (category != null) {
+-            root.addView(action(R.string.plait_gallery_back, this::onBackPressed));
++            searchBar.addView(action(R.string.plait_gallery_back, this::onBackPressed));
+         }
+         status = new TextView(this);
+         status.setPadding(dp(16), dp(12), dp(16), dp(12));
+         root.addView(status);
+-        grid = new ListView(this);
++        LibraryList libraryList = new LibraryList();
++        grid = libraryList;
+         grid.setDivider(null);
+         grid.setDividerHeight(0);
+         grid.setPadding(dp(12), 0, dp(12), dp(4));
+@@ -438,7 +444,8 @@ public final class PlaitGalleryActivity extends Activity {
+         View divider = new View(this);
+         int primary = color(android.R.attr.textColorPrimary);
+         divider.setBackgroundColor((primary & 0xffffff) | 0x24000000);
+-        root.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
++        LinearLayout bottomBar = column();
++        bottomBar.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+         LinearLayout navigation = new LinearLayout(this);
+         navigation.setPadding(dp(5), dp(3), dp(5), dp(4));
+         int[] labels = {R.string.plait_gallery_photos, R.string.plait_gallery_albums,
+@@ -478,13 +485,105 @@ public final class PlaitGalleryActivity extends Activity {
+             });
+             navigation.addView(button, new LinearLayout.LayoutParams(0, dp(53), 1));
+         }
+-        root.addView(navigation);
++        bottomBar.addView(navigation);
++        root.addView(bottomBar);
++        libraryList.bars = new LibraryBarScroll(libraryList, search, titleBar, searchBar, bottomBar);
+         root.setFocusableInTouchMode(true);
+         root.requestFocus();
+         setContentView(root);
+         updateTiles();
+     }
+ 
++    private final class LibraryList extends ListView {
++        private LibraryBarScroll bars;
++
++        LibraryList() {
++            super(PlaitGalleryActivity.this);
++        }
++
++        @Override public boolean dispatchTouchEvent(MotionEvent event) {
++            if (bars != null) bars.track(event);
++            return super.dispatchTouchEvent(event);
++        }
++    }
++
++    private final class LibraryBarScroll {
++        private final ListView list;
++        private final EditText search;
++        private final View titleBar;
++        private final View searchBar;
++        private final View bottomBar;
++        private int titleHeight;
++        private int searchHeight;
++        private int bottomHeight;
++        private float startY;
++        private float startX;
++        private float collapse;
++        private boolean hidden;
++        private ValueAnimator animator;
++
++        LibraryBarScroll(ListView list, EditText search, View titleBar, View searchBar,
++                View bottomBar) {
++            this.list = list;
++            this.search = search;
++            this.titleBar = titleBar;
++            this.searchBar = searchBar;
++            this.bottomBar = bottomBar;
++        }
++
++        void track(MotionEvent event) {
++            switch (event.getActionMasked()) {
++                case MotionEvent.ACTION_DOWN:
++                    startX = event.getRawX();
++                    startY = event.getRawY();
++                    break;
++                case MotionEvent.ACTION_MOVE:
++                    float dy = event.getRawY() - startY;
++                    float dx = event.getRawX() - startX;
++                    if (Math.abs(dy) >= dp(16) && Math.abs(dy) > Math.abs(dx)) {
++                        if (dy > 0) animateBars(false);
++                        else if (!search.hasFocus() && list.canScrollVertically(1)) animateBars(true);
++                        startY = event.getRawY();
++                        startX = event.getRawX();
++                    }
++                    break;
++                default:
++                    break;
++            }
++        }
++
++        private void animateBars(boolean hide) {
++            if (hidden == hide) return;
++            if (titleHeight == 0) {
++                titleHeight = titleBar.getHeight();
++                searchHeight = searchBar.getHeight();
++                bottomHeight = bottomBar.getHeight();
++                if (titleHeight == 0 || searchHeight == 0 || bottomHeight == 0) return;
++            }
++            hidden = hide;
++            if (animator != null) animator.cancel();
++            animator = ValueAnimator.ofFloat(collapse, hide ? 1f : 0f);
++            animator.setDuration(240);
++            animator.addUpdateListener(frame -> {
++                collapse = (float) frame.getAnimatedValue();
++                setBarHeight(bottomBar, bottomHeight, collapse / .45f);
++                setBarHeight(searchBar, searchHeight, collapse / .54f);
++                setBarHeight(titleBar, titleHeight, (collapse - .54f) / .46f);
++            });
++            animator.start();
++        }
++
++        private void setBarHeight(View bar, int expanded, float fraction) {
++            int height = Math.round(expanded * (1 - Math.max(0f, Math.min(1f, fraction))));
++            bar.setVisibility(height == 0 ? View.GONE : View.VISIBLE);
++            ViewGroup.LayoutParams params = bar.getLayoutParams();
++            if (params.height != height) {
++                params.height = height;
++                bar.setLayoutParams(params);
++            }
++        }
++    }
++
+     private int color(int attr) {
+         android.content.res.TypedArray values = obtainStyledAttributes(new int[]{attr});
+         try {
+-- 
+2.56.1
+

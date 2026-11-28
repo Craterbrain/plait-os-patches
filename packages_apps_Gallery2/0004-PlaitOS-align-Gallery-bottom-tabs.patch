@@ -1,0 +1,94 @@
+From 6578ec40ecdf1b14c76ecf357dd6b21dbc13fa76 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 18:55:49 -0600
+Subject: [PATCH] PlaitOS: align Gallery bottom tabs with system navigation
+
+---
+ AndroidManifest.xml                           |  4 ++--
+ res/drawable/plait_gallery_explore.xml        |  5 +++--
+ .../gallery3d/app/PlaitGalleryActivity.java   | 22 ++++++++++++++++---
+ 3 files changed, 24 insertions(+), 7 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 392d9a4..d3821e4 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40033"
+-        android:versionName="1.1.40033"
++<manifest android:versionCode="40035"
++        android:versionName="1.1.40035"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/res/drawable/plait_gallery_explore.xml b/res/drawable/plait_gallery_explore.xml
+index 2c40894..657f040 100644
+--- a/res/drawable/plait_gallery_explore.xml
++++ b/res/drawable/plait_gallery_explore.xml
+@@ -1,6 +1,7 @@
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="22dp" android:height="22dp"
+     android:viewportWidth="24" android:viewportHeight="24">
+-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+-        android:pathData="M12,2a10,10 0,1 0,0 20a10,10 0,1 0,0 -20zM12,4a8,8 0,1 1,0 16a8,8 0,1 1,0 -16zM16.5,7.5l-2.4,6.6 -6.6,2.4 2.4,-6.6zM12,10.7a1.3,1.3 0,1 0,0 2.6a1.3,1.3 0,1 0,0 -2.6z"/>
++    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2" android:strokeLineCap="round"
++        android:pathData="M15.5,10a5.5,5.5 0,1 1,-11 0a5.5,5.5 0,1 1,11 0M14,14l5,5"/>
+ </vector>
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index ffd796d..fa1f3e9 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -343,10 +343,24 @@ public final class PlaitGalleryActivity extends Activity {
+         grid.setClipToPadding(false);
+         grid.setAdapter(new TileAdapter());
+         root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
++        int barColor = color(android.R.attr.colorBackgroundFloating);
++        getWindow().setNavigationBarColor(barColor);
++        getWindow().setNavigationBarDividerColor(barColor);
++        getWindow().setNavigationBarContrastEnforced(false);
++        View decor = getWindow().getDecorView();
++        int flags = decor.getSystemUiVisibility();
++        int lightNav = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
++        boolean light = androidx.core.graphics.ColorUtils.calculateLuminance(barColor) > 0.45;
++        decor.setSystemUiVisibility(light ? flags | lightNav : flags & ~lightNav);
++        View divider = new View(this);
++        int primary = color(android.R.attr.textColorPrimary);
++        divider.setBackgroundColor((primary & 0xffffff) | 0x24000000);
++        root.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+         LinearLayout navigation = new LinearLayout(this);
++        navigation.setPadding(dp(5), dp(3), dp(5), dp(4));
+         int[] labels = {R.string.plait_gallery_photos, R.string.plait_gallery_albums,
+                 R.string.plait_gallery_explore};
+-        navigation.setBackgroundColor(color(android.R.attr.colorBackgroundFloating));
++        navigation.setBackgroundColor(barColor);
+         int[] icons = {R.drawable.plait_gallery_photos, R.drawable.plait_gallery_albums,
+                 R.drawable.plait_gallery_explore};
+         for (int index = 0; index < labels.length; index++) {
+@@ -366,9 +380,11 @@ public final class PlaitGalleryActivity extends Activity {
+             icon.setColorFilter(foreground);
+             icon.setScaleType(ImageView.ScaleType.CENTER);
+             if (tab == index) icon.setBackground(shape((foreground & 0xffffff) | 0x29000000, 18));
+-            button.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(32)));
++            button.addView(icon, new LinearLayout.LayoutParams(dp(52), dp(31)));
+             TextView label = label(getString(labels[index]), 12, tab == index);
+             label.setTextColor(foreground);
++            if (tab == index) label.setTextColor(primary);
++            label.setPadding(0, dp(2), 0, 0);
+             button.addView(label);
+             button.setOnClickListener(view -> {
+                 tab = destination;
+@@ -376,7 +392,7 @@ public final class PlaitGalleryActivity extends Activity {
+                 query = "";
+                 showLibrary();
+             });
+-            navigation.addView(button, new LinearLayout.LayoutParams(0, dp(64), 1));
++            navigation.addView(button, new LinearLayout.LayoutParams(0, dp(53), 1));
+         }
+         root.addView(navigation);
+         root.setFocusableInTouchMode(true);
+-- 
+2.56.1
+

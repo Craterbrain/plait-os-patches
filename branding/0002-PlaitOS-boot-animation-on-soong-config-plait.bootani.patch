@@ -7,6 +7,7 @@ canvas_size "plait" was overwritten by husky.mk (inherited product files are
 evaluated after the product's own lines), so GrapheneOS's animation shipped.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  Android.bp | 19 ++++++++++---------
  1 file changed, 10 insertions(+), 9 deletions(-)

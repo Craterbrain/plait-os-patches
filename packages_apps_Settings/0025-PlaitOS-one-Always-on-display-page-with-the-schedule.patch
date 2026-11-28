@@ -1,0 +1,448 @@
+From 3f8f407e5806baefda0b1afc7eb765dbbf8816b8 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 11:14:44 -0600
+Subject: [PATCH] PlaitOS: one Always-on display page with the schedule,
+ charging and Peek Display
+
+- Display > Always show time and info opens a PlaitOS page instead of the
+  stock catalyst one: the switch, "When it shows" (Always, Only while
+  charging, the schedules with their times, Also while charging) and Peek
+  Display with breathing
+- Lock screen > PlaitOS keeps a link to it instead of the scattered rows;
+  the separate Peek Display page is gone
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ res/values/plait_arrays.xml                   |  8 +-
+ res/values/plait_strings.xml                  | 14 ++--
+ res/xml/plait_always_on_display.xml           | 81 +++++++++++++++++++
+ res/xml/plait_peek_display.xml                | 37 ---------
+ res/xml/security_lockscreen_settings.xml      | 33 ++------
+ .../AmbientDisplayAlwaysOnPreferenceScreen.kt |  7 +-
+ .../plait/PlaitAlwaysOnDisplayFragment.java   | 51 ++++++++++++
+ .../settings/plait/PlaitControllers.kt        | 39 ++++++++-
+ .../plait/PlaitPeekDisplayFragment.java       | 37 ---------
+ 9 files changed, 194 insertions(+), 113 deletions(-)
+ create mode 100644 res/xml/plait_always_on_display.xml
+ delete mode 100644 res/xml/plait_peek_display.xml
+ create mode 100644 src/com/android/settings/plait/PlaitAlwaysOnDisplayFragment.java
+ delete mode 100644 src/com/android/settings/plait/PlaitPeekDisplayFragment.java
+
+diff --git a/res/values/plait_arrays.xml b/res/values/plait_arrays.xml
+index e828707..b524899 100644
+--- a/res/values/plait_arrays.xml
++++ b/res/values/plait_arrays.xml
+@@ -62,16 +62,18 @@
+         <item>5</item><item>10</item><item>30</item><item>60</item>
+     </string-array>
+ 
+-    <!-- Always-on display schedule (AutoAODService modes) -->
++    <!-- When the always-on display shows (AmbientDisplayConfiguration.AOD_MODE: 0 always,
++         1-4 AutoAODService schedules, 5 only while plugged in) -->
+     <string-array name="plait_aod_schedule_entries">
+-        <item>@string/plait_off</item>
++        <item>Always</item>
++        <item>Only while charging</item>
+         <item>Sunset to sunrise</item>
+         <item>Custom times</item>
+         <item>Sunset to a time</item>
+         <item>A time to sunrise</item>
+     </string-array>
+     <string-array name="plait_aod_schedule_values" translatable="false">
+-        <item>0</item><item>1</item><item>2</item><item>3</item><item>4</item>
++        <item>0</item><item>5</item><item>1</item><item>2</item><item>3</item><item>4</item>
+     </string-array>
+ 
+     <!-- Smart Pixels share (percent; SmartPixelSettings allows 10-75) -->
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+index 3dac11b..2970e5e 100644
+--- a/res/values/plait_strings.xml
++++ b/res/values/plait_strings.xml
+@@ -35,16 +35,20 @@
+ 
+     <!-- Lock screen -->
+     <string name="plait_peek_title">Peek Display</string>
+-    <string name="plait_peek_summary">New notifications show the clock and app icons while the screen is off. Touch and hold an icon to read, slide up to open, down to dismiss</string>
++    <string name="plait_peek_summary">New notifications show the clock and app icons while the screen is off. Touch and hold an icon to read, slide up to open, down to dismiss. With the always-on display on, this is what it shows</string>
+     <string name="plait_peek_breathing_title">Breathing</string>
+-    <string name="plait_peek_breathing_summary">Show Peek Display again every so often while notifications are unseen</string>
++    <string name="plait_peek_breathing_summary">Show Peek Display again every so often while notifications are unseen. Not needed while the always-on display is showing</string>
+     <string name="plait_peek_interval_title">Show again every</string>
+     <string name="plait_peek_duration_title">Keep breathing for</string>
+-    <string name="plait_aod_schedule_title">Always-on display schedule</string>
++    <string name="plait_aod_title">Always-on display</string>
++    <string name="plait_aod_entry_summary">When it shows, while charging, Peek Display</string>
++    <string name="plait_aod_main_switch">Always show time and info</string>
++    <string name="plait_aod_when_category">When it shows</string>
++    <string name="plait_aod_schedule_title">Show</string>
+     <string name="plait_aod_from_title">Turn on at</string>
+     <string name="plait_aod_till_title">Turn off at</string>
+-    <string name="plait_doze_on_charge_title">Always-on display while charging</string>
+-    <string name="plait_doze_on_charge_summary">Show the always-on display while plugged in, even when it is off otherwise</string>
++    <string name="plait_doze_on_charge_title">Also while charging</string>
++    <string name="plait_doze_on_charge_summary">Show it outside the schedule while plugged in</string>
+     <string name="plait_pocket_title">Pocket mode</string>
+     <string name="plait_pocket_summary">Ignore touches and buttons while the phone is in a pocket. Press and hold the power button to leave pocket mode</string>
+ 
+diff --git a/res/xml/plait_always_on_display.xml b/res/xml/plait_always_on_display.xml
+new file mode 100644
+index 0000000..5ca56fc
+--- /dev/null
++++ b/res/xml/plait_always_on_display.xml
+@@ -0,0 +1,81 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Every always-on display and Peek Display option on
++     one page (Display > Always show time and info). Row keys are the settings they write. -->
++<PreferenceScreen
++    xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:settings="http://schemas.android.com/apk/res-auto"
++    android:key="plait_always_on_display_screen"
++    android:title="@string/plait_aod_title">
++
++    <com.android.settingslib.widget.MainSwitchPreference
++        android:key="doze_always_on"
++        android:title="@string/plait_aod_main_switch"
++        settings:keywords="@string/keywords_always_show_time_info"
++        settings:controller="com.android.settings.plait.AodMainSwitchController" />
++
++    <PreferenceCategory
++        android:key="plait_aod_when"
++        android:title="@string/plait_aod_when_category">
++        <ListPreference
++            android:key="plait_doze_always_on_auto_mode"
++            android:dependency="doze_always_on"
++            android:icon="@drawable/ic_plait_sym_schedule"
++            android:title="@string/plait_aod_schedule_title"
++            android:entries="@array/plait_aod_schedule_entries"
++            android:entryValues="@array/plait_aod_schedule_values"
++            settings:controller="com.android.settings.plait.AodScheduleModeController" />
++        <Preference
++            android:key="plait_doze_always_on_auto_time_from"
++            android:dependency="doze_always_on"
++            android:icon="@drawable/ic_plait_sym_light_mode"
++            android:title="@string/plait_aod_from_title"
++            settings:controller="com.android.settings.plait.AodScheduleTimeController" />
++        <Preference
++            android:key="plait_doze_always_on_auto_time_till"
++            android:dependency="doze_always_on"
++            android:icon="@drawable/ic_plait_sym_dark_mode"
++            android:title="@string/plait_aod_till_title"
++            settings:controller="com.android.settings.plait.AodScheduleTimeController" />
++        <SwitchPreferenceCompat
++            android:key="plait_doze_on_charge"
++            android:dependency="doze_always_on"
++            android:icon="@drawable/ic_plait_sym_battery_charging_full"
++            android:title="@string/plait_doze_on_charge_title"
++            android:summary="@string/plait_doze_on_charge_summary"
++            settings:controller="com.android.settings.plait.AodAvailableSwitchController" />
++    </PreferenceCategory>
++
++    <PreferenceCategory
++        android:key="plait_peek_category"
++        android:title="@string/plait_peek_title">
++        <SwitchPreferenceCompat
++            android:key="plait_peek_display"
++            android:icon="@drawable/ic_plait_sym_notifications_active"
++            android:title="@string/plait_peek_title"
++            android:summary="@string/plait_peek_summary"
++            settings:controller="com.android.settings.plait.PeekDisplaySwitchController" />
++        <SwitchPreferenceCompat
++            android:key="plait_peek_breathing"
++            android:icon="@drawable/ic_plait_sym_animation"
++            android:title="@string/plait_peek_breathing_title"
++            android:summary="@string/plait_peek_breathing_summary"
++            android:dependency="plait_peek_display"
++            settings:controller="com.android.settings.plait.PlaitSwitchController" />
++        <ListPreference
++            android:key="plait_peek_breathing_interval"
++            android:icon="@drawable/ic_plait_sym_repeat"
++            android:title="@string/plait_peek_interval_title"
++            android:entries="@array/plait_peek_interval_entries"
++            android:entryValues="@array/plait_peek_interval_values"
++            android:dependency="plait_peek_breathing"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++        <ListPreference
++            android:key="plait_peek_breathing_duration"
++            android:icon="@drawable/ic_plait_sym_timer"
++            android:title="@string/plait_peek_duration_title"
++            android:entries="@array/plait_peek_duration_entries"
++            android:entryValues="@array/plait_peek_duration_values"
++            android:dependency="plait_peek_breathing"
++            settings:controller="com.android.settings.plait.PlaitListController" />
++    </PreferenceCategory>
++</PreferenceScreen>
+diff --git a/res/xml/plait_peek_display.xml b/res/xml/plait_peek_display.xml
+deleted file mode 100644
+index 0cf726c..0000000
+--- a/res/xml/plait_peek_display.xml
++++ /dev/null
+@@ -1,37 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- SPDX-License-Identifier: Apache-2.0 (PlaitOS). Row keys are the settings they write. -->
+-<PreferenceScreen
+-    xmlns:android="http://schemas.android.com/apk/res/android"
+-    xmlns:settings="http://schemas.android.com/apk/res-auto"
+-    android:key="plait_peek_display_screen"
+-    android:title="@string/plait_peek_title">
+-    <SwitchPreferenceCompat
+-        android:key="plait_peek_display"
+-        android:icon="@drawable/ic_plait_sym_notifications_active"
+-        android:title="@string/plait_peek_title"
+-        android:summary="@string/plait_peek_summary"
+-        settings:controller="com.android.settings.plait.PeekDisplaySwitchController" />
+-    <SwitchPreferenceCompat
+-        android:key="plait_peek_breathing"
+-        android:icon="@drawable/ic_plait_sym_animation"
+-        android:title="@string/plait_peek_breathing_title"
+-        android:summary="@string/plait_peek_breathing_summary"
+-        android:dependency="plait_peek_display"
+-        settings:controller="com.android.settings.plait.PlaitSwitchController" />
+-    <ListPreference
+-        android:key="plait_peek_breathing_interval"
+-        android:icon="@drawable/ic_plait_sym_repeat"
+-        android:title="@string/plait_peek_interval_title"
+-        android:entries="@array/plait_peek_interval_entries"
+-        android:entryValues="@array/plait_peek_interval_values"
+-        android:dependency="plait_peek_breathing"
+-        settings:controller="com.android.settings.plait.PlaitListController" />
+-    <ListPreference
+-        android:key="plait_peek_breathing_duration"
+-        android:icon="@drawable/ic_plait_sym_timer"
+-        android:title="@string/plait_peek_duration_title"
+-        android:entries="@array/plait_peek_duration_entries"
+-        android:entryValues="@array/plait_peek_duration_values"
+-        android:dependency="plait_peek_breathing"
+-        settings:controller="com.android.settings.plait.PlaitListController" />
+-</PreferenceScreen>
+diff --git a/res/xml/security_lockscreen_settings.xml b/res/xml/security_lockscreen_settings.xml
+index 386ed3e..d3c303c 100644
+--- a/res/xml/security_lockscreen_settings.xml
++++ b/res/xml/security_lockscreen_settings.xml
+@@ -152,35 +152,14 @@
+     <PreferenceCategory
+         android:key="plait_lockscreen_category"
+         android:title="@string/plait_category">
++        <!-- Always-on display and Peek Display options are all on one page (also Display >
++             Always show time and info) -->
+         <Preference
+-            android:key="plait_peek_display_entry"
++            android:key="plait_always_on_display_entry"
+             android:icon="@drawable/ic_plait_sym_notifications_active"
+-            android:title="@string/plait_peek_title"
+-            android:summary="@string/plait_peek_summary"
+-            android:fragment="com.android.settings.plait.PlaitPeekDisplayFragment" />
+-        <ListPreference
+-            android:key="plait_doze_always_on_auto_mode"
+-            android:icon="@drawable/ic_plait_sym_schedule"
+-            android:title="@string/plait_aod_schedule_title"
+-            android:entries="@array/plait_aod_schedule_entries"
+-            android:entryValues="@array/plait_aod_schedule_values"
+-            settings:controller="com.android.settings.plait.AodScheduleModeController" />
+-        <Preference
+-            android:key="plait_doze_always_on_auto_time_from"
+-            android:icon="@drawable/ic_plait_sym_light_mode"
+-            android:title="@string/plait_aod_from_title"
+-            settings:controller="com.android.settings.plait.AodScheduleTimeController" />
+-        <Preference
+-            android:key="plait_doze_always_on_auto_time_till"
+-            android:icon="@drawable/ic_plait_sym_dark_mode"
+-            android:title="@string/plait_aod_till_title"
+-            settings:controller="com.android.settings.plait.AodScheduleTimeController" />
+-        <SwitchPreferenceCompat
+-            android:key="plait_doze_on_charge"
+-            android:icon="@drawable/ic_plait_sym_battery_charging_full"
+-            android:title="@string/plait_doze_on_charge_title"
+-            android:summary="@string/plait_doze_on_charge_summary"
+-            settings:controller="com.android.settings.plait.AodAvailableSwitchController" />
++            android:title="@string/plait_aod_title"
++            android:summary="@string/plait_aod_entry_summary"
++            android:fragment="com.android.settings.plait.PlaitAlwaysOnDisplayFragment" />
+         <SwitchPreferenceCompat
+             android:key="plait_pocket_judge"
+             android:icon="@drawable/ic_plait_sym_do_not_touch"
+diff --git a/src/com/android/settings/display/AmbientDisplayAlwaysOnPreferenceScreen.kt b/src/com/android/settings/display/AmbientDisplayAlwaysOnPreferenceScreen.kt
+index 5f554b9..21ed22a 100644
+--- a/src/com/android/settings/display/AmbientDisplayAlwaysOnPreferenceScreen.kt
++++ b/src/com/android/settings/display/AmbientDisplayAlwaysOnPreferenceScreen.kt
+@@ -159,7 +159,10 @@ open class AmbientDisplayAlwaysOnPreferenceScreen(context: Context) :
+         }
+     }
+ 
+-    override fun fragmentClass(): Class<out Fragment>? = AmbientPreferenceFragment::class.java
++    // PlaitOS: the PlaitOS page holds the switch, when it shows (schedule, charging) and Peek
++    // Display; this catalyst page has no room for them
++    override fun fragmentClass(): Class<out Fragment>? =
++        com.android.settings.plait.PlaitAlwaysOnDisplayFragment::class.java
+ 
+     override fun hasCompleteHierarchy() = true
+ 
+@@ -220,7 +223,7 @@ open class AmbientDisplayAlwaysOnPreferenceScreen(context: Context) :
+ class AmbientDisplayAlwaysOnActivity :
+     CatalystSettingsActivity(
+         AmbientDisplayAlwaysOnPreferenceScreen.KEY,
+-        AmbientPreferenceFragment::class.java,
++        com.android.settings.plait.PlaitAlwaysOnDisplayFragment::class.java, // PlaitOS
+     )
+ 
+ class AmbientPreferenceFragment : CatalystFragment() {
+diff --git a/src/com/android/settings/plait/PlaitAlwaysOnDisplayFragment.java b/src/com/android/settings/plait/PlaitAlwaysOnDisplayFragment.java
+new file mode 100644
+index 0000000..e0535a5
+--- /dev/null
++++ b/src/com/android/settings/plait/PlaitAlwaysOnDisplayFragment.java
+@@ -0,0 +1,51 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.settings.plait;
++
++import android.app.settings.SettingsEnums;
++import android.content.Context;
++
++import androidx.annotation.NonNull;
++import androidx.annotation.Nullable;
++
++import com.android.settings.R;
++import com.android.settings.dashboard.DashboardFragment;
++import com.android.settings.search.BaseSearchIndexProvider;
++import com.android.settingslib.search.SearchIndexable;
++
++/**
++ * The always-on display page (Display > Always show time and info, and Lock screen > PlaitOS):
++ * the switch, when it shows (always, only while charging, a schedule, also while charging) and
++ * Peek Display, which draws the always-on screen when both are on. Replaces the stock catalyst
++ * page, which has no room for the PlaitOS rows. Rows and controllers: R.xml.plait_always_on_display.
++ */
++@SearchIndexable
++public class PlaitAlwaysOnDisplayFragment extends DashboardFragment {
++    private static final String TAG = "PlaitAlwaysOnDisplay";
++
++    @Override
++    protected int getPreferenceScreenResId() {
++        return R.xml.plait_always_on_display;
++    }
++
++    @Override
++    protected String getLogTag() {
++        return TAG;
++    }
++
++    @Override
++    public int getMetricsCategory() {
++        return SettingsEnums.AMBIENT_DISPLAY_ALWAYS_ON;
++    }
++
++    @Override
++    public @Nullable String getPreferenceScreenBindingKey(@NonNull Context context) {
++        return null; // the XML page, not the catalyst screen
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(R.xml.plait_always_on_display);
++}
+diff --git a/src/com/android/settings/plait/PlaitControllers.kt b/src/com/android/settings/plait/PlaitControllers.kt
+index 3e74b5e..cd59a15 100644
+--- a/src/com/android/settings/plait/PlaitControllers.kt
++++ b/src/com/android/settings/plait/PlaitControllers.kt
+@@ -176,8 +176,38 @@ class PowerMenuActionsController(context: Context, key: String) :
+ }
+ 
+ /**
+- * Always-on display schedule mode. The "from" and "till" rows only show for the modes that use
+- * them: 2 custom (both), 3 sunset to a time (till), 4 a time to sunrise (from).
++ * The always-on display switch (Settings.Secure doze_always_on). PlaitOS keeps it the user's own:
++ * the schedule and "only while charging" decide when it shows, they never write it.
++ */
++class AodMainSwitchController(context: Context, key: String) :
++    TogglePreferenceController(context, key) {
++
++    override fun getAvailabilityStatus() =
++        if (android.hardware.display.AmbientDisplayConfiguration(mContext)
++                .alwaysOnAvailableForUser(UserHandle.myUserId())) {
++            AVAILABLE
++        } else {
++            UNSUPPORTED_ON_DEVICE
++        }
++
++    override fun isChecked() =
++        Settings.Secure.getIntForUser(mContext.contentResolver, Settings.Secure.DOZE_ALWAYS_ON,
++            if (mContext.resources.getBoolean(
++                    com.android.internal.R.bool.config_dozeAlwaysOnEnabled)) 1 else 0,
++            UserHandle.myUserId()) == 1
++
++    override fun setChecked(isChecked: Boolean) =
++        Settings.Secure.putIntForUser(mContext.contentResolver, Settings.Secure.DOZE_ALWAYS_ON,
++            if (isChecked) 1 else 0, UserHandle.myUserId())
++
++    override fun getSliceHighlightMenuRes() = R.string.menu_key_display
++}
++
++/**
++ * When the always-on display shows (AmbientDisplayConfiguration.AOD_MODE): 0 always, 5 only
++ * while charging, 1-4 a schedule. The "from" and "till" rows only show for the modes that use
++ * them (2 custom: both, 3 sunset to a time: till, 4 a time to sunrise: from), "also while
++ * charging" only with a schedule.
+  */
+ class AodScheduleModeController(context: Context, key: String) : PlaitListController(context, key) {
+     private var screen: PreferenceScreen? = null
+@@ -197,6 +227,11 @@ class AodScheduleModeController(context: Context, key: String) : PlaitListContro
+             mode == 2 || mode == 4
+         screen?.findPreference<Preference>(AodScheduleTimeController.KEY_TILL)?.isVisible =
+             mode == 2 || mode == 3
++        screen?.findPreference<Preference>(KEY_ON_CHARGE)?.isVisible = mode in 1..4
++    }
++
++    companion object {
++        private const val KEY_ON_CHARGE = "plait_doze_on_charge"
+     }
+ }
+ 
+diff --git a/src/com/android/settings/plait/PlaitPeekDisplayFragment.java b/src/com/android/settings/plait/PlaitPeekDisplayFragment.java
+deleted file mode 100644
+index 1e94d66..0000000
+--- a/src/com/android/settings/plait/PlaitPeekDisplayFragment.java
++++ /dev/null
+@@ -1,37 +0,0 @@
+-/*
+- * SPDX-FileCopyrightText: PlaitOS
+- * SPDX-License-Identifier: Apache-2.0
+- */
+-
+-package com.android.settings.plait;
+-
+-import android.app.settings.SettingsEnums;
+-
+-import com.android.settings.R;
+-import com.android.settings.dashboard.DashboardFragment;
+-import com.android.settings.search.BaseSearchIndexProvider;
+-import com.android.settingslib.search.SearchIndexable;
+-
+-/** Peek Display options (Display > Lock screen). Rows and their controllers come from R.xml.plait_peek_display. */
+-@SearchIndexable
+-public class PlaitPeekDisplayFragment extends DashboardFragment {
+-    private static final String TAG = "PlaitPeekDisplayFragment";
+-
+-    @Override
+-    protected int getPreferenceScreenResId() {
+-        return R.xml.plait_peek_display;
+-    }
+-
+-    @Override
+-    protected String getLogTag() {
+-        return TAG;
+-    }
+-
+-    @Override
+-    public int getMetricsCategory() {
+-        return SettingsEnums.PAGE_UNKNOWN;
+-    }
+-
+-    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
+-            new BaseSearchIndexProvider(R.xml.plait_peek_display);
+-}
+-- 
+2.56.1
+

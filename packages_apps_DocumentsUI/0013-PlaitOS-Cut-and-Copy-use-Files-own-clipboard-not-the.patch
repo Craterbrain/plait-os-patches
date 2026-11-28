@@ -1,0 +1,267 @@
+From 234f7bc1461a4c68f642228811b25a9334ee87fd Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 22:59:24 -0600
+Subject: [PATCH] PlaitOS: Cut and Copy use Files' own clipboard, not the
+ system one
+
+PlaitClipboard holds the cut/copied documents for the Files process (all Files windows
+share it), with ClipboardManager's calls, so RuntimeDocumentClipper and everything on it
+(the Paste here bar, Paste in the menu, paste into a folder, clearing after a move) work
+unchanged. Nothing reaches the system clipboard: no "Copied" overlay, other apps don't see
+the file list, and copying text elsewhere doesn't drop it. The "added to clipboard"
+snackbar is gone too (the Paste here bar says what is waiting).
+
+Checked on the phone: copy two files Download > Documents, cut them Documents > a folder.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ .../documentsui/clipping/PlaitClipboard.java  | 67 +++++++++++++++++++
+ .../clipping/RuntimeDocumentClipper.java      | 23 ++++---
+ .../documentsui/files/ActionHandler.java      |  6 +-
+ .../documentsui/files/FilesActivity.java      | 15 +++--
+ 4 files changed, 92 insertions(+), 19 deletions(-)
+ create mode 100644 src/com/android/documentsui/clipping/PlaitClipboard.java
+
+diff --git a/src/com/android/documentsui/clipping/PlaitClipboard.java b/src/com/android/documentsui/clipping/PlaitClipboard.java
+new file mode 100644
+index 0000000..c8bec2b
+--- /dev/null
++++ b/src/com/android/documentsui/clipping/PlaitClipboard.java
+@@ -0,0 +1,67 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.documentsui.clipping;
++
++import android.content.ClipData;
++import android.content.ClipDescription;
++import android.content.ClipboardManager;
++
++import androidx.annotation.Nullable;
++
++import java.util.concurrent.CopyOnWriteArrayList;
++
++/**
++ * PlaitOS: Files' own clipboard for Cut and Copy (FX's model). The files never reach the system
++ * clipboard: no "Copied" overlay, other apps don't see the list, and a text copy elsewhere doesn't
++ * drop it. It lives as long as the Files process (every Files window shares it). Same calls as
++ * ClipboardManager, so RuntimeDocumentClipper works unchanged on top of it.
++ */
++public final class PlaitClipboard {
++    private static @Nullable ClipData sClip;
++    private static final CopyOnWriteArrayList<ClipboardManager.OnPrimaryClipChangedListener>
++            sListeners = new CopyOnWriteArrayList<>();
++
++    private PlaitClipboard() {}
++
++    public static synchronized boolean hasPrimaryClip() {
++        return sClip != null;
++    }
++
++    public static synchronized @Nullable ClipData getPrimaryClip() {
++        return sClip;
++    }
++
++    public static synchronized @Nullable ClipDescription getPrimaryClipDescription() {
++        return sClip == null ? null : sClip.getDescription();
++    }
++
++    public static void setPrimaryClip(ClipData clip) {
++        synchronized (PlaitClipboard.class) {
++            sClip = clip;
++        }
++        notifyChanged();
++    }
++
++    public static void clearPrimaryClip() {
++        synchronized (PlaitClipboard.class) {
++            if (sClip == null) return;
++            sClip = null;
++        }
++        notifyChanged();
++    }
++
++    public static void addPrimaryClipChangedListener(ClipboardManager.OnPrimaryClipChangedListener l) {
++        sListeners.addIfAbsent(l);
++    }
++
++    public static void removePrimaryClipChangedListener(ClipboardManager.OnPrimaryClipChangedListener l) {
++        sListeners.remove(l);
++    }
++
++    private static void notifyChanged() {
++        for (ClipboardManager.OnPrimaryClipChangedListener l : sListeners) l.onPrimaryClipChanged();
++    }
++}
+diff --git a/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java b/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
+index 8e9aa78..1941bf8 100644
+--- a/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
++++ b/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
+@@ -49,6 +49,7 @@ import java.util.Set;
+ import java.util.function.Function;
+ 
+ /**
++ * PlaitOS: works on Files' own clipboard (PlaitClipboard), not the system one.
+  * ClipboardManager wrapper class providing higher level logical
+  * support for dealing with Documents.
+  */
+@@ -78,8 +79,8 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+ 
+     @Override
+     public boolean hasItemsToPaste() {
+-        if (mClipboard.hasPrimaryClip()) {
+-            ClipData clipData = mClipboard.getPrimaryClip();
++        if (PlaitClipboard.hasPrimaryClip()) {
++            ClipData clipData = PlaitClipboard.getPrimaryClip();
+ 
+             int count = clipData.getItemCount();
+             if (count > 0) {
+@@ -97,7 +98,7 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+ 
+     @Override
+     public boolean hasDocumentOperation() {
+-        ClipDescription description = mClipboard.getPrimaryClipDescription();
++        ClipDescription description = PlaitClipboard.getPrimaryClipDescription();
+         if (description == null || description.getExtras() == null) return false;
+         int operation = description.getExtras().getInt(OP_TYPE_KEY);
+         return operation == FileOperationService.OPERATION_COPY
+@@ -107,13 +108,13 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+     @Override
+     public int plaitOperationCount() {
+         if (!hasDocumentOperation()) return 0;
+-        ClipData clip = mClipboard.getPrimaryClip();
++        ClipData clip = PlaitClipboard.getPrimaryClip();
+         return clip == null ? 0 : clip.getItemCount();
+     }
+ 
+     @Override
+     public @Nullable Uri plaitSourceParent() {
+-        ClipDescription description = mClipboard.getPrimaryClipDescription();
++        ClipDescription description = PlaitClipboard.getPrimaryClipDescription();
+         if (description == null || description.getExtras() == null) return null;
+         String parent = description.getExtras().getString(SRC_PARENT_KEY);
+         return parent == null ? null : Uri.parse(parent);
+@@ -121,7 +122,7 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+ 
+     @Override
+     public boolean plaitIsMove() {
+-        ClipDescription description = mClipboard.getPrimaryClipDescription();
++        ClipDescription description = PlaitClipboard.getPrimaryClipDescription();
+         return description != null && description.getExtras() != null
+                 && description.getExtras().getInt(OP_TYPE_KEY) == FileOperationService.OPERATION_MOVE;
+     }
+@@ -238,7 +239,7 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+                 getClipDataForDocuments(uriBuilder, selection, FileOperationService.OPERATION_COPY);
+         assert(data != null);
+ 
+-        mClipboard.setPrimaryClip(data);
++        PlaitClipboard.setPrimaryClip(data);
+     }
+ 
+     @Override
+@@ -262,7 +263,7 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+             bundle.putString(SRC_IS_RECENTS_VIEW_KEY, String.valueOf(isFromRecents));
+         }
+ 
+-        mClipboard.setPrimaryClip(data);
++        PlaitClipboard.setPrimaryClip(data);
+     }
+ 
+ 
+@@ -272,7 +273,7 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+             DocumentStack docStack,
+             FileOperations.Callback callback) {
+ 
+-        copyFromClipData(destination, docStack, mClipboard.getPrimaryClip(), callback);
++        copyFromClipData(destination, docStack, PlaitClipboard.getPrimaryClip(), callback);
+     }
+ 
+     @Override
+@@ -280,7 +281,7 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+             DocumentStack docStack,
+             FileOperations.Callback callback) {
+ 
+-        copyFromClipData(docStack, mClipboard.getPrimaryClip(), callback);
++        copyFromClipData(docStack, PlaitClipboard.getPrimaryClip(), callback);
+     }
+ 
+     @Override
+@@ -395,7 +396,7 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+                         if (status == FileOperations.Callback.STATUS_ACCEPTED
+                                 && fileOpType == FileOperationService.OPERATION_MOVE) {
+                             Log.i(TAG, "Clearing the primary clip after a move operation.");
+-                            mClipboard.clearPrimaryClip();
++                            PlaitClipboard.clearPrimaryClip();
+                         }
+                     },
+                     FileOperations.createJobId());
+diff --git a/src/com/android/documentsui/files/ActionHandler.java b/src/com/android/documentsui/files/ActionHandler.java
+index eb9cd8c..0a630a2 100644
+--- a/src/com/android/documentsui/files/ActionHandler.java
++++ b/src/com/android/documentsui/files/ActionHandler.java
+@@ -341,7 +341,8 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+         mClipper.clipDocumentsForCut(
+                 mModel::getItemUri, selection, mState.stack.peek(), mState.stack.isRecents());
+ 
+-        mDialogs.showDocumentsClipped(selection.size());
++        // PlaitOS: the Paste here bar says what is waiting; no snackbar over it
++        if (!isUseMaterial3FlagEnabled()) mDialogs.showDocumentsClipped(selection.size());
+     }
+ 
+     @Override
+@@ -376,7 +377,8 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+ 
+         mClipper.clipDocumentsForCopy(mModel::getItemUri, selection);
+ 
+-        mDialogs.showDocumentsClipped(selection.size());
++        // PlaitOS: the Paste here bar says what is waiting; no snackbar over it
++        if (!isUseMaterial3FlagEnabled()) mDialogs.showDocumentsClipped(selection.size());
+     }
+ 
+     /** Base method for creating a share intent. */
+diff --git a/src/com/android/documentsui/files/FilesActivity.java b/src/com/android/documentsui/files/FilesActivity.java
+index 8e47c7c..21bf91c 100644
+--- a/src/com/android/documentsui/files/FilesActivity.java
++++ b/src/com/android/documentsui/files/FilesActivity.java
+@@ -122,10 +122,13 @@ public class FilesActivity extends BaseActivity implements AbstractActionHandler
+     private PlaitPickerFooter mPlaitPaste;
+     private DocumentClipper mPlaitClipper;
+     private boolean mDismissedPaste;
+-    private final ClipboardManager.OnPrimaryClipChangedListener mPlaitClipListener = () -> {
+-        mDismissedPaste = false;
+-        updatePlaitPaste();
+-    };
++    // Files' own clipboard (PlaitClipboard) can change from a file operation's thread
++    private final ClipboardManager.OnPrimaryClipChangedListener mPlaitClipListener = () ->
++            runOnUiThread(() -> {
++                mDismissedPaste = false;
++                updatePlaitPaste();
++                invalidateOptionsMenu();
++            });
+     private int mActiveTab;
+     private Parcelable mPendingTabScroll;
+     private Uri mPendingTabUri;
+@@ -681,7 +684,7 @@ public class FilesActivity extends BaseActivity implements AbstractActionHandler
+     @Override
+     public void onResume() {
+         super.onResume();
+-        getSystemService(ClipboardManager.class).addPrimaryClipChangedListener(mPlaitClipListener);
++        com.android.documentsui.clipping.PlaitClipboard.addPrimaryClipChangedListener(mPlaitClipListener);
+         updatePlaitPaste();
+ 
+         final RootInfo root = getCurrentRoot();
+@@ -697,7 +700,7 @@ public class FilesActivity extends BaseActivity implements AbstractActionHandler
+ 
+     @Override
+     protected void onPause() {
+-        getSystemService(ClipboardManager.class).removePrimaryClipChangedListener(mPlaitClipListener);
++        com.android.documentsui.clipping.PlaitClipboard.removePrimaryClipChangedListener(mPlaitClipListener);
+         super.onPause();
+     }
+ 
+-- 
+2.56.1
+

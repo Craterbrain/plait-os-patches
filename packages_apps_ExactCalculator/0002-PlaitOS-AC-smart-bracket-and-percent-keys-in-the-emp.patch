@@ -1,0 +1,391 @@
+From 2a6f167f9b65da8b6493651ff0d50ad92976d56b Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 16:57:27 -0600
+Subject: [PATCH] PlaitOS: AC, smart bracket and percent keys in the empty pad
+ cells
+
+- Operator pad (two columns): AC (always clears) and "( )" (closes an open
+  bracket after a number, constant, ")" or postfix operator, opens one
+  otherwise) in the two cells under DEL
+- Number pad: % in the cell "=" leaves when "=" sits in the operator
+  column (shown only in those size buckets)
+- versionCode 39
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                         |  2 +-
+ res/layout/pad_numeric.xml                  |  9 ++++++
+ res/layout/pad_operator_two_col.xml         | 15 +++++++++
+ res/values-w230dp-h275dp/styles.xml         |  4 +++
+ res/values-w230dp-h375dp/styles.xml         |  4 +++
+ res/values-w230dp-h475dp-port/styles.xml    |  4 +++
+ res/values-w375dp-h220dp/styles.xml         |  4 +++
+ res/values-w375dp-h275dp/styles.xml         |  4 +++
+ res/values-w375dp-h375dp/styles.xml         |  4 +++
+ res/values-w375dp-h500dp-port/styles.xml    |  4 +++
+ res/values-w375dp-h768dp-port/styles.xml    |  4 +++
+ res/values-w520dp-h220dp-land/styles.xml    |  4 +++
+ res/values-w520dp-h275dp-land/styles.xml    |  4 +++
+ res/values-w520dp-h375dp-land/styles.xml    |  4 +++
+ res/values-w520dp-h500dp-land/styles.xml    |  4 +++
+ res/values-w520dp-h768dp-land/styles.xml    |  4 +++
+ res/values-w520dp-h768dp-port/styles.xml    |  4 +++
+ res/values/plait_strings.xml                |  8 +++++
+ res/values/styles.xml                       |  5 +++
+ src/com/android/calculator2/Calculator.java | 34 ++++++++++++++++++++-
+ 20 files changed, 127 insertions(+), 2 deletions(-)
+ create mode 100644 res/values/plait_strings.xml
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 8e81fb5..de810c2 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -18,7 +18,7 @@
+ <manifest
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     package="com.android.calculator2"
+-    android:versionCode="38">
++    android:versionCode="39">
+     <!-- PlaitOS: above the platform's default (37), so the restyle can be installed as an
+          update of the ROM's copy; raise it again for the next app-only update -->
+ 
+diff --git a/res/layout/pad_numeric.xml b/res/layout/pad_numeric.xml
+index 5810984..9cbe27f 100644
+--- a/res/layout/pad_numeric.xml
++++ b/res/layout/pad_numeric.xml
+@@ -109,4 +109,13 @@
+         app:layout_row="3"
+         app:layout_column="2" />
+ 
++    <!-- PlaitOS: percent in the cell "=" leaves empty where "=" sits in the operator column -->
++    <Button
++        android:id="@+id/plait_pct"
++        style="@style/PadButtonStyle.Numeric.Extra"
++        android:contentDescription="@string/desc_op_pct"
++        android:text="@string/op_pct"
++        app:layout_row="3"
++        app:layout_column="2" />
++
+ </androidx.gridlayout.widget.GridLayout>
+diff --git a/res/layout/pad_operator_two_col.xml b/res/layout/pad_operator_two_col.xml
+index b819162..c8200fa 100644
+--- a/res/layout/pad_operator_two_col.xml
++++ b/res/layout/pad_operator_two_col.xml
+@@ -57,6 +57,21 @@
+         app:layout_row="1"
+         app:layout_column="0" />
+ 
++    <!-- PlaitOS: the two empty cells under DEL: always-clear and one smart bracket key -->
++    <Button
++        android:id="@+id/plait_ac"
++        style="@style/PadButtonStyle.Operator.Text"
++        android:contentDescription="@string/desc_plait_ac"
++        android:text="@string/plait_ac"
++        app:layout_row="1"
++        app:layout_column="1" />
++    <Button
++        android:id="@+id/plait_paren"
++        style="@style/PadButtonStyle.Operator"
++        android:contentDescription="@string/desc_plait_paren"
++        android:text="@string/plait_paren"
++        app:layout_row="2"
++        app:layout_column="1" />
+     <Button
+         android:id="@+id/op_sub"
+         style="@style/PadButtonStyle.Operator"
+diff --git a/res/values-w230dp-h275dp/styles.xml b/res/values-w230dp-h275dp/styles.xml
+index de51251..3588210 100644
+--- a/res/values-w230dp-h275dp/styles.xml
++++ b/res/values-w230dp-h275dp/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">visible</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">gone</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">16dip</item>
+diff --git a/res/values-w230dp-h375dp/styles.xml b/res/values-w230dp-h375dp/styles.xml
+index d6f96f3..bf6f4ec 100644
+--- a/res/values-w230dp-h375dp/styles.xml
++++ b/res/values-w230dp-h375dp/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">visible</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">gone</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">24dip</item>
+diff --git a/res/values-w230dp-h475dp-port/styles.xml b/res/values-w230dp-h475dp-port/styles.xml
+index 60e7a80..798a0eb 100644
+--- a/res/values-w230dp-h475dp-port/styles.xml
++++ b/res/values-w230dp-h475dp-port/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">visible</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">gone</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">23dip</item>
+diff --git a/res/values-w375dp-h220dp/styles.xml b/res/values-w375dp-h220dp/styles.xml
+index da71f31..c37c32c 100644
+--- a/res/values-w375dp-h220dp/styles.xml
++++ b/res/values-w375dp-h220dp/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">14dip</item>
+diff --git a/res/values-w375dp-h275dp/styles.xml b/res/values-w375dp-h275dp/styles.xml
+index c3a8ac8..19ef6b5 100644
+--- a/res/values-w375dp-h275dp/styles.xml
++++ b/res/values-w375dp-h275dp/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">17dip</item>
+diff --git a/res/values-w375dp-h375dp/styles.xml b/res/values-w375dp-h375dp/styles.xml
+index 84ebb0f..edda0f5 100644
+--- a/res/values-w375dp-h375dp/styles.xml
++++ b/res/values-w375dp-h375dp/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">24dip</item>
+diff --git a/res/values-w375dp-h500dp-port/styles.xml b/res/values-w375dp-h500dp-port/styles.xml
+index 08cc445..6e66345 100644
+--- a/res/values-w375dp-h500dp-port/styles.xml
++++ b/res/values-w375dp-h500dp-port/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">visible</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">gone</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">27dip</item>
+diff --git a/res/values-w375dp-h768dp-port/styles.xml b/res/values-w375dp-h768dp-port/styles.xml
+index c482c3c..95252d6 100644
+--- a/res/values-w375dp-h768dp-port/styles.xml
++++ b/res/values-w375dp-h768dp-port/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">36dip</item>
+diff --git a/res/values-w520dp-h220dp-land/styles.xml b/res/values-w520dp-h220dp-land/styles.xml
+index 3b9d4c8..50364b2 100644
+--- a/res/values-w520dp-h220dp-land/styles.xml
++++ b/res/values-w520dp-h220dp-land/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">14dip</item>
+diff --git a/res/values-w520dp-h275dp-land/styles.xml b/res/values-w520dp-h275dp-land/styles.xml
+index a59c3ee..80459d2 100644
+--- a/res/values-w520dp-h275dp-land/styles.xml
++++ b/res/values-w520dp-h275dp-land/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">17dip</item>
+diff --git a/res/values-w520dp-h375dp-land/styles.xml b/res/values-w520dp-h375dp-land/styles.xml
+index ed694b4..80de862 100644
+--- a/res/values-w520dp-h375dp-land/styles.xml
++++ b/res/values-w520dp-h375dp-land/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">20dip</item>
+diff --git a/res/values-w520dp-h500dp-land/styles.xml b/res/values-w520dp-h500dp-land/styles.xml
+index 926057f..468ad50 100644
+--- a/res/values-w520dp-h500dp-land/styles.xml
++++ b/res/values-w520dp-h500dp-land/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">27dip</item>
+diff --git a/res/values-w520dp-h768dp-land/styles.xml b/res/values-w520dp-h768dp-land/styles.xml
+index 8fcfd2c..18da0bf 100644
+--- a/res/values-w520dp-h768dp-land/styles.xml
++++ b/res/values-w520dp-h768dp-land/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">36dip</item>
+diff --git a/res/values-w520dp-h768dp-port/styles.xml b/res/values-w520dp-h768dp-port/styles.xml
+index 917f77b..83a0956 100644
+--- a/res/values-w520dp-h768dp-port/styles.xml
++++ b/res/values-w520dp-h768dp-port/styles.xml
+@@ -36,6 +36,10 @@
+         <item name="android:visibility">gone</item>
+     </style>
+ 
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">visible</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">38dip</item>
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+new file mode 100644
+index 0000000..20ffedf
+--- /dev/null
++++ b/res/values/plait_strings.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the extra pad keys -->
++<resources>
++    <string name="plait_ac" translatable="false">AC</string>
++    <string name="desc_plait_ac">clear all</string>
++    <string name="plait_paren" translatable="false">( )</string>
++    <string name="desc_plait_paren">parenthesis</string>
++</resources>
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index 188d73a..5c65814 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -93,6 +93,11 @@
+         <item name="android:visibility">visible</item>
+     </style>
+ 
++    <!-- PlaitOS: a key in the cell "=" leaves empty; shown only where "=" is gone -->
++    <style name="PadButtonStyle.Numeric.Extra">
++        <item name="android:visibility">gone</item>
++    </style>
++
+     <style name="PadButtonStyle.Operator">
+         <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">14dip</item>
+diff --git a/src/com/android/calculator2/Calculator.java b/src/com/android/calculator2/Calculator.java
+index 81ab1f6..a121b17 100644
+--- a/src/com/android/calculator2/Calculator.java
++++ b/src/com/android/calculator2/Calculator.java
+@@ -826,7 +826,15 @@ public class Calculator extends Activity
+         // See onKey above for the rationale behind some of the behavior below:
+         cancelUnrequested();
+ 
+-        final int id = view.getId();
++        int id = view.getId();
++        // PlaitOS: the extra pad keys stand for existing ones
++        if (id == R.id.plait_pct) {
++            id = R.id.op_pct;
++        } else if (id == R.id.plait_paren) {
++            id = smartParen();
++        } else if (id == R.id.plait_ac) {
++            id = R.id.clr;
++        }
+         switch (id) {
+             case R.id.eq:
+                 onEquals();
+@@ -880,6 +888,30 @@ public class Calculator extends Activity
+         showOrHideToolbar();
+     }
+ 
++    /**
++     * PlaitOS: the "( )" key. Closes a bracket when one is open and the formula ends in something
++     * a bracket can close (a number, a constant, a closing bracket or a postfix operator);
++     * opens one otherwise.
++     */
++    private int smartParen() {
++        final String formula = mEvaluator.getExpr(Evaluator.MAIN_INDEX)
++                .toSpannableStringBuilder(this).toString().trim();
++        int open = 0;
++        for (int i = 0; i < formula.length(); i++) {
++            final char c = formula.charAt(i);
++            if (c == '(') open++;
++            else if (c == ')') open--;
++        }
++        if (open <= 0 || formula.isEmpty() || mCurrentState == CalculatorState.RESULT) {
++            return R.id.lparen;
++        }
++        final char last = formula.charAt(formula.length() - 1);
++        final boolean closable = Character.isDigit(last) || Character.isLetter(last)
++                || last == ')' || last == '!' || last == '%' || last == '\u00B2' /* ² */
++                || last == '\u03C0' /* π */ || last == '.';
++        return closable ? R.id.rparen : R.id.lparen;
++    }
++
+     void redisplayFormula() {
+         SpannableStringBuilder formula
+                 = mEvaluator.getExpr(Evaluator.MAIN_INDEX).toSpannableStringBuilder(this);
+-- 
+2.56.1
+

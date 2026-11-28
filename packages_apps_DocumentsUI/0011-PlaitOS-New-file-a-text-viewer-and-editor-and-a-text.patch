@@ -1,0 +1,653 @@
+From 63789f789f6d4b362d1a4132e20a5b3f65154cd0 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 22:33:00 -0600
+Subject: [PATCH] PlaitOS: New file, a text viewer and editor, and a text share
+ target
+
+- Overflow: New file (next to New folder; "New file.txt", name part selected; a text file
+  opens straight in the editor); no New window (browsing tabs do that job)
+- Text viewer and editor (PlaitTextActivity, Compose, Plait top bar): selectable monospace
+  viewer; editor that focuses with the keyboard, Save in place (documents that support
+  writing), Save as, unsaved-changes prompt, Share, Open with; UTF-8, files over 2 MB refused
+- Open with sheet: Text viewer and Text editor first under Built into Files for text files
+- Registered for VIEW / EDIT of text (text/*, JSON, XML, shell, YAML) and as a share target
+  for text: shared text opens unsaved in the editor for Save as
+
+Checked on the phone: menu, New file, typing and Save, Open with > Text viewer, shared text.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                           |  25 ++
+ .../menu/activity_m3.xml                      |   6 +
+ res/values/plait_files.xml                    |  22 ++
+ src/com/android/documentsui/BaseActivity.java |   5 +-
+ src/com/android/documentsui/MenuManager.java  |  10 +
+ src/com/android/documentsui/PlaitNewFile.kt   |  77 ++++
+ .../documentsui/files/MenuManager.java        |   9 +-
+ .../documentsui/files/PlaitOpenWith.java      |  13 +
+ .../documentsui/text/PlaitTextActivity.kt     | 340 ++++++++++++++++++
+ 9 files changed, 504 insertions(+), 3 deletions(-)
+ create mode 100644 src/com/android/documentsui/PlaitNewFile.kt
+ create mode 100644 src/com/android/documentsui/text/PlaitTextActivity.kt
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 2a9a356..4ea872b 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -246,6 +246,31 @@
+             </intent-filter>
+         </activity>
+ 
++        <!-- PlaitOS: the Files text viewer and editor; opens text files and takes shared text -->
++        <activity
++            android:name=".text.PlaitTextActivity"
++            android:label="@string/plait_text_editor"
++            android:exported="true"
++            android:theme="@style/DocumentsDefaultThemeM3"
++            android:windowSoftInputMode="adjustResize">
++            <intent-filter>
++                <action android:name="android.intent.action.VIEW" />
++                <action android:name="android.intent.action.EDIT" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <data android:scheme="content" />
++                <data android:mimeType="text/*" />
++                <data android:mimeType="application/json" />
++                <data android:mimeType="application/xml" />
++                <data android:mimeType="application/x-sh" />
++                <data android:mimeType="application/x-yaml" />
++            </intent-filter>
++            <intent-filter>
++                <action android:name="android.intent.action.SEND" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <data android:mimeType="text/plain" />
++            </intent-filter>
++        </activity>
++
+         <!-- PlaitOS: read-only stand-ins for files handed to LocalSend (see PlaitShareProvider) -->
+         <provider
+             android:name=".PlaitShareProvider"
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/menu/activity_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/menu/activity_m3.xml
+index 1594554..79875d8 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/menu/activity_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/menu/activity_m3.xml
+@@ -89,6 +89,12 @@
+             android:title="@string/menu_create_dir"
+             android:visible="false"
+             app:showAsAction="never" />
++        <!-- PlaitOS: an empty file (a text file by default) in this folder -->
++        <item
++            android:id="@+id/plait_menu_create_file"
++            android:title="@string/plait_new_file"
++            android:visible="false"
++            app:showAsAction="never" />
+         <item
+             android:id="@+id/option_menu_sort"
+             android:icon="@drawable/ic_sort_m3"
+diff --git a/res/values/plait_files.xml b/res/values/plait_files.xml
+index aa4288f..d6c7171 100644
+--- a/res/values/plait_files.xml
++++ b/res/values/plait_files.xml
+@@ -39,6 +39,28 @@
+     <string name="plait_open_from_app">Open from an app</string>
+     <string name="plait_paste_here">Paste here</string>
+     <string name="plait_up">Up one folder</string>
++    <!-- New file (overflow menu) -->
++    <string name="plait_new_file">New file</string>
++    <string name="plait_new_file_default">New file.txt</string>
++    <string name="plait_create">Create</string>
++    <!-- Text viewer and editor -->
++    <string name="plait_text_editor">Text editor</string>
++    <string name="plait_text_viewer">Text viewer</string>
++    <string name="plait_text_shared_name">Shared text</string>
++    <string name="plait_text_too_large">This file is too large to open here (over 2 MB).</string>
++    <string name="plait_text_unreadable">This file couldn\'t be read.</string>
++    <string name="plait_text_saved">Saved</string>
++    <string name="plait_text_save_failed">Couldn\'t save. Try Save as.</string>
++    <string name="plait_text_unsaved">Save your changes?</string>
++    <string name="plait_text_discard">Discard</string>
++    <string name="plait_text_save">Save</string>
++    <string name="plait_text_save_as">Save as…</string>
++    <string name="plait_text_edit">Edit</string>
++    <string name="plait_text_not_saved">Not saved yet</string>
++    <string name="plait_text_read_only">Read only · Save as to keep changes</string>
++    <string name="plait_text_edited">Edited</string>
++    <string name="plait_text_editing">Editing</string>
++    <string name="plait_new_file_failed">Couldn\'t create %1$s</string>
+     <!-- Selection action: send the files to a nearby device with LocalSend (the app's name) -->
+     <string name="plait_send_nearby" translatable="false">LocalSend</string>
+     <!-- Paste bar: what is waiting, and where it goes -->
+diff --git a/src/com/android/documentsui/BaseActivity.java b/src/com/android/documentsui/BaseActivity.java
+index 761c45c..aa8dc47 100644
+--- a/src/com/android/documentsui/BaseActivity.java
++++ b/src/com/android/documentsui/BaseActivity.java
+@@ -752,7 +752,7 @@ public abstract class BaseActivity
+         for (int id : new int[] {R.id.sub_menu_grid, R.id.sub_menu_list, R.id.option_menu_sort,
+                 R.id.option_menu_create_dir, R.id.option_menu_select_all,
+                 R.id.option_menu_paste_from_clipboard, R.id.option_menu_inspect,
+-                R.id.option_menu_extract_all, R.id.option_menu_new_window,
++                R.id.option_menu_extract_all, R.id.option_menu_new_window, R.id.plait_menu_create_file,
+                 R.id.option_menu_show_hidden_files}) {
+             MenuItem item = menu.findItem(getRes(id));
+             if (item != null) item.setVisible(false);
+@@ -1237,6 +1237,9 @@ public abstract class BaseActivity
+         } else if (id == getRes(R.id.option_menu_create_dir)) {
+             getInjector().actions.showCreateDirectoryDialog();
+             return true;
++        } else if (id == R.id.plait_menu_create_file) {
++            PlaitNewFile.show(this, getCurrentDirectory());
++            return true;
+         } else if (id == getRes(R.id.option_menu_search)) {
+             // SearchViewManager listens for this directly.
+             return false;
+diff --git a/src/com/android/documentsui/MenuManager.java b/src/com/android/documentsui/MenuManager.java
+index 8a644dc..89b0784 100644
+--- a/src/com/android/documentsui/MenuManager.java
++++ b/src/com/android/documentsui/MenuManager.java
+@@ -196,6 +196,11 @@ public abstract class MenuManager {
+             updatePaste(mOptionMenu.findItem(getRes(R.id.option_menu_paste_from_clipboard)));
+         }
+         updateCreateDir(mOptionMenu.findItem(getRes(R.id.option_menu_create_dir)));
++        MenuItem createFile = mOptionMenu.findItem(R.id.plait_menu_create_file);
++        if (createFile != null) {
++            Menus.setEnabledAndVisible(createFile,
++                    plaitNewFileAvailable() && mDirDetails.canCreateDirectory());
++        }
+         if (isZipNgFlagEnabled()) {
+             updateExtractAll(mOptionMenu.findItem(getRes(R.id.option_menu_extract_all)));
+         }
+@@ -568,6 +573,11 @@ public abstract class MenuManager {
+         Menus.setEnabledAndVisible(share, false);
+     }
+ 
++    /** PlaitOS: New file in the overflow (the file manager, where a folder takes new documents). */
++    protected boolean plaitNewFileAvailable() {
++        return false;
++    }
++
+     /** PlaitOS: whether LocalSend can take shared files (only the file manager offers it). */
+     protected boolean plaitSendNearbyAvailable() {
+         return false;
+diff --git a/src/com/android/documentsui/PlaitNewFile.kt b/src/com/android/documentsui/PlaitNewFile.kt
+new file mode 100644
+index 0000000..d6760c4
+--- /dev/null
++++ b/src/com/android/documentsui/PlaitNewFile.kt
+@@ -0,0 +1,77 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.documentsui
++
++import android.content.Intent
++import android.provider.DocumentsContract
++import android.view.inputmethod.EditorInfo
++import android.webkit.MimeTypeMap
++import android.widget.EditText
++import android.widget.FrameLayout
++import android.widget.Toast
++import com.android.documentsui.base.DocumentInfo
++import com.android.documentsui.text.PlaitTextActivity
++import com.google.android.material.dialog.MaterialAlertDialogBuilder
++
++/**
++ * PlaitOS: New file (overflow menu). Asks for a name ("New file.txt", the name part selected),
++ * creates the empty document in this folder and opens a text file in the editor.
++ */
++internal object PlaitNewFile {
++    @JvmStatic
++    fun show(activity: BaseActivity, folder: DocumentInfo?) {
++        val dir = folder?.derivedUri ?: return
++        val pad = Math.round(20 * activity.resources.displayMetrics.density)
++        val name = EditText(activity).apply {
++            setSingleLine()
++            imeOptions = EditorInfo.IME_ACTION_DONE
++            setText(R.string.plait_new_file_default)
++            val dot = text.lastIndexOf('.')
++            setSelection(0, if (dot > 0) dot else text.length)
++        }
++        val box = FrameLayout(activity).apply {
++            setPadding(pad, pad / 2, pad, 0)
++            addView(name)
++        }
++        val dialog = MaterialAlertDialogBuilder(activity)
++            .setTitle(R.string.plait_new_file)
++            .setView(box)
++            .setNegativeButton(android.R.string.cancel, null)
++            .setPositiveButton(R.string.plait_create) { _, _ -> create(activity, dir, name.text.toString().trim()) }
++            .create()
++        name.setOnEditorActionListener { _, action, _ ->
++            if (action == EditorInfo.IME_ACTION_DONE) {
++                dialog.dismiss(); create(activity, dir, name.text.toString().trim()); true
++            } else false
++        }
++        dialog.setOnShowListener { name.requestFocus() }
++        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
++        dialog.show()
++    }
++
++    private fun create(activity: BaseActivity, dir: android.net.Uri, displayName: String) {
++        if (displayName.isEmpty()) return
++        val ext = displayName.substringAfterLast('.', "").lowercase()
++        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
++            ?: if (ext.isEmpty()) "text/plain" else "application/octet-stream"
++        Thread {
++            val created = runCatching {
++                DocumentsContract.createDocument(activity.contentResolver, dir, mime, displayName)
++            }.getOrNull()
++            activity.runOnUiThread {
++                if (created == null) {
++                    Toast.makeText(activity, activity.getString(R.string.plait_new_file_failed, displayName),
++                        Toast.LENGTH_SHORT).show()
++                } else if (PlaitTextActivity.isText(mime)) {
++                    activity.startActivity(Intent(Intent.ACTION_EDIT)
++                        .setDataAndType(created, mime)
++                        .setClass(activity, PlaitTextActivity::class.java)
++                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
++                }
++            }
++        }.start()
++    }
++}
+diff --git a/src/com/android/documentsui/files/MenuManager.java b/src/com/android/documentsui/files/MenuManager.java
+index 5067517..e122829 100644
+--- a/src/com/android/documentsui/files/MenuManager.java
++++ b/src/com/android/documentsui/files/MenuManager.java
+@@ -180,8 +180,13 @@ public final class MenuManager extends com.android.documentsui.MenuManager {
+ 
+     @Override
+     protected void updateNewWindow(MenuItem newWindow) {
+-        Menus.setEnabledAndVisible(
+-                newWindow, !isUseMaterial3FlagEnabled() || !mDirDetails.isInArchive());
++        // PlaitOS: browsing tabs do this job, so no New window
++        Menus.setEnabledAndVisible(newWindow, !isUseMaterial3FlagEnabled());
++    }
++
++    @Override
++    protected boolean plaitNewFileAvailable() {
++        return isUseMaterial3FlagEnabled();
+     }
+ 
+     @Override
+diff --git a/src/com/android/documentsui/files/PlaitOpenWith.java b/src/com/android/documentsui/files/PlaitOpenWith.java
+index 9aae91a..0c95881 100644
+--- a/src/com/android/documentsui/files/PlaitOpenWith.java
++++ b/src/com/android/documentsui/files/PlaitOpenWith.java
+@@ -31,6 +31,12 @@ final class PlaitOpenWith {
+         if (doc.isContainer()) {
+             addRow(activity, rows, R.string.plait_browse_archive, PlaitIcon.INSTANCE.getZip(), open);
+         }
++        if (!doc.isVirtual() && com.android.documentsui.text.PlaitTextActivity.isText(doc.mimeType)) {
++            addRow(activity, rows, R.string.plait_text_viewer, PlaitIcon.INSTANCE.getDocument(),
++                    () -> openText(activity, doc, Intent.ACTION_VIEW));
++            addRow(activity, rows, R.string.plait_text_editor, PlaitIcon.INSTANCE.getEdit(),
++                    () -> openText(activity, doc, Intent.ACTION_EDIT));
++        }
+         if (!doc.isVirtual()) {
+             addRow(activity, rows, R.string.plait_binary_viewer, PlaitIcon.INSTANCE.getFile(),
+                     () -> showBinary(activity, doc));
+@@ -59,6 +65,13 @@ final class PlaitOpenWith {
+                 doc.displayName, rows);
+     }
+ 
++    /** The built-in text viewer (VIEW) or editor (EDIT) on this document. */
++    private static void openText(FilesActivity activity, DocumentInfo doc, String action) {
++        activity.startActivity(new Intent(action)
++                .setDataAndType(doc.getDocumentUri(), doc.mimeType)
++                .setClass(activity, com.android.documentsui.text.PlaitTextActivity.class));
++    }
++
+     private static void addRow(FilesActivity activity, java.util.List<PlaitCompose.SheetRow> rows,
+             int label, int icon, Runnable action) {
+         rows.add(new PlaitCompose.SheetRow(activity.getString(label), icon, null, action));
+diff --git a/src/com/android/documentsui/text/PlaitTextActivity.kt b/src/com/android/documentsui/text/PlaitTextActivity.kt
+new file mode 100644
+index 0000000..b0eabec
+--- /dev/null
++++ b/src/com/android/documentsui/text/PlaitTextActivity.kt
+@@ -0,0 +1,340 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.documentsui.text
++
++import android.content.Intent
++import android.net.Uri
++import android.os.Bundle
++import android.provider.DocumentsContract
++import android.provider.OpenableColumns
++import android.widget.Toast
++import androidx.activity.ComponentActivity
++import androidx.activity.OnBackPressedCallback
++import androidx.activity.compose.setContent
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.compose.foundation.background
++import androidx.compose.foundation.horizontalScroll
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.WindowInsets
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.heightIn
++import androidx.compose.foundation.layout.imePadding
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.systemBars
++import androidx.compose.foundation.layout.windowInsetsPadding
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.text.BasicTextField
++import androidx.compose.foundation.text.selection.SelectionContainer
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.material3.CircularProgressIndicator
++import androidx.compose.material3.DropdownMenu
++import androidx.compose.material3.DropdownMenuItem
++import androidx.compose.material3.IconButton
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.focus.focusRequester
++import androidx.compose.ui.graphics.SolidColor
++import androidx.compose.ui.text.TextStyle
++import androidx.compose.ui.text.font.FontFamily
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.input.TextFieldValue
++import androidx.compose.ui.text.style.TextOverflow
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++import androidx.core.view.WindowCompat
++import app.plait.design.PlaitFilledButton
++import app.plait.design.PlaitIcon
++import app.plait.design.PlaitTheme
++import com.android.documentsui.R
++import com.google.android.material.dialog.MaterialAlertDialogBuilder
++
++/**
++ * PlaitOS: the Files text viewer and editor. Opens a text file (VIEW: the viewer, EDIT: the
++ * editor; Files' Open with sheet offers both), saves it back in place, or Save as a new file.
++ * Also a share target: shared text (or a shared text file) opens in the editor, unsaved, for
++ * Save as. Text is read as UTF-8; files over [MAX_BYTES] are refused rather than loaded.
++ */
++class PlaitTextActivity : ComponentActivity() {
++    private var uri by mutableStateOf<Uri?>(null)
++    private var name by mutableStateOf("")
++    private var text by mutableStateOf(TextFieldValue(""))
++    private var saved by mutableStateOf("")
++    private var editing by mutableStateOf(false)
++    private var writable by mutableStateOf(false)
++    private var loading by mutableStateOf(true)
++    private var error by mutableStateOf<String?>(null)
++
++    private val dirty get() = text.text != saved || uri == null
++
++    private val saveAs = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { target ->
++        if (target != null) write(target) { uri = target; name = displayName(target) ?: name; writable = true }
++    }
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        WindowCompat.setDecorFitsSystemWindows(window, false)
++        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
++            override fun handleOnBackPressed() = leave()
++        })
++        load(intent)
++        setContent { PlaitTheme { Screen() } }
++    }
++
++    private fun load(intent: Intent) {
++        editing = intent.action == Intent.ACTION_EDIT || intent.action == Intent.ACTION_SEND
++        val stream = if (intent.action == Intent.ACTION_SEND)
++            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.data
++        if (stream == null) {
++            // Shared text: nothing on disk yet, Save as names it
++            val shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
++            name = (intent.getStringExtra(Intent.EXTRA_SUBJECT)?.takeIf { it.isNotBlank() }
++                ?: getString(R.string.plait_text_shared_name)).let { if ('.' in it) it else "$it.txt" }
++            text = TextFieldValue(shared)
++            saved = shared
++            uri = null
++            loading = false
++            return
++        }
++        uri = stream
++        Thread {
++            val label = displayName(stream) ?: stream.lastPathSegment.orEmpty()
++            val size = runCatching {
++                contentResolver.query(stream, arrayOf(OpenableColumns.SIZE), null, null, null)?.use {
++                    if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else -1L
++                }
++            }.getOrNull() ?: -1L
++            val result = if (size > MAX_BYTES) Result.failure(IllegalStateException("large"))
++            else runCatching {
++                contentResolver.openInputStream(stream)!!.use { input ->
++                    val out = java.io.ByteArrayOutputStream()
++                    val buffer = ByteArray(64 * 1024)
++                    while (true) {
++                        val n = input.read(buffer)
++                        if (n < 0) break
++                        out.write(buffer, 0, n)
++                        if (out.size() > MAX_BYTES) throw IllegalStateException("large")
++                    }
++                    String(out.toByteArray(), Charsets.UTF_8)
++                }
++            }
++            val canWrite = canWrite(stream)
++            runOnUiThread {
++                name = label
++                writable = canWrite
++                result.onSuccess { text = TextFieldValue(it, androidx.compose.ui.text.TextRange(it.length)); saved = it }
++                    .onFailure {
++                        error = getString(if (it.message == "large") R.string.plait_text_too_large
++                            else R.string.plait_text_unreadable)
++                    }
++                loading = false
++            }
++        }.start()
++    }
++
++    private fun displayName(target: Uri): String? = runCatching {
++        contentResolver.query(target, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
++            if (it.moveToFirst()) it.getString(0) else null
++        }
++    }.getOrNull()
++
++    /** A document that says it supports writing, or another address this app was let write. */
++    private fun canWrite(target: Uri): Boolean {
++        if (DocumentsContract.isDocumentUri(this, target)) {
++            return runCatching {
++                contentResolver.query(target, arrayOf(DocumentsContract.Document.COLUMN_FLAGS), null, null, null)?.use {
++                    it.moveToFirst() && (it.getInt(0) and DocumentsContract.Document.FLAG_SUPPORTS_WRITE) != 0
++                }
++            }.getOrNull() ?: false
++        }
++        return checkCallingOrSelfUriPermission(target, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
++            android.content.pm.PackageManager.PERMISSION_GRANTED
++    }
++
++    private fun save() {
++        val target = uri
++        if (target == null || !writable) {
++            saveAs.launch(name)
++            return
++        }
++        write(target) {}
++    }
++
++    private fun write(target: Uri, done: () -> Unit) {
++        val content = text.text
++        Thread {
++            val ok = runCatching {
++                contentResolver.openOutputStream(target, "wt")!!.use { it.write(content.toByteArray(Charsets.UTF_8)) }
++            }.isSuccess
++            runOnUiThread {
++                if (ok) {
++                    saved = content
++                    done()
++                    Toast.makeText(this, R.string.plait_text_saved, Toast.LENGTH_SHORT).show()
++                } else {
++                    Toast.makeText(this, R.string.plait_text_save_failed, Toast.LENGTH_SHORT).show()
++                }
++            }
++        }.start()
++    }
++
++    private fun leave() {
++        if (!editing || !dirty || (uri == null && text.text.isEmpty())) {
++            finish()
++            return
++        }
++        MaterialAlertDialogBuilder(this)
++            .setTitle(R.string.plait_text_unsaved)
++            .setNegativeButton(R.string.plait_text_discard) { _, _ -> finish() }
++            .setNeutralButton(android.R.string.cancel, null)
++            .setPositiveButton(R.string.plait_text_save) { _, _ -> save() }
++            .show()
++    }
++
++    private fun share() {
++        val target = uri
++        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
++        if (target != null && !dirty) {
++            send.putExtra(Intent.EXTRA_STREAM, target).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
++        } else {
++            send.putExtra(Intent.EXTRA_TEXT, text.text)
++        }
++        startActivity(Intent.createChooser(send, name))
++    }
++
++    @Composable
++    private fun Screen() {
++        val colors = MaterialTheme.colorScheme
++        Column(
++            Modifier.fillMaxSize().background(colors.surface)
++                .windowInsetsPadding(WindowInsets.systemBars).imePadding(),
++        ) {
++            TopBar()
++            Box(Modifier.fillMaxSize()) {
++                when {
++                    loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
++                    error != null -> Text(error!!, Modifier.align(Alignment.Center).padding(24.dp),
++                        color = colors.onSurfaceVariant)
++                    editing -> {
++                        // The editor takes focus (and the keyboard) as soon as it shows
++                        val focus = remember { androidx.compose.ui.focus.FocusRequester() }
++                        androidx.compose.runtime.LaunchedEffect(Unit) { focus.requestFocus() }
++                        BasicTextField(
++                        value = text,
++                        onValueChange = { text = it },
++                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)
++                            .focusRequester(focus),
++                        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp,
++                            lineHeight = 20.sp, color = colors.onSurface),
++                        cursorBrush = SolidColor(colors.primary),
++                    )
++                    }
++                    else -> SelectionContainer {
++                        Text(
++                            text.text,
++                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
++                                .padding(horizontal = 16.dp, vertical = 8.dp),
++                            fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 20.sp,
++                            color = colors.onSurface,
++                        )
++                    }
++                }
++            }
++        }
++    }
++
++    @Composable
++    private fun TopBar() {
++        val colors = MaterialTheme.colorScheme
++        var menu by remember { mutableStateOf(false) }
++        Row(
++            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp),
++            verticalAlignment = Alignment.CenterVertically,
++        ) {
++            IconButton(onClick = ::leave) {
++                app.plait.design.PlaitIcon(PlaitIcon.Back, getString(R.string.plait_up), tint = colors.onSurface)
++            }
++            Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
++                Text(name, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
++                    color = colors.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
++                val state = when {
++                    loading || error != null -> null
++                    uri == null -> getString(R.string.plait_text_not_saved)
++                    !writable -> getString(R.string.plait_text_read_only)
++                    editing && dirty -> getString(R.string.plait_text_edited)
++                    editing -> getString(R.string.plait_text_editing)
++                    else -> null
++                }
++                state?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant) }
++            }
++            if (!loading && error == null) {
++                if (editing) {
++                    PlaitFilledButton(onClick = ::save, enabled = dirty) {
++                        app.plait.design.PlaitIcon(PlaitIcon.Check, null)
++                        Text(getString(R.string.plait_text_save), Modifier.padding(start = 6.dp))
++                    }
++                } else {
++                    // A file this app can't write still edits; Save goes to Save as
++                    IconButton(onClick = { editing = true }) {
++                        app.plait.design.PlaitIcon(PlaitIcon.Edit, getString(R.string.plait_text_edit),
++                            tint = colors.onSurface)
++                    }
++                    IconButton(onClick = ::share) {
++                        app.plait.design.PlaitIcon(PlaitIcon.Share, getString(R.string.menu_share), tint = colors.onSurface)
++                    }
++                }
++            }
++            Box {
++                IconButton(onClick = { menu = true }) {
++                    app.plait.design.PlaitIcon(PlaitIcon.MoreVert, getString(R.string.plait_more), tint = colors.onSurface)
++                }
++                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
++                    if (!loading && error == null) {
++                        DropdownMenuItem(text = { Text(getString(R.string.plait_text_save_as)) },
++                            onClick = { menu = false; saveAs.launch(name) })
++                        if (editing) {
++                            DropdownMenuItem(text = { Text(getString(R.string.menu_share)) },
++                                onClick = { menu = false; share() })
++                        }
++                    }
++                    uri?.let { target ->
++                        DropdownMenuItem(text = { Text(getString(R.string.plait_open_with_app)) }, onClick = {
++                            menu = false
++                            startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW)
++                                .setDataAndType(target, "text/plain")
++                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), name))
++                        })
++                    }
++                }
++            }
++        }
++    }
++
++    companion object {
++        /** Files larger than this are not loaded (2 MB of text is about 40 000 lines). */
++        const val MAX_BYTES = 2 * 1024 * 1024
++
++        /** Text the viewer and editor handle. */
++        @JvmStatic
++        fun isText(mime: String?): Boolean {
++            val m = mime?.lowercase() ?: return false
++            return m.startsWith("text/") || m == "application/json" || m == "application/xml" ||
++                m == "application/x-sh" || m == "application/javascript" || m == "application/x-yaml" ||
++                m == "application/yaml" || m == "application/x-subrip" || m == "application/toml" ||
++                m.endsWith("+json") || m.endsWith("+xml")
++        }
++    }
++}
+-- 
+2.56.1
+

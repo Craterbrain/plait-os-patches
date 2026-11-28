@@ -10,6 +10,7 @@ Slim Recents in Launcher3 (SlimSettings) and reset with the other
 PlaitOS settings. Off by default.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  res/values/plait_arrays.xml                   | 33 +++++++++++
  res/values/plait_strings.xml                  | 21 +++++++

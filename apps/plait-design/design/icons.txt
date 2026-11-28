@@ -216,3 +216,44 @@ car = directions_car
 
 # Dialer
 record = radio_button_checked
+
+# Gallery (viewer and editor)
+album_add = library_add
+undo = undo, mirror
+redo = redo, mirror
+replay = replay
+looks = photo_filter
+export = ios_share
+compare = compare
+crop_rotate = rotate_90_degrees_cw
+mirror = flip
+markup = draw
+frames = filter_frames
+effects = auto_fix_high
+curves = show_chart
+auto_color = auto_awesome
+black_white = filter_b_and_w
+edges = texture
+posterize = gradient
+negative = invert_colors
+progress = progress_activity
+panorama = panorama_photosphere
+slideshow = slideshow
+# files (DocumentsUI)
+sort = sort, mirror
+cut = content_cut
+new_folder = create_new_folder
+movie = movie
+document = description
+pdf = picture_as_pdf
+zip = folder_zip
+select_all = select_all
+move = drive_file_move
+sd_card = sd_card
+usb = usb
+open_in_new = open_in_new, mirror
+rename = drive_file_rename_outline
+paste = content_paste
+apk = apk_document
+file = draft
+nearby = nearby

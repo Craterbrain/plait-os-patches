@@ -1,0 +1,479 @@
+From 86aa0e5158614e1294e5ddc40f1ba632a71f5302 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 16:49:29 -0600
+Subject: [PATCH] PlaitOS: Calculator in the PlaitOS look
+
+- Colors from the wallpaper (Material You palettes) with a dark twin in
+  values-night; dark follows the system (dark is the PlaitOS default)
+- Display on the surface tone, numbers on a tonal surface one step away,
+  operators on secondary container, the function pad on primary container
+  (the one accent), Material 3 error color, matching status and navigation
+  bars; layout unchanged
+- versionCode 38, so it installs as an update of the ROM's copy
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                           |  5 +-
+ res/layout/fragment_history.xml               |  3 +-
+ res/values-night/color.xml                    | 60 ++++++++++++++++
+ res/values-night/plait_bools.xml              |  4 ++
+ res/values-w230dp-h275dp/styles.xml           |  1 +
+ res/values-w230dp-h375dp/styles.xml           |  1 +
+ res/values-w230dp-h475dp-port/styles.xml      |  1 +
+ res/values-w375dp-h220dp/styles.xml           |  1 +
+ res/values-w375dp-h275dp/styles.xml           |  1 +
+ res/values-w375dp-h375dp/styles.xml           |  1 +
+ res/values-w375dp-h500dp-port/styles.xml      |  1 +
+ res/values-w375dp-h768dp-port/styles.xml      |  1 +
+ res/values-w520dp-h220dp-land/styles.xml      |  1 +
+ res/values-w520dp-h275dp-land/styles.xml      |  1 +
+ res/values-w520dp-h375dp-land/styles.xml      |  1 +
+ res/values-w520dp-h500dp-land/styles.xml      |  1 +
+ res/values-w520dp-h768dp-land/styles.xml      |  1 +
+ res/values-w520dp-h768dp-port/styles.xml      |  1 +
+ res/values/color.xml                          | 70 ++++++++-----------
+ res/values/plait_bools.xml                    |  5 ++
+ res/values/styles.xml                         |  1 +
+ res/values/themes.xml                         | 12 +++-
+ .../calculator2/CalculatorPadViewPager.java   |  3 +-
+ 23 files changed, 131 insertions(+), 46 deletions(-)
+ create mode 100644 res/values-night/color.xml
+ create mode 100644 res/values-night/plait_bools.xml
+ create mode 100644 res/values/plait_bools.xml
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 99d3afd..8e81fb5 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -17,7 +17,10 @@
+ 
+ <manifest
+     xmlns:android="http://schemas.android.com/apk/res/android"
+-    package="com.android.calculator2">
++    package="com.android.calculator2"
++    android:versionCode="38">
++    <!-- PlaitOS: above the platform's default (37), so the restyle can be installed as an
++         update of the ROM's copy; raise it again for the next app-only update -->
+ 
+     <application
+         android:allowBackup="false"
+diff --git a/res/layout/fragment_history.xml b/res/layout/fragment_history.xml
+index c3c5b62..766f4f6 100644
+--- a/res/layout/fragment_history.xml
++++ b/res/layout/fragment_history.xml
+@@ -31,8 +31,7 @@
+         android:minHeight="?android:attr/actionBarSize"
+         android:navigationContentDescription="@string/desc_navigate_up"
+         android:navigationIcon="?android:attr/homeAsUpIndicator"
+-        android:popupTheme="@android:style/ThemeOverlay.Material.Light"
+-        android:theme="@android:style/ThemeOverlay.Material.Dark.ActionBar"
++        android:theme="@android:style/ThemeOverlay.Material.ActionBar"
+         android:title="@string/title_history" />
+ 
+     <androidx.recyclerview.widget.RecyclerView
+diff --git a/res/values-night/color.xml b/res/values-night/color.xml
+new file mode 100644
+index 0000000..9d7b0b0
+--- /dev/null
++++ b/res/values-night/color.xml
+@@ -0,0 +1,60 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++  Copyright (C) 2014 The Android Open Source Project
++
++  Licensed under the Apache License, Version 2.0 (the "License");
++  you may not use this file except in compliance with the License.
++  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++  Unless required by applicable law or agreed to in writing, software
++  distributed under the License is distributed on an "AS IS" BASIS,
++  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++  See the License for the specific language governing permissions and
++  limitations under the License.
++  -->
++
++<!-- PlaitOS: the PlaitOS look (dark). Every color comes from the wallpaper's Material You palettes
++     (system_accent1 = primary, accent2 = secondary, neutral1/2 = surfaces), like the other PlaitOS apps;
++     the light twin is in values/color.xml. -->
++<resources>
++
++    <!-- Accent: history labels, cursor and selection. -->
++    <color name="calculator_accent_color">@android:color/system_accent1_200</color>
++
++    <!-- Fills the display when it is cleared (primary container). -->
++    <color name="calculator_primary_color">@android:color/system_accent1_700</color>
++
++    <!-- Status bar: the same surface as the display. -->
++    <color name="calculator_statusbar_color">@android:color/system_neutral1_900</color>
++
++    <!-- Error (Material 3 error). -->
++    <color name="calculator_error_color">#F2B8B5</color>
++
++    <!-- Display (surface). -->
++    <color name="display_background_color">@android:color/system_neutral1_900</color>
++    <color name="display_formula_text_color">@android:color/system_neutral1_100</color>
++    <color name="display_result_text_color">@android:color/system_neutral2_200</color>
++    <color name="display_result_exponent_text_color">@android:color/system_neutral2_500</color>
++
++    <!-- Numbers: a tonal surface one step from the display. -->
++    <color name="pad_numeric_background_color">@android:color/system_neutral2_800</color>
++    <color name="pad_button_text_color">@android:color/system_neutral1_100</color>
++
++    <!-- Operators: secondary container. -->
++    <color name="pad_operator_background_color">@android:color/system_accent2_700</color>
++    <color name="pad_operator_text_color">@android:color/system_accent2_100</color>
++
++    <!-- Functions (the pad that slides in): primary container, the one accent. -->
++    <color name="pad_advanced_background_color">@android:color/system_accent1_700</color>
++    <color name="pad_button_advanced_text_color">@android:color/system_accent1_100</color>
++
++    <!-- Ripples. -->
++    <color name="pad_button_ripple_color">#33FFFFFF</color>
++    <color name="pad_button_advanced_ripple_color">#33FFFFFF</color>
++
++    <!-- Empty history. -->
++    <color name="empty_history_color">@android:color/system_neutral1_800</color>
++
++</resources>
+diff --git a/res/values-night/plait_bools.xml b/res/values-night/plait_bools.xml
+new file mode 100644
+index 0000000..b4cdc67
+--- /dev/null
++++ b/res/values-night/plait_bools.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <bool name="plait_light_bars">false</bool>
++</resources>
+diff --git a/res/values-w230dp-h275dp/styles.xml b/res/values-w230dp-h275dp/styles.xml
+index bbb38be..de51251 100644
+--- a/res/values-w230dp-h275dp/styles.xml
++++ b/res/values-w230dp-h275dp/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">16dip</item>
+     </style>
+ 
+diff --git a/res/values-w230dp-h375dp/styles.xml b/res/values-w230dp-h375dp/styles.xml
+index c72fd3f..d6f96f3 100644
+--- a/res/values-w230dp-h375dp/styles.xml
++++ b/res/values-w230dp-h375dp/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">24dip</item>
+     </style>
+ 
+diff --git a/res/values-w230dp-h475dp-port/styles.xml b/res/values-w230dp-h475dp-port/styles.xml
+index 05987ad..60e7a80 100644
+--- a/res/values-w230dp-h475dp-port/styles.xml
++++ b/res/values-w230dp-h475dp-port/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">23dip</item>
+     </style>
+ 
+diff --git a/res/values-w375dp-h220dp/styles.xml b/res/values-w375dp-h220dp/styles.xml
+index 16931ff..da71f31 100644
+--- a/res/values-w375dp-h220dp/styles.xml
++++ b/res/values-w375dp-h220dp/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">14dip</item>
+     </style>
+ 
+diff --git a/res/values-w375dp-h275dp/styles.xml b/res/values-w375dp-h275dp/styles.xml
+index efed4dc..c3a8ac8 100644
+--- a/res/values-w375dp-h275dp/styles.xml
++++ b/res/values-w375dp-h275dp/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">17dip</item>
+     </style>
+ 
+diff --git a/res/values-w375dp-h375dp/styles.xml b/res/values-w375dp-h375dp/styles.xml
+index b1d4ac5..84ebb0f 100644
+--- a/res/values-w375dp-h375dp/styles.xml
++++ b/res/values-w375dp-h375dp/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">24dip</item>
+     </style>
+ 
+diff --git a/res/values-w375dp-h500dp-port/styles.xml b/res/values-w375dp-h500dp-port/styles.xml
+index 5f5057e..08cc445 100644
+--- a/res/values-w375dp-h500dp-port/styles.xml
++++ b/res/values-w375dp-h500dp-port/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">27dip</item>
+     </style>
+ 
+diff --git a/res/values-w375dp-h768dp-port/styles.xml b/res/values-w375dp-h768dp-port/styles.xml
+index 2c5ae35..c482c3c 100644
+--- a/res/values-w375dp-h768dp-port/styles.xml
++++ b/res/values-w375dp-h768dp-port/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">36dip</item>
+     </style>
+ 
+diff --git a/res/values-w520dp-h220dp-land/styles.xml b/res/values-w520dp-h220dp-land/styles.xml
+index 536d5e7..3b9d4c8 100644
+--- a/res/values-w520dp-h220dp-land/styles.xml
++++ b/res/values-w520dp-h220dp-land/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">14dip</item>
+     </style>
+ 
+diff --git a/res/values-w520dp-h275dp-land/styles.xml b/res/values-w520dp-h275dp-land/styles.xml
+index 003949e..a59c3ee 100644
+--- a/res/values-w520dp-h275dp-land/styles.xml
++++ b/res/values-w520dp-h275dp-land/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">17dip</item>
+     </style>
+ 
+diff --git a/res/values-w520dp-h375dp-land/styles.xml b/res/values-w520dp-h375dp-land/styles.xml
+index 8c7d0ed..ed694b4 100644
+--- a/res/values-w520dp-h375dp-land/styles.xml
++++ b/res/values-w520dp-h375dp-land/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">20dip</item>
+     </style>
+ 
+diff --git a/res/values-w520dp-h500dp-land/styles.xml b/res/values-w520dp-h500dp-land/styles.xml
+index e0cc0e2..926057f 100644
+--- a/res/values-w520dp-h500dp-land/styles.xml
++++ b/res/values-w520dp-h500dp-land/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">27dip</item>
+     </style>
+ 
+diff --git a/res/values-w520dp-h768dp-land/styles.xml b/res/values-w520dp-h768dp-land/styles.xml
+index 61acbd2..8fcfd2c 100644
+--- a/res/values-w520dp-h768dp-land/styles.xml
++++ b/res/values-w520dp-h768dp-land/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">36dip</item>
+     </style>
+ 
+diff --git a/res/values-w520dp-h768dp-port/styles.xml b/res/values-w520dp-h768dp-port/styles.xml
+index 9136b50..917f77b 100644
+--- a/res/values-w520dp-h768dp-port/styles.xml
++++ b/res/values-w520dp-h768dp-port/styles.xml
+@@ -37,6 +37,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">38dip</item>
+     </style>
+ 
+diff --git a/res/values/color.xml b/res/values/color.xml
+index 2f6475f..ba84cf5 100644
+--- a/res/values/color.xml
++++ b/res/values/color.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <!--
+-  Copyright (C) 2015 The Android Open Source Project
++  Copyright (C) 2014 The Android Open Source Project
+ 
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+@@ -15,54 +15,46 @@
+   limitations under the License.
+   -->
+ 
++<!-- PlaitOS: the PlaitOS look (light). Every color comes from the wallpaper's Material You palettes
++     (system_accent1 = primary, accent2 = secondary, neutral1/2 = surfaces), like the other PlaitOS apps;
++     the dark one is in values-night/color.xml. -->
+ <resources>
+ 
+-    <!-- Default accent color. -->
+-    <color name="calculator_accent_color">#0097A7</color>
++    <!-- Accent: history labels, cursor and selection. -->
++    <color name="calculator_accent_color">@android:color/system_accent1_600</color>
+ 
+-    <!-- Primary color (Color for the toolbars). -->
+-    <color name="calculator_primary_color">#00BCD4</color>
++    <!-- Fills the display when it is cleared (primary container). -->
++    <color name="calculator_primary_color">@android:color/system_accent1_100</color>
+ 
+-    <!-- Status bar color. -->
+-    <color name="calculator_statusbar_color">#0096A9</color>
++    <!-- Status bar: the same surface as the display. -->
++    <color name="calculator_statusbar_color">@android:color/system_neutral1_10</color>
+ 
+-    <!-- Color to indicate an error has occured. -->
+-    <color name="calculator_error_color">#C2185B</color>
++    <!-- Error (Material 3 error). -->
++    <color name="calculator_error_color">#B3261E</color>
+ 
+-    <!-- Background color of the calculator display. -->
+-    <color name="display_background_color">#FFF</color>
++    <!-- Display (surface). -->
++    <color name="display_background_color">@android:color/system_neutral1_10</color>
++    <color name="display_formula_text_color">@android:color/system_neutral1_900</color>
++    <color name="display_result_text_color">@android:color/system_neutral2_700</color>
++    <color name="display_result_exponent_text_color">@android:color/system_neutral2_400</color>
+ 
+-    <!-- Text color for the formula in the calculator display. -->
+-    <color name="display_formula_text_color">#000000</color>
++    <!-- Numbers: a tonal surface one step from the display. -->
++    <color name="pad_numeric_background_color">@android:color/system_neutral2_100</color>
++    <color name="pad_button_text_color">@android:color/system_neutral1_900</color>
+ 
+-    <!-- Text color for the result in the calculator display. -->
+-    <color name="display_result_text_color">#6C000000</color>
++    <!-- Operators: secondary container. -->
++    <color name="pad_operator_background_color">@android:color/system_accent2_100</color>
++    <color name="pad_operator_text_color">@android:color/system_accent2_900</color>
+ 
+-    <!-- Lighter color for exponent while scrolling. -->
+-    <color name="display_result_exponent_text_color">#40000000</color>
++    <!-- Functions (the pad that slides in): primary container, the one accent. -->
++    <color name="pad_advanced_background_color">@android:color/system_accent1_100</color>
++    <color name="pad_button_advanced_text_color">@android:color/system_accent1_900</color>
+ 
+-    <!-- Background color for the numeric pad. -->
+-    <color name="pad_numeric_background_color">#434343</color>
++    <!-- Ripples. -->
++    <color name="pad_button_ripple_color">#1F000000</color>
++    <color name="pad_button_advanced_ripple_color">#1F000000</color>
+ 
+-    <!-- Background color for the operator pad. -->
+-    <color name="pad_operator_background_color">#636363</color>
+-
+-    <!-- Background color for the advanced pad. -->
+-    <color name="pad_advanced_background_color">#1DE9B6</color>
+-
+-    <!-- Text color for a button in a pad. -->
+-    <color name="pad_button_text_color">#FFF</color>
+-
+-    <!-- Text color for a button in the advanced pad. -->
+-    <color name="pad_button_advanced_text_color">#99000000</color>
+-
+-    <!-- Ripple color when a button is pressed in a pad. -->
+-    <color name="pad_button_ripple_color">#33FFFFFF</color>
+-
+-    <!-- Ripple color when a button is pressed in a pad. -->
+-    <color name="pad_button_advanced_ripple_color">#1A000000</color>
+-
+-    <!-- Background color for empty history view. -->
+-    <color name="empty_history_color">#EEEEEE</color>
++    <!-- Empty history. -->
++    <color name="empty_history_color">@android:color/system_neutral1_50</color>
+ 
+ </resources>
+diff --git a/res/values/plait_bools.xml b/res/values/plait_bools.xml
+new file mode 100644
+index 0000000..5d87d9b
+--- /dev/null
++++ b/res/values/plait_bools.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: dark status and navigation bar icons on the light theme (values-night has false) -->
++<resources>
++    <bool name="plait_light_bars">true</bool>
++</resources>
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index 3cf2e38..188d73a 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -94,6 +94,7 @@
+     </style>
+ 
+     <style name="PadButtonStyle.Operator">
++        <item name="android:textColor">@color/pad_operator_text_color</item>
+         <item name="android:textSize">14dip</item>
+     </style>
+ 
+diff --git a/res/values/themes.xml b/res/values/themes.xml
+index 1bb140e..5363ebb 100644
+--- a/res/values/themes.xml
++++ b/res/values/themes.xml
+@@ -17,10 +17,16 @@
+ 
+ <resources>
+ 
+-    <style name="Theme" parent="@android:style/Theme.Material.Light.DarkActionBar">
+-        <item name="android:colorPrimary">@color/calculator_primary_color</item>
++    <!-- PlaitOS: follows the system's dark theme (dark is the PlaitOS default), colors from the
++         wallpaper (values/color.xml, values-night/color.xml) -->
++    <style name="Theme" parent="@android:style/Theme.DeviceDefault.DayNight">
++        <item name="android:colorPrimary">@color/display_background_color</item>
+         <item name="android:colorAccent">@color/calculator_accent_color</item>
+-        <item name="android:statusBarColor">@color/calculator_accent_color</item>
++        <item name="android:colorControlActivated">@color/calculator_accent_color</item>
++        <item name="android:statusBarColor">@color/calculator_statusbar_color</item>
++        <item name="android:navigationBarColor">@color/pad_numeric_background_color</item>
++        <item name="android:windowLightStatusBar">@bool/plait_light_bars</item>
++        <item name="android:windowLightNavigationBar">@bool/plait_light_bars</item>
+         <item name="android:windowSoftInputMode">stateAlwaysHidden</item>
+     </style>
+ 
+diff --git a/src/com/android/calculator2/CalculatorPadViewPager.java b/src/com/android/calculator2/CalculatorPadViewPager.java
+index 0f430b0..002f5ab 100644
+--- a/src/com/android/calculator2/CalculatorPadViewPager.java
++++ b/src/com/android/calculator2/CalculatorPadViewPager.java
+@@ -168,7 +168,8 @@ public class CalculatorPadViewPager extends ViewPager {
+         mGestureDetector.setIsLongpressEnabled(false);
+ 
+         setAdapter(mStaticPagerAdapter);
+-        setBackgroundColor(Color.BLACK);
++        // PlaitOS: the gap between pages in the pad's own tone, not black
++        setBackgroundColor(context.getColor(R.color.pad_numeric_background_color));
+         setPageMargin(-getResources().getDimensionPixelSize(R.dimen.pad_page_margin));
+         setPageTransformer(false, mPageTransformer);
+         addOnPageChangeListener(mOnPageChangeListener);
+-- 
+2.56.1
+

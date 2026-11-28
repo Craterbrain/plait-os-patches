@@ -1,0 +1,88 @@
+From d6dfdaf3f40abea0187b961ab5da1758d23b8776 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 09:04:20 -0600
+Subject: [PATCH] PlaitOS: show charging beside text-only battery
+
+---
+ .../ui/composable/BatteryWithPercent.kt       | 26 ++++++++++++++++---
+ 1 file changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/BatteryWithPercent.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/BatteryWithPercent.kt
+index dc510ba6d..54237aa1c 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/BatteryWithPercent.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/ui/composable/BatteryWithPercent.kt
+@@ -21,6 +21,7 @@ import androidx.compose.foundation.basicMarquee
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Row
+ import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.width
+ import androidx.compose.foundation.layout.wrapContentWidth
+ import androidx.compose.foundation.text.BasicText
+ import androidx.compose.runtime.Composable
+@@ -30,6 +31,8 @@ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.CompositingStrategy
++import androidx.compose.ui.graphics.graphicsLayer
+ import androidx.compose.ui.layout.onLayoutRectChanged
+ import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.platform.LocalDensity
+@@ -39,6 +42,7 @@ import androidx.compose.ui.unit.dp
+ import com.android.systemui.statusbar.phone.domain.interactor.IsAreaDark
+ import com.android.systemui.statusbar.pipeline.battery.data.repository.BatteryRepository
+ import com.android.systemui.statusbar.pipeline.battery.shared.ui.BatteryColors
++import com.android.systemui.statusbar.pipeline.battery.shared.ui.BatteryGlyph
+ import com.android.systemui.statusbar.pipeline.battery.ui.viewmodel.BatteryViewModel
+ 
+ @Composable
+@@ -69,13 +73,14 @@ fun BatteryWithPercent(
+ 
+     var bounds by remember { mutableStateOf(Rect()) }
+ 
+-    val colorProducer = {
++    val defaultColors = {
+         if (isDarkProvider().isDarkTheme(bounds)) {
+-            BatteryColors.DarkTheme.Default.fill
++            BatteryColors.DarkTheme.Default
+         } else {
+-            BatteryColors.LightTheme.Default.fill
++            BatteryColors.LightTheme.Default
+         }
+     }
++    val colorProducer = { defaultColors().fill }
+ 
+     Row(
+         modifier =
+@@ -86,7 +91,8 @@ fun BatteryWithPercent(
+         horizontalArrangement = Arrangement.spacedBy(4.dp),
+         verticalAlignment = Alignment.CenterVertically,
+     ) {
+-        if (viewModel.batteryIconStyle != BatteryRepository.ICON_STYLE_TEXT) {
++        val hasBatteryIcon = viewModel.batteryIconStyle != BatteryRepository.ICON_STYLE_TEXT
++        if (hasBatteryIcon) {
+             UnifiedBattery(
+                 viewModel = viewModel,
+                 isDarkProvider = isDarkProvider,
+@@ -94,6 +100,18 @@ fun BatteryWithPercent(
+             )
+         }
+ 
++        // Styles with a battery icon already have built-in attribution.
++        if (!hasBatteryIcon && viewModel.isCharging && viewModel.attribution != BatteryGlyph.Defend) {
++            val bolt = BatteryGlyph.Bolt
++            BatteryAttribution(
++                attr = bolt,
++                colorsProvider = defaultColors,
++                modifier = Modifier.height(batteryHeight)
++                    .width(batteryHeight * (bolt.width / bolt.height))
++                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
++            )
++        }
++
+         if (showPercent) {
+             viewModel.batteryPercent?.let {
+                 BasicText(
+-- 
+2.56.1
+

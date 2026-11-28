@@ -1,0 +1,692 @@
+From 4730d8785ec20740daec4e0fe7c347ae1975b4ee Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 08:09:37 -0600
+Subject: [PATCH] PlaitOS: Files matched to the FX mock in every mode
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Selection: the top bar is close, the count and Select all; the actions
+  (Cut, Copy, Share, Delete, More) only in the bottom bar, 80 dp, which no
+  longer repeats the count
+- A picker's request is its own line under the bar, worded per mode
+  (Choose a file / files / a folder for X, Save to… for X)
+- Footers: bold title over a hint ("1 item to move / into Download",
+  "2 files chosen / Tap files to add them"), icon on the main button
+  (paste, check, download), filled file-name box
+- Sort sheet: one row per sort with its direction, check on the one in use,
+  tap it again to reverse
+- Folders open as tiles by default; compact tabs with a hairline; storage
+  providers on a neutral tile in Places
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ res/values/plait_files.xml                    |  28 +++++
+ src/com/android/documentsui/BaseActivity.java |   3 +-
+ .../documentsui/NavigationViewManager.java    |  33 +++++-
+ src/com/android/documentsui/PlaitCompose.kt   | 101 ++++++++++++------
+ src/com/android/documentsui/PlaitPathBar.kt   |  15 +--
+ .../documentsui/SelectionBarController.kt     |  44 ++++++--
+ .../documentsui/clipping/DocumentClipper.java |  10 ++
+ .../clipping/RuntimeDocumentClipper.java      |  14 +++
+ .../documentsui/files/FilesActivity.java      |   9 +-
+ .../documentsui/picker/PickActivity.java      |  12 ++-
+ .../documentsui/picker/PickFilesFragment.kt   |   6 +-
+ .../documentsui/picker/PlaitPickerFooter.kt   |  44 ++++++--
+ 12 files changed, 246 insertions(+), 73 deletions(-)
+
+diff --git a/res/values/plait_files.xml b/res/values/plait_files.xml
+index 83c5bb4..135cfa2 100644
+--- a/res/values/plait_files.xml
++++ b/res/values/plait_files.xml
+@@ -29,9 +29,37 @@
+     <string name="plait_camera">Camera</string>
+     <string name="plait_folder_unavailable">This folder is unavailable.</string>
+     <string name="plait_picker_requested_by">Requested by %1$s</string>
++    <!-- A picker's request line, under the top bar; %1$s is the app asking -->
++    <string name="plait_picker_file_for">Choose a file for %1$s · tap one to send it</string>
++    <string name="plait_picker_files_for">Choose files for %1$s</string>
++    <string name="plait_picker_save_for">Save to… for %1$s</string>
++    <string name="plait_picker_folder_for">Choose a folder for %1$s</string>
+     <string name="plait_file_name">File name</string>
+     <string name="plait_more">More</string>
+     <string name="plait_open_from_app">Open from an app</string>
+     <string name="plait_paste_here">Paste here</string>
+     <string name="plait_up">Up one folder</string>
++    <!-- Paste bar: what is waiting, and where it goes -->
++    <plurals name="plait_items_to_move">
++        <item quantity="one">%1$d item to move</item>
++        <item quantity="other">%1$d items to move</item>
++    </plurals>
++    <plurals name="plait_items_to_copy">
++        <item quantity="one">%1$d item to copy</item>
++        <item quantity="other">%1$d items to copy</item>
++    </plurals>
++    <string name="plait_into_folder">into %1$s</string>
++    <!-- Picker choosing several files -->
++    <plurals name="plait_files_chosen">
++        <item quantity="one">%1$d file chosen</item>
++        <item quantity="other">%1$d files chosen</item>
++    </plurals>
++    <string name="plait_tap_to_add">Tap files to add them</string>
++    <!-- Sort sheet: the direction under each sort -->
++    <string name="plait_sort_a_to_z">A to Z, folders first</string>
++    <string name="plait_sort_z_to_a">Z to A, folders first</string>
++    <string name="plait_sort_newest">Newest first</string>
++    <string name="plait_sort_oldest">Oldest first</string>
++    <string name="plait_sort_largest">Largest first</string>
++    <string name="plait_sort_smallest">Smallest first</string>
+ </resources>
+diff --git a/src/com/android/documentsui/BaseActivity.java b/src/com/android/documentsui/BaseActivity.java
+index d4b3615..0c7af55 100644
+--- a/src/com/android/documentsui/BaseActivity.java
++++ b/src/com/android/documentsui/BaseActivity.java
+@@ -1354,7 +1354,8 @@ public abstract class BaseActivity
+      * name and selection will get updated.
+      */
+     public final void refreshCurrentRootAndDirectoryWithoutSearch(int anim) {
+-        final int fallback = isUseMaterial3FlagEnabled() ? MODE_LIST : MODE_GRID;
++        // PlaitOS: folders open as tiles (the mock); list stays a choice in More
++        final int fallback = MODE_GRID;
+         mState.derivedMode = resolveDirectoryViewMode(fallback);
+ 
+         mNavigator.update();
+diff --git a/src/com/android/documentsui/NavigationViewManager.java b/src/com/android/documentsui/NavigationViewManager.java
+index 70f1c74..59c56ad 100644
+--- a/src/com/android/documentsui/NavigationViewManager.java
++++ b/src/com/android/documentsui/NavigationViewManager.java
+@@ -66,6 +66,7 @@ public class NavigationViewManager implements AppBarLayout.OnOffsetChangedListen
+ 
+     private final DrawerController mDrawer;
+     private PlaitPathBar mPath;
++    private android.widget.TextView mCaption;
+     private final Toolbar mToolbar;
+     private final BaseActivity mActivity;
+     private final View mHeader;
+@@ -428,6 +429,7 @@ public class NavigationViewManager implements AppBarLayout.OnOffsetChangedListen
+         final boolean picker = mState.action != State.ACTION_BROWSE;
+         if (mActivity.isSearching()) {
+             mPath.setVisibility(GONE);
++            updatePlaitCaption();
+             mToolbar.setTitle(R.string.search_results);
+             setPlaitNavigation(app.plait.design.R.drawable.ps_back, android.R.string.cancel,
+                     mActivity::onBackPressed);
+@@ -459,8 +461,8 @@ public class NavigationViewManager implements AppBarLayout.OnOffsetChangedListen
+                 }
+             }
+         }
+-        mPath.show(places ? null : mActivity::showPlaitPlaces, title, version, parts,
+-                mActivity.getPlaitCaption());
++        mPath.show(places ? null : mActivity::showPlaitPlaces, title, version, parts);
++        updatePlaitCaption();
+         if (!places) {
+             setPlaitNavigation(app.plait.design.R.drawable.ps_back, R.string.plait_up,
+                     this::plaitUp);
+@@ -473,6 +475,33 @@ public class NavigationViewManager implements AppBarLayout.OnOffsetChangedListen
+         }
+     }
+ 
++    /**
++     * A picker's request ("Choose a file for Gmail"): its own full-width line under the top bar,
++     * so the path keeps the bar's full height.
++     */
++    private void updatePlaitCaption() {
++        final String caption = mActivity.getPlaitCaption();
++        if (mCaption == null) {
++            if (caption == null) return;
++            View appBar = mActivity.findViewById(getRes(R.id.app_bar));
++            if (!(appBar instanceof ViewGroup)) return;
++            mCaption = new android.widget.TextView(mActivity);
++            mCaption.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
++            mCaption.setTextColor(com.google.android.material.color.MaterialColors.getColor(
++                    mCaption, androidx.appcompat.R.attr.colorPrimary));
++            mCaption.setMaxLines(1);
++            mCaption.setEllipsize(android.text.TextUtils.TruncateAt.END);
++            final int dp = Math.round(mActivity.getResources().getDisplayMetrics().density);
++            mCaption.setPadding(18 * dp, 0, 18 * dp, 8 * dp);
++            ViewGroup bar = (ViewGroup) appBar;
++            bar.addView(mCaption, bar.indexOfChild(mActivity.findViewById(
++                    getRes(R.id.collapsing_toolbar))) + 1, new ViewGroup.LayoutParams(
++                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
++        }
++        mCaption.setText(caption);
++        mCaption.setVisibility(caption == null || mIsActionModeActivated ? GONE : VISIBLE);
++    }
++
+     private void plaitUp() {
+         if (mState.stack.size() > 1) {
+             onNavigationItemSelected(mState.stack.size() - 2);
+diff --git a/src/com/android/documentsui/PlaitCompose.kt b/src/com/android/documentsui/PlaitCompose.kt
+index be86942..c139a32 100644
+--- a/src/com/android/documentsui/PlaitCompose.kt
++++ b/src/com/android/documentsui/PlaitCompose.kt
+@@ -6,6 +6,7 @@ import android.view.ViewGroup
+ import android.widget.ImageView
+ import androidx.appcompat.app.AppCompatActivity
+ import androidx.compose.foundation.background
++import androidx.compose.foundation.border
+ import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Box
+@@ -74,6 +75,9 @@ internal object PlaitCompose {
+                                             MaterialTheme.colorScheme.surfaceContainer,
+                                             RoundedCornerShape(14.dp),
+                                         )
++                                        .then(if (row.checked) Modifier.border(1.5.dp,
++                                            MaterialTheme.colorScheme.primary, RoundedCornerShape(14.dp))
++                                            else Modifier)
+                                         .clickable {
+                                             dismiss()
+                                             row.action.run()
+@@ -84,12 +88,17 @@ internal object PlaitCompose {
+                                 ) {
+                                     if (row.icon != 0) TonalTile(row.icon)
+                                     else if (row.drawable != null) ProviderIcon(row.drawable)
+-                                    Text(
+-                                        row.label,
+-                                        Modifier.weight(1f),
+-                                        maxLines = 2,
+-                                        overflow = TextOverflow.Ellipsis,
+-                                    )
++                                    Column(Modifier.weight(1f)) {
++                                        Text(row.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
++                                        row.detail?.let {
++                                            Text(it, style = MaterialTheme.typography.bodySmall,
++                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
++                                        }
++                                    }
++                                    if (row.checked) {
++                                        app.plait.design.PlaitIcon(app.plait.design.PlaitIcon.Check, null,
++                                            tint = MaterialTheme.colorScheme.primary)
++                                    }
+                                 }
+                             }
+                         }
+@@ -127,37 +136,52 @@ internal object PlaitCompose {
+             }
+         }
+ 
++    /**
++     * Sort sheet, as in the mock: one row per sort (name, date, size, type), its current or
++     * default direction underneath, a check on the one in use; tapping that one again reverses it.
++     */
+     @JvmStatic
+     fun showSort(activity: AppCompatActivity, model: com.android.documentsui.sorting.SortModel) {
+-        val sort = com.android.documentsui.sorting.SortListFragment::getSheetLabelId
+         val ascending = com.android.documentsui.sorting.SortDimension.SORT_DIRECTION_ASCENDING
+         val descending = com.android.documentsui.sorting.SortDimension.SORT_DIRECTION_DESCENDING
+         val rows = buildList {
+             for (i in 0 until model.size) {
+                 val dimension = model.getDimensionAt(i)
+                 if (dimension.visibility != View.VISIBLE) continue
+-                val first = dimension.defaultSortDirection
+-                val directions = listOf(first,
+-                    if (first == ascending) descending else ascending).distinct()
+-                for (direction in directions) {
+-                    if (direction == 0 || (dimension.sortCapability and direction) == 0) continue
+-                    val selected = dimension.id == model.sortedDimensionId &&
+-                        direction == model.currentSortDirection
+-                    add(SheetRow(activity.getString(sort(dimension, direction)),
+-                        if (selected) app.plait.design.PlaitIcon.Check else app.plait.design.PlaitIcon.Sort,
+-                        null, Runnable { model.sortByUser(dimension.id, direction) }))
++                val selected = dimension.id == model.sortedDimensionId
++                val direction = if (selected) model.currentSortDirection else dimension.defaultSortDirection
++                val up = direction == ascending
++                val (icon, detail) = when (dimension.id) {
++                    com.android.documentsui.sorting.SortModel.SORT_DIMENSION_ID_TITLE -> app.plait.design.PlaitIcon.Sort to
++                        if (up) R.string.plait_sort_a_to_z else R.string.plait_sort_z_to_a
++                    com.android.documentsui.sorting.SortModel.SORT_DIMENSION_ID_DATE -> app.plait.design.PlaitIcon.History to
++                        if (up) R.string.plait_sort_oldest else R.string.plait_sort_newest
++                    com.android.documentsui.sorting.SortModel.SORT_DIMENSION_ID_SIZE -> app.plait.design.PlaitIcon.Storage to
++                        if (up) R.string.plait_sort_smallest else R.string.plait_sort_largest
++                    else -> app.plait.design.PlaitIcon.Category to
++                        if (up) R.string.plait_sort_a_to_z else R.string.plait_sort_z_to_a
+                 }
++                val reverse = if (direction == ascending) descending else ascending
++                val next = if (selected && (dimension.sortCapability and reverse) != 0) reverse else direction
++                add(SheetRow(activity.getString(dimension.labelId), icon, null,
++                    Runnable { model.sortByUser(dimension.id, next) },
++                    activity.getString(detail), selected))
+             }
+         }
+         showSheet(activity, activity.getString(R.string.menu_sort), null, rows)
+     }
+ 
+-    data class SheetRow(val label: String, val icon: Int, val drawable: Drawable?, val action: Runnable?)
++    /** A sheet row: tonal tile + label, optional detail line and trailing check (selected). */
++    data class SheetRow @JvmOverloads constructor(val label: String, val icon: Int,
++        val drawable: Drawable?, val action: Runnable?, val detail: String? = null,
++        val checked: Boolean = false)
+ }
+ 
+ @Composable
+ internal fun ProviderIcon(drawable: Drawable, modifier: Modifier = Modifier) {
+-    Box(modifier.size(40.dp), contentAlignment = Alignment.Center) {
++    // On a neutral tile, like the mock's provider tiles (the provider's own icon keeps its colours)
++    Box(modifier.size(42.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest,
++        RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+         AndroidView(
+             factory = { ImageView(it).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } },
+             update = { it.setImageDrawable(drawable.constantState?.newDrawable() ?: drawable) },
+@@ -181,6 +205,8 @@ internal class PlaitTabs(context: android.content.Context) : android.widget.Fram
+                     androidx.compose.runtime.LaunchedEffect(selected) {
+                         if (selected >= 0) scroll.animateScrollToItem(selected)
+                     }
++                    // Mock: compact pills (34 dp, 48 dp touch height) and a hairline under the row
++                    Column {
+                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                         androidx.compose.foundation.lazy.LazyRow(
+                             Modifier.weight(1f), state = scroll,
+@@ -189,29 +215,38 @@ internal class PlaitTabs(context: android.content.Context) : android.widget.Fram
+                             items(current.size) { index ->
+                                 val tab = current[index]
+                                 val colors = MaterialTheme.colorScheme
++                                Row(
++                                    Modifier.heightIn(min = 48.dp).clickable { tab.select.run() },
++                                    verticalAlignment = Alignment.CenterVertically,
++                                ) {
+                                 Row(
+                                     Modifier.background(
+                                         if (tab.selected) colors.primaryContainer else colors.surfaceContainer,
+-                                        RoundedCornerShape(14.dp),
+-                                    ),
++                                        RoundedCornerShape(10.dp),
++                                    ).heightIn(min = 34.dp).padding(start = 14.dp,
++                                        end = if (tab.close != null) 4.dp else 14.dp),
+                                     verticalAlignment = Alignment.CenterVertically,
+                                 ) {
+                                     Text(
+                                         tab.label,
+-                                        Modifier.clickable { tab.select.run() }.heightIn(min = 48.dp)
+-                                            .padding(horizontal = 12.dp, vertical = 14.dp),
+                                         maxLines = 1,
+                                         overflow = TextOverflow.Ellipsis,
++                                        style = MaterialTheme.typography.labelLarge,
+                                         color = if (tab.selected) colors.onPrimaryContainer else colors.onSurface,
+                                     )
+                                     tab.close?.let { close ->
+-                                        androidx.compose.material3.IconButton(onClick = close::run) {
++                                        Box(
++                                            Modifier.size(30.dp).clickable(onClick = close::run),
++                                            contentAlignment = Alignment.Center,
++                                        ) {
+                                             app.plait.design.PlaitIcon(
+                                                 app.plait.design.PlaitIcon.Close, tab.closeLabel,
++                                                Modifier.size(16.dp),
+                                             )
+                                         }
+                                     }
+                                 }
++                                }
+                             }
+                         }
+                         androidx.compose.material3.IconButton(onClick = { newTab?.run() }) {
+@@ -219,6 +254,9 @@ internal class PlaitTabs(context: android.content.Context) : android.widget.Fram
+                                 androidx.compose.ui.res.stringResource(R.string.plait_new_tab))
+                         }
+                     }
++                    androidx.compose.material3.HorizontalDivider(
++                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
++                    }
+                 }
+             }
+         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+@@ -246,20 +284,13 @@ internal class PlaitSelectionActions(private val activity: AppCompatActivity) :
+                 val ui = selection ?: return@setContent
+                 PlaitTheme {
+                     androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
++                        // The count, close and select all are in the top bar (selection bar);
++                        // this is only the actions, the design guide's 80 dp bar
+                         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                             Row(
+-                                Modifier.fillMaxWidth().heightIn(min = 32.dp),
+-                                verticalAlignment = Alignment.CenterVertically,
+-                            ) {
+-                                androidx.compose.material3.IconButton(onClick = ui.clear::run) {
+-                                    app.plait.design.PlaitIcon(app.plait.design.PlaitIcon.Close,
+-                                        activity.getString(R.string.clear_selection))
+-                                }
+-                                Text(ui.title, style = MaterialTheme.typography.titleSmall)
+-                            }
+-                            Row(
+-                                Modifier.fillMaxWidth().heightIn(min = 56.dp),
++                                Modifier.fillMaxWidth().heightIn(min = 80.dp),
+                                 horizontalArrangement = Arrangement.SpaceEvenly,
++                                verticalAlignment = Alignment.CenterVertically,
+                             ) {
+                                 ui.actions.forEach { row ->
+                                     Column(
+diff --git a/src/com/android/documentsui/PlaitPathBar.kt b/src/com/android/documentsui/PlaitPathBar.kt
+index 0f6717e..d323996 100644
+--- a/src/com/android/documentsui/PlaitPathBar.kt
++++ b/src/com/android/documentsui/PlaitPathBar.kt
+@@ -43,30 +43,17 @@ internal class PlaitPathBar(context: Context) : LinearLayout(context) {
+         overScrollMode = OVER_SCROLL_NEVER
+         addView(row, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+     }
+-    /** A picker's request ("Requested by Gmail"), under the path. */
+-    private val caption = TextView(context).apply {
+-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+-        setTextColor(pressed)
+-        maxLines = 1
+-        ellipsize = TextUtils.TruncateAt.END
+-        setPadding(dp(8), 0, dp(8), 0)
+-        visibility = GONE
+-    }
+-
+     init {
+         orientation = VERTICAL
+         gravity = Gravity.CENTER_VERTICAL
+         addView(scroll, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+-        addView(caption, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+     }
+ 
+     /**
+      * home: opens Places (null on Places itself). title/version: shown after the Home icon on
+      * Places. parts: the folders, root first; the last one is where you are.
+      */
+-    fun show(home: Runnable?, title: String?, version: String?, parts: List<Part>, note: String?) {
+-        caption.text = note
+-        caption.visibility = if (note.isNullOrEmpty()) GONE else VISIBLE
++    fun show(home: Runnable?, title: String?, version: String?, parts: List<Part>) {
+         row.removeAllViews()
+         row.addView(crumb(null, context.getDrawable(app.plait.design.R.drawable.ps_home), home,
+             context.getString(R.string.plait_home), parts.isEmpty()))
+diff --git a/src/com/android/documentsui/SelectionBarController.kt b/src/com/android/documentsui/SelectionBarController.kt
+index 4d17928..91d5e24 100644
+--- a/src/com/android/documentsui/SelectionBarController.kt
++++ b/src/com/android/documentsui/SelectionBarController.kt
+@@ -15,6 +15,7 @@
+  */
+ package com.android.documentsui
+ 
++import android.view.Menu
+ import android.view.MenuItem
+ import android.view.View
+ import androidx.core.view.MenuCompat
+@@ -87,8 +88,10 @@ class SelectionBarController(
+             plaitActions?.clear()
+             return
+         }
+-        selectionBar.visibility = if (plaitActions == null) View.VISIBLE else View.GONE
+-        appBar.visibility = if (plaitActions == null) View.GONE else View.VISIBLE
++        // PlaitOS: the top bar becomes the selection's (close, count, select all); the actions
++        // themselves are only in the bottom bar (PlaitSelectionActions), never in both
++        selectionBar.visibility = View.VISIBLE
++        appBar.visibility = View.GONE
+ 
+         val quantity: Int = selectedItems.size()
+         val title: String =
+@@ -96,7 +99,8 @@ class SelectionBarController(
+                 .getResources()
+                 .getQuantityString(getRes(R.plurals.elements_selected), quantity, quantity)
+         selectionBar.title = title
+-        selectionBar.setNavigationIcon(getRes(R.drawable.ic_cancel))
++        selectionBar.setNavigationIcon(
++            if (plaitActions != null) app.plait.design.R.drawable.ps_close else getRes(R.drawable.ic_cancel))
+         selectionBar.setNavigationContentDescription(R.string.clear_selection)
+         selectionBar.setOnMenuItemClickListener { menuItemClicker?.accept(it) == true }
+         selectionBar.setNavigationOnClickListener {
+@@ -106,19 +110,43 @@ class SelectionBarController(
+         updateSelectionMenu()
+     }
+ 
++    /**
++     * PlaitOS: the actions live in their own menu, shown by the bottom bar; the top bar's own
++     * menu is only Select all.
++     */
++    private var plaitActionMenu: Menu? = null
++
+     /** Updates the selection menu (including inflating it if required). */
+     private fun updateSelectionMenu() {
++        val actions = plaitActions
++        if (actions != null) {
++            val menu = plaitActionMenu ?: androidx.appcompat.view.menu.MenuBuilder(selectionBar.context)
++                .also {
++                    androidx.appcompat.view.SupportMenuInflater(selectionBar.context)
++                        .inflate(getRes(R.menu.action_mode_menu), it)
++                    plaitActionMenu = it
++                }
++            menuManager.updateActionMenu(menu, selectionDetails)
++            if (!selectedItems.isEmpty) {
++                actions.show(selectionBar.title.toString(), menu, ::closeSelectionBar) {
++                    menuItemClicker?.accept(it)
++                }
++            }
++            if (selectionBar.menu.findItem(R.id.action_menu_select_all) == null) {
++                selectionBar.menu.clear()
++                selectionBar.menu.add(Menu.NONE, R.id.action_menu_select_all, Menu.NONE,
++                    R.string.menu_select_all)
++                    .setIcon(app.plait.design.R.drawable.ps_select_all)
++                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
++            }
++            return
++        }
+         val isMenuInflated = selectionBar.menu != null && selectionBar.menu.isNotEmpty()
+         if (!isMenuInflated) {
+             selectionBar.inflateMenu(getRes(R.menu.action_mode_menu))
+             MenuCompat.setGroupDividerEnabled(selectionBar.menu, true)
+         }
+         menuManager.updateActionMenu(selectionBar.menu, selectionDetails)
+-        if (!selectedItems.isEmpty) {
+-            plaitActions?.show(selectionBar.title.toString(), selectionBar.menu, ::closeSelectionBar) {
+-                menuItemClicker?.accept(it)
+-            }
+-        }
+     }
+ 
+     fun invalidate() {
+diff --git a/src/com/android/documentsui/clipping/DocumentClipper.java b/src/com/android/documentsui/clipping/DocumentClipper.java
+index 9dc4a49..3641c4a 100644
+--- a/src/com/android/documentsui/clipping/DocumentClipper.java
++++ b/src/com/android/documentsui/clipping/DocumentClipper.java
+@@ -47,6 +47,16 @@ public interface DocumentClipper {
+     boolean hasItemsToPaste();
+ 
+     /** Checks operation metadata for the paste footer without reading clipboard contents. */
++    /** PlaitOS: how many items a pending copy/move carries (0 when none), for the paste bar. */
++    default int plaitOperationCount() {
++        return 0;
++    }
++
++    /** PlaitOS: whether the pending operation is a move (cut) rather than a copy. */
++    default boolean plaitIsMove() {
++        return false;
++    }
++
+     default boolean hasDocumentOperation() {
+         return false;
+     }
+diff --git a/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java b/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
+index d915107..4dffc76 100644
+--- a/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
++++ b/src/com/android/documentsui/clipping/RuntimeDocumentClipper.java
+@@ -104,6 +104,20 @@ final class RuntimeDocumentClipper implements DocumentClipper {
+                 || operation == FileOperationService.OPERATION_MOVE;
+     }
+ 
++    @Override
++    public int plaitOperationCount() {
++        if (!hasDocumentOperation()) return 0;
++        ClipData clip = mClipboard.getPrimaryClip();
++        return clip == null ? 0 : clip.getItemCount();
++    }
++
++    @Override
++    public boolean plaitIsMove() {
++        ClipDescription description = mClipboard.getPrimaryClipDescription();
++        return description != null && description.getExtras() != null
++                && description.getExtras().getInt(OP_TYPE_KEY) == FileOperationService.OPERATION_MOVE;
++    }
++
+     private boolean isDocumentUri(@Nullable Uri uri) {
+         return uri != null && DocumentsContract.isDocumentUri(mContext, uri);
+     }
+diff --git a/src/com/android/documentsui/files/FilesActivity.java b/src/com/android/documentsui/files/FilesActivity.java
+index 38527a4..068735a 100644
+--- a/src/com/android/documentsui/files/FilesActivity.java
++++ b/src/com/android/documentsui/files/FilesActivity.java
+@@ -378,8 +378,13 @@ public class FilesActivity extends BaseActivity implements AbstractActionHandler
+                 && mPlaitClipper.hasDocumentOperation() && canCreateDirectory();
+         mPlaitPaste.setVisibility(visible ? View.VISIBLE : View.GONE);
+         if (!visible) return;
++        // "2 items to move" / "into Download", like the mock's paste bar
++        final int count = Math.max(1, mPlaitClipper.plaitOperationCount());
+         mPlaitPaste.showDestination(getString(R.string.plait_paste_here), true,
+-                getString(android.R.string.cancel), getCurrentTitle(), null,
++                getString(android.R.string.cancel),
++                getResources().getQuantityString(mPlaitClipper.plaitIsMove()
++                        ? R.plurals.plait_items_to_move : R.plurals.plait_items_to_copy, count, count),
++                getString(R.string.plait_into_folder, getCurrentTitle()),
+                 () -> {
+                     mDismissedPaste = true;
+                     directory.pasteFromClipboard();
+@@ -387,7 +392,7 @@ public class FilesActivity extends BaseActivity implements AbstractActionHandler
+                 }, () -> {
+                     mDismissedPaste = true;
+                     updatePlaitPaste();
+-                });
++                }, app.plait.design.R.drawable.ps_paste);
+     }
+ 
+     private PlaitSelectionActions addPlaitSelectionActions() {
+diff --git a/src/com/android/documentsui/picker/PickActivity.java b/src/com/android/documentsui/picker/PickActivity.java
+index 32cc334..f10bf7a 100644
+--- a/src/com/android/documentsui/picker/PickActivity.java
++++ b/src/com/android/documentsui/picker/PickActivity.java
+@@ -345,7 +345,17 @@ public class PickActivity extends BaseActivity implements ActionHandler.Addons {
+         try {
+             android.content.pm.PackageManager packages = getPackageManager();
+             CharSequence label = packages.getApplicationInfo(requester, 0).loadLabel(packages);
+-            setPlaitCaption(getString(R.string.plait_picker_requested_by, label));
++            final int request;
++            if (mState.action == ACTION_CREATE) {
++                request = R.string.plait_picker_save_for;
++            } else if (mState.action == ACTION_OPEN_TREE) {
++                request = R.string.plait_picker_folder_for;
++            } else if (mState.allowMultiple) {
++                request = R.string.plait_picker_files_for;
++            } else {
++                request = R.string.plait_picker_file_for;
++            }
++            setPlaitCaption(getString(request, label));
+         } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+             // A caller from a different profile may not have a visible package label here.
+         }
+diff --git a/src/com/android/documentsui/picker/PickFilesFragment.kt b/src/com/android/documentsui/picker/PickFilesFragment.kt
+index 7edb7bf..b2c081c 100644
+--- a/src/com/android/documentsui/picker/PickFilesFragment.kt
++++ b/src/com/android/documentsui/picker/PickFilesFragment.kt
+@@ -79,11 +79,13 @@ class PickFilesFragment : Fragment() {
+             showDestination(
+                 getString(R.string.menu_select), count > 0,
+                 if (showCancel) getString(android.R.string.cancel) else null,
++                // "2 files chosen" / "Tap files to add them", like the mock
+                 if (count > 0) resources.getQuantityString(
+-                    getRes(R.plurals.elements_selected), count, count) else null,
+-                null,
++                    R.plurals.plait_files_chosen, count, count) else null,
++                if (count > 0) getString(R.string.plait_tap_to_add) else null,
+                 Runnable { actionHandler?.pickSelected() },
+                 Runnable { actionHandler?.cancelPicking() },
++                app.plait.design.R.drawable.ps_check,
+             )
+         }
+     }
+diff --git a/src/com/android/documentsui/picker/PlaitPickerFooter.kt b/src/com/android/documentsui/picker/PlaitPickerFooter.kt
+index e0e6a8f..8e1d504 100644
+--- a/src/com/android/documentsui/picker/PlaitPickerFooter.kt
++++ b/src/com/android/documentsui/picker/PlaitPickerFooter.kt
+@@ -13,7 +13,16 @@ import androidx.compose.foundation.text.KeyboardActions
+ import androidx.compose.foundation.text.KeyboardOptions
+ import androidx.compose.material3.CircularProgressIndicator
+ import androidx.compose.material3.MaterialTheme
+-import androidx.compose.material3.OutlinedTextField
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.layout.width
++import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.material3.Icon
++import androidx.compose.material3.TextField
++import androidx.compose.material3.TextFieldDefaults
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.res.painterResource
++import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.material3.Surface
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.getValue
+@@ -51,11 +60,21 @@ internal class PlaitPickerFooter(context: Context) : FrameLayout(context) {
+                                 verticalAlignment = Alignment.CenterVertically,
+                             ) {
+                                 if (ui.name != null) {
+-                                    OutlinedTextField(
++                                    // A filled name box, no outline (the mock's save bar)
++                                    TextField(
+                                         value = ui.name,
+                                         onValueChange = { edit?.accept(it) },
+                                         modifier = Modifier.weight(1f),
+-                                        label = { Text(ui.hint.orEmpty()) },
++                                        placeholder = { Text(ui.hint.orEmpty()) },
++                                        shape = RoundedCornerShape(12.dp),
++                                        colors = TextFieldDefaults.colors(
++                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
++                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
++                                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
++                                            focusedIndicatorColor = Color.Transparent,
++                                            unfocusedIndicatorColor = Color.Transparent,
++                                            disabledIndicatorColor = Color.Transparent,
++                                        ),
+                                         singleLine = true,
+                                         enabled = !ui.pending,
+                                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+@@ -65,7 +84,9 @@ internal class PlaitPickerFooter(context: Context) : FrameLayout(context) {
+                                     )
+                                 } else {
+                                     Column(Modifier.weight(1f)) {
+-                                        ui.location?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
++                                        // Bold what this bar is about, the hint under it
++                                        ui.location?.let { Text(it, style = MaterialTheme.typography.titleSmall,
++                                            maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                         ui.hint?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                                             color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                     }
+@@ -75,6 +96,10 @@ internal class PlaitPickerFooter(context: Context) : FrameLayout(context) {
+                                 }
+                                 if (ui.pending) CircularProgressIndicator()
+                                 else PlaitFilledButton(onClick = { submit?.run() }, enabled = ui.enabled) {
++                                    if (ui.icon != 0) {
++                                        Icon(painterResource(ui.icon), null, Modifier.size(18.dp))
++                                        Spacer(Modifier.width(8.dp))
++                                    }
+                                     Text(ui.label)
+                                 }
+                             }
+@@ -91,17 +116,20 @@ internal class PlaitPickerFooter(context: Context) : FrameLayout(context) {
+         this.edit = edit
+         this.submit = submit
+         this.cancel = cancel
+-        state = FooterUi(label, enabled && name.isNotBlank(), cancelLabel, name, hint, pending = pending)
++        state = FooterUi(label, enabled && name.isNotBlank(), cancelLabel, name, hint, pending = pending,
++            icon = app.plait.design.PlaitIcon.Download)
+     }
+ 
++    /** icon: on the main button (design-guide drawable), 0 for none. */
++    @JvmOverloads
+     fun showDestination(label: String, enabled: Boolean, cancelLabel: String?, location: String?,
+-        hint: String?, submit: Runnable, cancel: Runnable) {
++        hint: String?, submit: Runnable, cancel: Runnable, icon: Int = 0) {
+         this.submit = submit
+         this.cancel = cancel
+-        state = FooterUi(label, enabled, cancelLabel, location = location, hint = hint)
++        state = FooterUi(label, enabled, cancelLabel, location = location, hint = hint, icon = icon)
+     }
+ 
+     private data class FooterUi(val label: String = "", val enabled: Boolean = false,
+         val cancel: String? = null, val name: String? = null, val hint: String? = null,
+-        val location: String? = null, val pending: Boolean = false)
++        val location: String? = null, val pending: Boolean = false, val icon: Int = 0)
+ }
+-- 
+2.56.1
+

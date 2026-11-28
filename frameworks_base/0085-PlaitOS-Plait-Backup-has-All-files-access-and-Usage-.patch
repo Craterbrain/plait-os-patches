@@ -9,6 +9,7 @@ each user's unlock and when the app is installed or updated, only while they are
 still at their default, so a user's choice to switch one off sticks.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../server/plait/PlaitBackupService.java      | 70 +++++++++++++++++++
  1 file changed, 70 insertions(+)

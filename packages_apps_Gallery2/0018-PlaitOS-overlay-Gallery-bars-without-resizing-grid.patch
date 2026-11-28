@@ -1,0 +1,203 @@
+From 3dfbd9a827767ddc49ff8f05e5a8e915ca2ead22 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:42:29 -0600
+Subject: [PATCH] PlaitOS: animate Gallery bars independently of the photo grid
+
+---
+ AndroidManifest.xml                           |  4 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 77 +++++++++----------
+ 2 files changed, 38 insertions(+), 43 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 604bd2f..2df0b28 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40048"
+-        android:versionName="1.1.40048"
++<manifest android:versionCode="40049"
++        android:versionName="1.1.40049"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index 1d2202e..200883d 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -32,7 +32,6 @@ import android.view.VelocityTracker;
+ import android.view.ViewConfiguration;
+ import android.view.View;
+ import android.view.ViewGroup;
+-import android.widget.AbsListView;
+ import android.widget.BaseAdapter;
+ import android.widget.Button;
+ import android.widget.EditText;
+@@ -406,11 +405,18 @@ public final class PlaitGalleryActivity extends Activity {
+         viewerPhotos.clear();
+         checkedMedia.clear();
+         root = column();
++        android.widget.FrameLayout viewport = new android.widget.FrameLayout(this);
++        root.addView(viewport, new LinearLayout.LayoutParams(-1, 0, 1));
++        LinearLayout topChrome = column();
++        int background = color(android.R.attr.colorBackground);
+         libraryTitle = column();
++        libraryTitle.setBackgroundColor(background);
++        libraryTitle.setZ(dp(1));
+         updateLibraryTitle();
+-        root.addView(libraryTitle);
++        topChrome.addView(libraryTitle);
+         LinearLayout searchBar = column();
+-        root.addView(searchBar);
++        searchBar.setBackgroundColor(background);
++        topChrome.addView(searchBar);
+         EditText search = new EditText(this);
+         search.setSingleLine(true);
+         search.setHint(R.string.plait_gallery_search);
+@@ -447,7 +453,8 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+         status = new TextView(this);
+         status.setPadding(dp(16), dp(12), dp(16), dp(12));
+-        root.addView(status);
++        status.setBackgroundColor(background);
++        topChrome.addView(status);
+         LibraryList libraryList = new LibraryList();
+         grid = libraryList;
+         grid.setDivider(null);
+@@ -456,7 +463,8 @@ public final class PlaitGalleryActivity extends Activity {
+         grid.setPadding(dp(12), 0, dp(12), dp(4));
+         grid.setClipToPadding(false);
+         grid.setAdapter(new TileAdapter());
+-        root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
++        viewport.addView(grid, new android.widget.FrameLayout.LayoutParams(-1, -1));
++        viewport.addView(topChrome, new android.widget.FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+         int barColor = color(android.R.attr.colorBackgroundFloating);
+         getWindow().setNavigationBarColor(barColor);
+         getWindow().setNavigationBarDividerColor(barColor);
+@@ -511,7 +519,17 @@ public final class PlaitGalleryActivity extends Activity {
+             navigation.addView(button, new LinearLayout.LayoutParams(0, dp(53), 1));
+         }
+         bottomBar.addView(navigation);
+-        root.addView(bottomBar);
++        viewport.addView(bottomBar, new android.widget.FrameLayout.LayoutParams(
++                -1, -2, Gravity.BOTTOM));
++        // Reserve space at the ends once. Animating the overlays must never resize ListView.
++        viewport.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
++            @Override public void onLayoutChange(View view, int left, int top, int right,
++                    int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
++                view.removeOnLayoutChangeListener(this);
++                libraryList.setPadding(dp(12), libraryTitle.getHeight() + searchBar.getHeight(),
++                        dp(12), bottomBar.getHeight() + dp(4));
++            }
++        });
+         libraryBars = new LibraryBarScroll(libraryList, search, libraryTitle, searchBar, bottomBar);
+         libraryList.bars = libraryBars;
+         root.setFocusableInTouchMode(true);
+@@ -653,7 +671,7 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+     }
+ 
+-    private final class LibraryBarScroll implements AbsListView.OnScrollListener {
++    private final class LibraryBarScroll {
+         private final ListView list;
+         private final EditText search;
+         private final View titleBar;
+@@ -666,8 +684,6 @@ public final class PlaitGalleryActivity extends Activity {
+         private float startX;
+         private float collapse;
+         private boolean tracking;
+-        private boolean settlePending;
+-        private int scrollState = SCROLL_STATE_IDLE;
+         private ValueAnimator animator;
+ 
+         LibraryBarScroll(ListView list, EditText search, View titleBar, View searchBar,
+@@ -677,15 +693,6 @@ public final class PlaitGalleryActivity extends Activity {
+             this.titleBar = titleBar;
+             this.searchBar = searchBar;
+             this.bottomBar = bottomBar;
+-            list.setOnScrollListener(this);
+-        }
+-
+-        @Override public void onScrollStateChanged(AbsListView view, int state) {
+-            scrollState = state;
+-            if (state == SCROLL_STATE_IDLE && settlePending) list.post(this::settleWhenIdle);
+-        }
+-
+-        @Override public void onScroll(AbsListView view, int first, int visible, int count) {
+         }
+ 
+         void track(MotionEvent event) {
+@@ -693,7 +700,6 @@ public final class PlaitGalleryActivity extends Activity {
+             switch (event.getActionMasked()) {
+                 case MotionEvent.ACTION_DOWN:
+                     if (animator != null) animator.cancel();
+-                    settlePending = false;
+                     startX = event.getRawX();
+                     startY = event.getRawY();
+                     tracking = false;
+@@ -714,10 +720,9 @@ public final class PlaitGalleryActivity extends Activity {
+                 case MotionEvent.ACTION_UP:
+                 case MotionEvent.ACTION_CANCEL:
+                     tracking = false;
+-                    settlePending = titleHeight > 0 && collapse > 0
+-                            && collapse < searchHeight + titleHeight;
+-                    // Let ListView process the release and enter its fling state first.
+-                    if (settlePending) list.post(this::settleWhenIdle);
++                    if (titleHeight > 0 && collapse > 0 && collapse < searchHeight + titleHeight) {
++                        settleBars();
++                    }
+                     break;
+                 default:
+                     break;
+@@ -737,24 +742,18 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+ 
+         void reveal() {
+-            settlePending = false;
+             if (animator != null) animator.cancel();
+             if (titleHeight > 0) moveBars(0);
+         }
+ 
+         private void moveBars(float distance) {
+             collapse = distance;
+-            setBarHeight(bottomBar, bottomHeight, distance);
+-            setBarHeight(searchBar, searchHeight, distance);
+-            setBarHeight(titleBar, titleHeight, distance - searchHeight);
++            slide(bottomBar, bottomHeight, distance, 1);
++            slide(searchBar, searchHeight, distance, -1);
++            slide(titleBar, titleHeight, distance - searchHeight, -1);
+         }
+ 
+-        private void settleWhenIdle() {
+-            if (!settlePending || scrollState != SCROLL_STATE_IDLE || !list.isAttachedToWindow()) {
+-                return;
+-            }
+-            settlePending = false;
+-            // Resizing ListView during a fling interrupts its native scrolling runnable.
++        private void settleBars() {
+             float end = searchHeight + titleHeight;
+             float target = collapse >= end / 2 ? end : 0f;
+             animator = ValueAnimator.ofFloat(collapse, target);
+@@ -763,14 +762,10 @@ public final class PlaitGalleryActivity extends Activity {
+             animator.start();
+         }
+ 
+-        private void setBarHeight(View bar, int expanded, float distance) {
+-            int height = Math.round(expanded - Math.max(0f, Math.min(expanded, distance)));
+-            bar.setVisibility(height == 0 ? View.GONE : View.VISIBLE);
+-            ViewGroup.LayoutParams params = bar.getLayoutParams();
+-            if (params.height != height) {
+-                params.height = height;
+-                bar.setLayoutParams(params);
+-            }
++        private void slide(View bar, int height, float distance, int direction) {
++            float offset = Math.max(0f, Math.min(height, distance));
++            bar.setTranslationY(direction * offset);
++            bar.setVisibility(offset >= height ? View.INVISIBLE : View.VISIBLE);
+         }
+     }
+ 
+-- 
+2.56.1
+

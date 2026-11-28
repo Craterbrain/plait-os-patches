@@ -4,6 +4,7 @@ Date: Sat, 21 Nov 2026 21:35:10 -0600
 Subject: [PATCH] PlaitOS: contact card on a tonal surface; icons in the accent
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3UdaCB3bu67ZPQkVe
 ---
  AndroidManifest.xml                               |  2 +-
  res/values/styles.xml                             |  3 +++

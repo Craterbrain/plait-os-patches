@@ -8,6 +8,7 @@ file and goes through the same checks (signature, device, A/B, source build); th
 incremental come from the zip, which must be newer than the installed build.
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3UdaCB3bu67ZPQkVe
 ---
  res/values/strings.xml                      |  2 +
  res/xml/settings.xml                        |  5 ++

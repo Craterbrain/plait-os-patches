@@ -23,6 +23,7 @@ Subject: [PATCH] PlaitOS: Material Symbols for every PlaitOS row; style late
   press). Style 0 stays exactly stock.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
 ---
  res/drawable/ic_plait_ambient.xml             | 27 --------
  res/drawable/ic_plait_answer_call.xml         | 27 --------

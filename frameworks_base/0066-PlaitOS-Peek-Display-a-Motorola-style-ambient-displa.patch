@@ -29,6 +29,7 @@ DozeServiceHost gets a small PulseListener hook (pulse started with its
 reason, pulse finished); PeekDisplayController is a CoreStartable.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../SystemUI/res/values/plait_strings.xml     |   6 +
  .../dagger/SystemUICoreStartableModule.kt     |   7 +

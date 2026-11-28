@@ -13,6 +13,7 @@ Subject: [PATCH 54/78] PlaitOS: adapt always-on display while charging to
   PowerManagerService already only checks mIsPowered
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../display/AmbientDisplayConfiguration.java  | 23 ++++++++++---------
  .../server/power/PowerManagerService.java     |  2 +-

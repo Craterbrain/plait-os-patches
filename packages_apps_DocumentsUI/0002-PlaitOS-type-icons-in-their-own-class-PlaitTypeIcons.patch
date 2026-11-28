@@ -1,0 +1,140 @@
+From 52e722eaf8b7c2ac42c83ba90e2c6af5c3502b29 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 07:59:01 -0600
+Subject: [PATCH] PlaitOS: type icons in their own class (PlaitTypeIcons),
+ shared with the screenshot mock
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ .../android/documentsui/PlaitTypeIcons.java   | 56 +++++++++++++++++++
+ .../documentsui/dirlist/IconHelper.java       | 43 +-------------
+ 2 files changed, 57 insertions(+), 42 deletions(-)
+ create mode 100644 src/com/android/documentsui/PlaitTypeIcons.java
+
+diff --git a/src/com/android/documentsui/PlaitTypeIcons.java b/src/com/android/documentsui/PlaitTypeIcons.java
+new file mode 100644
+index 0000000..52b9cdf
+--- /dev/null
++++ b/src/com/android/documentsui/PlaitTypeIcons.java
+@@ -0,0 +1,56 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.documentsui;
++
++import android.content.Context;
++import android.graphics.drawable.Drawable;
++import android.provider.DocumentsContract;
++
++/** PlaitOS: file type icons for tiles and rows (standalone, so the screenshot mock uses it too). */
++public final class PlaitTypeIcons {
++    private PlaitTypeIcons() {}
++
++    /**
++     * PlaitOS: a file's type as a design-guide icon (Material Symbols via plait-design), tinted
++     * for the tile it sits on: folders on the tonal tile, files on the neutral one.
++     */
++    public static Drawable forMime(Context context, String mimeType) {
++        final String mime = mimeType == null ? "" : mimeType.toLowerCase(java.util.Locale.ROOT);
++        final int icon;
++        boolean folder = false;
++        if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
++            icon = app.plait.design.R.drawable.ps_folder;
++            folder = true;
++        } else if (mime.startsWith("image/")) {
++            icon = app.plait.design.R.drawable.ps_image;
++        } else if (mime.startsWith("video/")) {
++            icon = app.plait.design.R.drawable.ps_movie;
++        } else if (mime.startsWith("audio/") || mime.equals("application/ogg")) {
++            icon = app.plait.design.R.drawable.ps_music;
++        } else if (mime.equals("application/pdf")) {
++            icon = app.plait.design.R.drawable.ps_pdf;
++        } else if (mime.equals("application/vnd.android.package-archive")) {
++            icon = app.plait.design.R.drawable.ps_apk;
++        } else if (mime.contains("zip") || mime.contains("compressed") || mime.contains("x-tar")
++                || mime.contains("gzip") || mime.contains("x-7z") || mime.contains("x-rar")
++                || mime.contains("x-bzip") || mime.contains("x-xz")) {
++            icon = app.plait.design.R.drawable.ps_zip;
++        } else if (mime.startsWith("text/") || mime.contains("document") || mime.contains("msword")
++                || mime.contains("opendocument") || mime.contains("rtf") || mime.contains("epub")
++                || mime.contains("spreadsheet") || mime.contains("presentation")
++                || mime.contains("ms-excel") || mime.contains("ms-powerpoint")
++                || mime.equals("application/json") || mime.equals("application/xml")) {
++            icon = app.plait.design.R.drawable.ps_document;
++        } else {
++            icon = app.plait.design.R.drawable.ps_file;
++        }
++        Drawable drawable = context.getDrawable(icon).mutate();
++        drawable.setTint(com.google.android.material.color.MaterialColors.getColor(context,
++                folder ? com.google.android.material.R.attr.colorOnPrimaryContainer
++                        : com.google.android.material.R.attr.colorOnSurfaceVariant, 0xff888888));
++        return drawable;
++    }
++}
+diff --git a/src/com/android/documentsui/dirlist/IconHelper.java b/src/com/android/documentsui/dirlist/IconHelper.java
+index 77320b8..d263dfd 100644
+--- a/src/com/android/documentsui/dirlist/IconHelper.java
++++ b/src/com/android/documentsui/dirlist/IconHelper.java
+@@ -285,7 +285,7 @@ public class IconHelper {
+     private Drawable getDocumentIcon(Context context, UserId userId, String authority, String id,
+             String mimeType, int icon) {
+         if (icon == 0 && isUseMaterial3FlagEnabled()) {
+-            return plaitTypeIcon(context, mimeType);
++            return com.android.documentsui.PlaitTypeIcons.forMime(context, mimeType);
+         }
+         if (icon != 0) {
+             return IconUtils.loadPackageIcon(context, userId, authority, icon, mMaybeShowBadge);
+@@ -294,47 +294,6 @@ public class IconHelper {
+         }
+     }
+ 
+-    /**
+-     * PlaitOS: a file's type as a design-guide icon (Material Symbols via plait-design), tinted
+-     * for the tile it sits on: folders on the tonal tile, files on the neutral one.
+-     */
+-    public static Drawable plaitTypeIcon(Context context, String mimeType) {
+-        final String mime = mimeType == null ? "" : mimeType.toLowerCase(java.util.Locale.ROOT);
+-        final int icon;
+-        boolean folder = false;
+-        if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+-            icon = app.plait.design.R.drawable.ps_folder;
+-            folder = true;
+-        } else if (mime.startsWith("image/")) {
+-            icon = app.plait.design.R.drawable.ps_image;
+-        } else if (mime.startsWith("video/")) {
+-            icon = app.plait.design.R.drawable.ps_movie;
+-        } else if (mime.startsWith("audio/") || mime.equals("application/ogg")) {
+-            icon = app.plait.design.R.drawable.ps_music;
+-        } else if (mime.equals("application/pdf")) {
+-            icon = app.plait.design.R.drawable.ps_pdf;
+-        } else if (mime.equals("application/vnd.android.package-archive")) {
+-            icon = app.plait.design.R.drawable.ps_apk;
+-        } else if (mime.contains("zip") || mime.contains("compressed") || mime.contains("x-tar")
+-                || mime.contains("gzip") || mime.contains("x-7z") || mime.contains("x-rar")
+-                || mime.contains("x-bzip") || mime.contains("x-xz")) {
+-            icon = app.plait.design.R.drawable.ps_zip;
+-        } else if (mime.startsWith("text/") || mime.contains("document") || mime.contains("msword")
+-                || mime.contains("opendocument") || mime.contains("rtf") || mime.contains("epub")
+-                || mime.contains("spreadsheet") || mime.contains("presentation")
+-                || mime.contains("ms-excel") || mime.contains("ms-powerpoint")
+-                || mime.equals("application/json") || mime.equals("application/xml")) {
+-            icon = app.plait.design.R.drawable.ps_document;
+-        } else {
+-            icon = app.plait.design.R.drawable.ps_file;
+-        }
+-        Drawable drawable = context.getDrawable(icon).mutate();
+-        drawable.setTint(com.google.android.material.color.MaterialColors.getColor(context,
+-                folder ? com.google.android.material.R.attr.colorOnPrimaryContainer
+-                        : com.google.android.material.R.attr.colorOnSurfaceVariant, 0xff888888));
+-        return drawable;
+-    }
+-
+     /**
+      * Returns a mime icon or package icon for a {@link DocumentInfo}.
+      */
+-- 
+2.56.1
+

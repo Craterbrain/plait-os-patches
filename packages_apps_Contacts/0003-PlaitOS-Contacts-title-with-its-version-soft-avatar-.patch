@@ -12,6 +12,7 @@ The add button is the shared floating button: 16 dp corners on the
 primary container, with a matching ripple and shadow outline.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
 ---
  res/drawable/floating_action_button.xml       |  4 +-
  res/drawable/plait_fab_background.xml         |  6 +++

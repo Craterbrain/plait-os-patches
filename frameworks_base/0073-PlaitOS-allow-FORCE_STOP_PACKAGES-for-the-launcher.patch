@@ -9,6 +9,7 @@ launcher needs it in its privapp allowlist (an unlisted privileged
 permission stops the boot).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  data/etc/com.android.launcher3.xml | 2 ++
  1 file changed, 2 insertions(+)

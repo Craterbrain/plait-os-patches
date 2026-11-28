@@ -1,0 +1,1155 @@
+From c82ce38cab3fe9fa3e886dfd2808692e26144990 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 22:59:27 -0600
+Subject: [PATCH] PlaitOS: restyle the remaining surfaces through shared pieces
+
+Audit of every Gallery surface; what they share, solved once:
+- Sheets (PlaitSheet, the design guide's sheet for views): Details (label
+  over value, EXIF as a section), Add to album (album rows with a tonal
+  tile, folder underneath, New album first) and Settings (a switch row)
+- Shared header (filtershow_actionbar, now with a title id): the editor,
+  Crop ("Crop" / "Done"; its close and save buttons now work) and Trim
+  ("Trim video" / "Save" instead of an all-caps SAVE)
+- Legacy theme: every Holo style moved to DeviceDefault (Material You):
+  the photo picker, video player, trim and crop get the system's tinted
+  controls, dialogs and menus; action bars without the app logo, sentence
+  case menu text
+- Video player: back arrow and title only, Share opens the system share
+  sheet (not the inline recent-targets list), up goes to the Plait library
+- Copy: sentence case and buttons that say what happens (Save your
+  changes? Discard / Save copy; Export image; Image info; Show applied
+  effects; Black & white; Auto color); Straighten shows its name; the
+  state panel and info panel are no longer all caps
+- Frames are named (Film, Brush, Grunge, Ink, Tape, Black, White, Cream,
+  rounded variants); every one said "None"
+- Colour swatches (Markup, frame colour): 36 dp circles, accent ring on
+  the chosen one, no dark toolbar box
+- versionCode 40063
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                           |   4 +-
+ .../filtershow_color_picker_circle.xml        |   8 +-
+ res/drawable/plait_empty.xml                  |   3 +
+ res/layout-land/filtershow_activity.xml       |   2 +-
+ res/layout/crop_activity.xml                  |   2 +-
+ res/layout/filtershow_actionbar.xml           |   2 +
+ res/layout/filtershow_activity.xml            |   2 +-
+ .../filtershow_control_color_chooser.xml      |  40 +--
+ res/layout/filtershow_info_panel.xml          |   2 +-
+ res/layout/trim_menu.xml                      |  32 ---
+ res/menu/movie.xml                            |   1 -
+ res/values-land/styles.xml                    |   2 +-
+ res/values-night/plait_editor_colors.xml      |   2 +
+ res/values-notouch-v14/styles.xml             |   2 +-
+ res/values-v11/styles.xml                     |   4 +-
+ res/values-v13/styles.xml                     |   4 +-
+ res/values-v14/styles.xml                     |  10 +-
+ res/values-xlarge/styles.xml                  |   2 +-
+ res/values/filtershow_color.xml               |   4 +-
+ res/values/filtershow_strings.xml             |  20 +-
+ res/values/plait_editor_colors.xml            |   2 +
+ res/values/plait_gallery.xml                  |  13 +
+ res/values/styles.xml                         |  28 +-
+ .../android/gallery3d/app/MovieActivity.java  |  14 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   |  65 +++--
+ src/com/android/gallery3d/app/TrimVideo.java  |  11 +-
+ .../filtershow/FilterShowActivity.java        |  27 +-
+ .../filtershow/controller/ColorChooser.java   |   4 +-
+ .../filtershow/crop/CropActivity.java         |  17 +-
+ .../filtershow/editors/EditorStraighten.java  |   5 +-
+ .../gallery3d/filtershow/state/StateView.java |   2 +-
+ .../android/gallery3d/util/PlaitSheet.java    | 255 ++++++++++++++++++
+ 32 files changed, 445 insertions(+), 146 deletions(-)
+ create mode 100644 res/drawable/plait_empty.xml
+ delete mode 100644 res/layout/trim_menu.xml
+ create mode 100644 src/com/android/gallery3d/util/PlaitSheet.java
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 825e1dd..085a7fc 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40060"
+-        android:versionName="1.1.40060"
++<manifest android:versionCode="40063"
++        android:versionName="1.1.40063"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/res/drawable/filtershow_color_picker_circle.xml b/res/drawable/filtershow_color_picker_circle.xml
+index 433df48..e188b03 100644
+--- a/res/drawable/filtershow_color_picker_circle.xml
++++ b/res/drawable/filtershow_color_picker_circle.xml
+@@ -14,13 +14,11 @@
+      limitations under the License.
+ -->
+ 
++<!-- PlaitOS: colour swatches (Markup, frame colour) are round, 36 dp; the chosen one gets an accent ring -->
+ <shape xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:shape="rectangle" >
+-    <size android:width="16dp" android:height="16dp"/>
+-    <corners
+-        android:radius="0dp" />
++    android:shape="oval" >
++    <size android:width="36dp" android:height="36dp"/>
+     <solid android:color="@color/red"/>
+     <stroke android:width="0dp"
+             android:color="#ff000000"/>
+ </shape>
+-
+diff --git a/res/drawable/plait_empty.xml b/res/drawable/plait_empty.xml
+new file mode 100644
+index 0000000..3cb3cd9
+--- /dev/null
++++ b/res/drawable/plait_empty.xml
+@@ -0,0 +1,3 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: nothing (hides the app icon the system action bar would show next to the title) -->
++<shape xmlns:android="http://schemas.android.com/apk/res/android"><size android:width="0dp" android:height="0dp" /><solid android:color="#00000000" /></shape>
+diff --git a/res/layout-land/filtershow_activity.xml b/res/layout-land/filtershow_activity.xml
+index f438012..06a3c82 100644
+--- a/res/layout-land/filtershow_activity.xml
++++ b/res/layout-land/filtershow_activity.xml
+@@ -35,7 +35,7 @@
+ 
+             <ProgressBar
+                     android:id="@+id/loading"
+-                    style="@android:style/Widget.Holo.ProgressBar.Large"
++                    style="@android:style/Widget.DeviceDefault.ProgressBar.Large"
+                     android:layout_width="wrap_content"
+                     android:layout_height="wrap_content"
+                     android:layout_gravity="center"
+diff --git a/res/layout/crop_activity.xml b/res/layout/crop_activity.xml
+index 0620cf4..7bb0b99 100644
+--- a/res/layout/crop_activity.xml
++++ b/res/layout/crop_activity.xml
+@@ -39,7 +39,7 @@
+ 
+             <ProgressBar
+                 android:id="@+id/loading"
+-                style="@android:style/Widget.Holo.ProgressBar.Large"
++                style="@android:style/Widget.DeviceDefault.ProgressBar.Large"
+                 android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:layout_gravity="center"
+diff --git a/res/layout/filtershow_actionbar.xml b/res/layout/filtershow_actionbar.xml
+index 84a47e4..198db45 100644
+--- a/res/layout/filtershow_actionbar.xml
++++ b/res/layout/filtershow_actionbar.xml
+@@ -30,7 +30,9 @@
+         android:src="@drawable/ps_close"
+         android:tint="?android:attr/textColorPrimary" />
+ 
++    <!-- PlaitOS: the shared header (editor, crop, trim): close, title, the one filled action -->
+     <TextView
++        android:id="@+id/plait_header_title"
+         android:layout_width="0dp"
+         android:layout_height="wrap_content"
+         android:layout_weight="1"
+diff --git a/res/layout/filtershow_activity.xml b/res/layout/filtershow_activity.xml
+index 1bee3da..599971b 100644
+--- a/res/layout/filtershow_activity.xml
++++ b/res/layout/filtershow_activity.xml
+@@ -33,7 +33,7 @@
+ 
+             <ProgressBar
+                     android:id="@+id/loading"
+-                    style="@android:style/Widget.Holo.ProgressBar.Large"
++                    style="@android:style/Widget.DeviceDefault.ProgressBar.Large"
+                     android:layout_width="wrap_content"
+                     android:layout_height="wrap_content"
+                     android:layout_gravity="center"
+diff --git a/res/layout/filtershow_control_color_chooser.xml b/res/layout/filtershow_control_color_chooser.xml
+index cbc98cc..499fc6a 100644
+--- a/res/layout/filtershow_control_color_chooser.xml
++++ b/res/layout/filtershow_control_color_chooser.xml
+@@ -29,43 +29,43 @@
+ 
+         <Button
+                 android:id="@+id/draw_color_button01"
+-                android:layout_width="0dp"
+-                android:layout_weight="1"
+-                android:layout_height="wrap_content"
++                android:layout_width="40dp"
++                android:layout_height="40dp"
++                android:layout_gravity="center_vertical"
+                 android:background="@drawable/filtershow_color_picker_circle"
+-                android:layout_marginRight="4dp"/>
++                android:layout_marginEnd="12dp"/>
+ 
+         <Button
+                 android:id="@+id/draw_color_button02"
+-                android:layout_width="0dp"
+-                android:layout_weight="1"
+-                android:layout_height="wrap_content"
++                android:layout_width="40dp"
++                android:layout_height="40dp"
++                android:layout_gravity="center_vertical"
+                 android:background="@drawable/filtershow_color_picker_circle"
+-                android:layout_marginRight="4dp"/>
++                android:layout_marginEnd="12dp"/>
+ 
+         <Button
+                 android:id="@+id/draw_color_button03"
+-                android:layout_width="0dp"
+-                android:layout_weight="1"
+-                android:layout_height="wrap_content"
++                android:layout_width="40dp"
++                android:layout_height="40dp"
++                android:layout_gravity="center_vertical"
+                 android:background="@drawable/filtershow_color_picker_circle"
+-                android:layout_marginRight="4dp"/>
++                android:layout_marginEnd="12dp"/>
+ 
+         <Button
+                 android:id="@+id/draw_color_button04"
+-                android:layout_width="0dp"
+-                android:layout_weight="1"
+-                android:layout_height="wrap_content"
++                android:layout_width="40dp"
++                android:layout_height="40dp"
++                android:layout_gravity="center_vertical"
+                 android:background="@drawable/filtershow_color_picker_circle"
+-                android:layout_marginRight="4dp"/>
++                android:layout_marginEnd="12dp"/>
+ 
+         <Button
+                 android:id="@+id/draw_color_button05"
+-                android:layout_width="0dp"
+-                android:layout_weight="1"
+-                android:layout_height="wrap_content"
++                android:layout_width="40dp"
++                android:layout_height="40dp"
++                android:layout_gravity="center_vertical"
+                 android:background="@drawable/filtershow_color_picker_circle"
+-                android:layout_marginRight="4dp"/>
++                android:layout_marginEnd="12dp"/>
+ 
+     </LinearLayout>
+ 
+diff --git a/res/layout/filtershow_info_panel.xml b/res/layout/filtershow_info_panel.xml
+index 43878b6..f095897 100644
+--- a/res/layout/filtershow_info_panel.xml
++++ b/res/layout/filtershow_info_panel.xml
+@@ -51,7 +51,7 @@
+                 <TextView
+                         android:id="@+id/imageSize"
+                         style="?android:textAppearanceSmall"
+-                        android:textAllCaps="true"
++                        android:textAllCaps="false"
+                         android:textColor="#80ffffff"
+                         android:textStyle="bold"
+                         android:layout_gravity="end"
+diff --git a/res/layout/trim_menu.xml b/res/layout/trim_menu.xml
+deleted file mode 100644
+index e233392..0000000
+--- a/res/layout/trim_menu.xml
++++ /dev/null
+@@ -1,32 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Copyright (C) 2012 The Android Open Source Project
+-
+-     Licensed under the Apache License, Version 2.0 (the "License");
+-     you may not use this file except in compliance with the License.
+-     You may obtain a copy of the License at
+-
+-          http://www.apache.org/licenses/LICENSE-2.0
+-
+-     Unless required by applicable law or agreed to in writing, software
+-     distributed under the License is distributed on an "AS IS" BASIS,
+-     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-     See the License for the specific language governing permissions and
+-     limitations under the License.
+--->
+-
+-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+-        android:layout_width="match_parent"
+-        android:layout_height="match_parent"
+-        android:layout_centerVertical="true">
+-    <TextView
+-        android:id="@+id/start_trim"
+-        android:layout_marginLeft="8dp"
+-        android:layout_width="wrap_content"
+-        android:layout_height="match_parent"
+-        android:text="@string/save"
+-        android:textAllCaps="true"
+-        android:textSize="14sp"
+-        android:gravity="left|center_vertical"
+-        android:drawableLeft="@drawable/menu_save_photo"
+-        android:drawablePadding="8dp" />
+-</FrameLayout>
+diff --git a/res/menu/movie.xml b/res/menu/movie.xml
+index dbfd224..56a725d 100644
+--- a/res/menu/movie.xml
++++ b/res/menu/movie.xml
+@@ -19,6 +19,5 @@
+             android:iconTint="?android:attr/textColorPrimary"
+             android:title="@string/share"
+             android:enabled="true"
+-            android:actionProviderClass="android.widget.ShareActionProvider"
+             android:showAsAction="ifRoom" />
+ </menu>
+diff --git a/res/values-land/styles.xml b/res/values-land/styles.xml
+index 6ca7e91..7ddf0ca 100644
+--- a/res/values-land/styles.xml
++++ b/res/values-land/styles.xml
+@@ -16,7 +16,7 @@
+ 
+ <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+     <!-- Spinner primary text is smaller than usual due to extra vertical padding in spinner asset -->
+-    <style name="ActionBarTwoLinePrimary" parent="@android:style/TextAppearance.Holo.Widget.ActionBar.Title">
++    <style name="ActionBarTwoLinePrimary" parent="@android:style/TextAppearance.DeviceDefault.Widget.ActionBar.Title">
+         <item name="android:textSize">14sp</item>
+     </style>
+ 
+diff --git a/res/values-night/plait_editor_colors.xml b/res/values-night/plait_editor_colors.xml
+index 15ad3e1..4200d36 100644
+--- a/res/values-night/plait_editor_colors.xml
++++ b/res/values-night/plait_editor_colors.xml
+@@ -11,4 +11,6 @@
+     <color name="plait_bar_icon">@android:color/system_on_surface_variant_dark</color>
+     <color name="plait_bar_label_selected">@android:color/system_on_surface_dark</color>
+     <color name="plait_on_accent">@android:color/system_on_primary_dark</color>
++    <!-- PlaitOS: sheets (PlaitSheet): the raised surface -->
++    <color name="plait_sheet">@android:color/system_surface_container_high_dark</color>
+ </resources>
+diff --git a/res/values-notouch-v14/styles.xml b/res/values-notouch-v14/styles.xml
+index 1b1b1af..90d6812 100644
+--- a/res/values-notouch-v14/styles.xml
++++ b/res/values-notouch-v14/styles.xml
+@@ -15,7 +15,7 @@
+ -->
+ 
+ <resources>
+-    <style name="Theme.GalleryBase" parent="android:Theme.Holo.NoActionBar.Fullscreen">
++    <style name="Theme.GalleryBase" parent="android:Theme.DeviceDefault.NoActionBar.Fullscreen">
+         <item name="listPreferredItemHeightSmall">?android:attr/listPreferredItemHeightSmall</item>
+         <item name="switchStyle">@android:style/Widget.CompoundButton</item>
+     </style>
+diff --git a/res/values-v11/styles.xml b/res/values-v11/styles.xml
+index d4105a3..419926e 100644
+--- a/res/values-v11/styles.xml
++++ b/res/values-v11/styles.xml
+@@ -18,7 +18,7 @@
+          the activity preview window created by the system process while the
+          real activity is loading will also contain an action bar. Set this to
+          NoActionBar and change the theme in onCreate. -->
+-    <style name="Theme.CameraBase" parent="android:Theme.Holo.NoActionBar.Fullscreen"/>
+-    <style name="Widget.Button.Borderless" parent="android:Widget.Holo.Button.Borderless"/>
++    <style name="Theme.CameraBase" parent="android:Theme.DeviceDefault.NoActionBar.Fullscreen"/>
++    <style name="Widget.Button.Borderless" parent="android:Widget.DeviceDefault.Button.Borderless"/>
+ </resources>
+ 
+diff --git a/res/values-v13/styles.xml b/res/values-v13/styles.xml
+index 10162b0..3e01a4f 100644
+--- a/res/values-v13/styles.xml
++++ b/res/values-v13/styles.xml
+@@ -14,7 +14,7 @@
+      limitations under the License.
+ -->
+ <resources xmlns:android="http://schemas.android.com/apk/res/android">
+-    <style name="TextAppearance.DialogWindowTitle" parent="@android:style/TextAppearance.Holo.DialogWindowTitle"/>
+-    <style name="TextAppearance.Medium" parent="@android:style/TextAppearance.Holo.Medium"/>
++    <style name="TextAppearance.DialogWindowTitle" parent="@android:style/TextAppearance.DeviceDefault.DialogWindowTitle"/>
++    <style name="TextAppearance.Medium" parent="@android:style/TextAppearance.DeviceDefault.Medium"/>
+ </resources>
+ 
+diff --git a/res/values-v14/styles.xml b/res/values-v14/styles.xml
+index c05bf30..2a07c7a 100644
+--- a/res/values-v14/styles.xml
++++ b/res/values-v14/styles.xml
+@@ -15,15 +15,19 @@
+ -->
+ 
+ <resources>
+-    <style name="Theme.GalleryBase" parent="android:Theme.Holo">
++    <!-- PlaitOS: the legacy screens (photo picker, video player, trim, crop) on the system's
++         Material You theme instead of Holo: wallpaper-tinted controls, dialogs and menus; dark,
++         since these screens show photos and video on black -->
++    <style name="Theme.GalleryBase" parent="android:Theme.DeviceDefault">
++        <item name="android:actionMenuTextAppearance">@style/PlaitActionMenuText</item>
+         <item name="listPreferredItemHeightSmall">?android:attr/listPreferredItemHeightSmall</item>
+         <item name="switchStyle">@android:style/Widget.CompoundButton</item>
+     </style>
+     <style name="ActionBarTwoLineItem">
+         <item name="android:background">?android:attr/activatedBackgroundIndicator</item>
+     </style>
+-    <style name="Theme.Photos.Gallery" parent="android:Theme.Holo.Light">
++    <style name="Theme.Photos.Gallery" parent="android:Theme.DeviceDefault.DayNight">
+     </style>
+-    <style name="Theme.Photos.Fullscreen" parent="android:Theme.Holo">
++    <style name="Theme.Photos.Fullscreen" parent="android:Theme.DeviceDefault">
+     </style>
+ </resources>
+diff --git a/res/values-xlarge/styles.xml b/res/values-xlarge/styles.xml
+index 55b29b1..3dbe7c8 100644
+--- a/res/values-xlarge/styles.xml
++++ b/res/values-xlarge/styles.xml
+@@ -14,7 +14,7 @@
+      limitations under the License.
+ -->
+ <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+-    <style name="DialogPickerTheme" parent="android:Theme.Holo.Dialog">
++    <style name="DialogPickerTheme" parent="android:Theme.DeviceDefault.Dialog">
+     </style>
+     <bool name="picker_is_dialog">true</bool>
+ 
+diff --git a/res/values/filtershow_color.xml b/res/values/filtershow_color.xml
+index 4fb4495..c18883f 100644
+--- a/res/values/filtershow_color.xml
++++ b/res/values/filtershow_color.xml
+@@ -22,7 +22,7 @@
+     <color name="text_toolbar">#FFFFFF</color>
+     <color name="background_screen">#101010</color>
+     <color name="background_toolbar">#363949</color>
+-    <color name="background_main_toolbar">#232323</color>
++    <color name="background_main_toolbar">@color/plait_bar</color>
+     <color name="toolbar_separation_line">#333333</color>
+     <color name="slider_dot_color">#646464</color>
+     <color name="slider_line_color">#888888</color>
+@@ -48,6 +48,6 @@
+     <color name="gradcontrol_line_shadow">#000000</color>
+     <color name="draw_rect_border">#888888</color>
+     <color name="color_chooser_unslected_border">#00000000</color>
+-    <color name="color_chooser_slected_border">#a7a7a7</color>
++    <color name="color_chooser_slected_border">@color/plait_editor_accent</color>
+ 
+ </resources>
+\ No newline at end of file
+diff --git a/res/values/filtershow_strings.xml b/res/values/filtershow_strings.xml
+index 207f79e..f705873 100644
+--- a/res/values/filtershow_strings.xml
++++ b/res/values/filtershow_strings.xml
+@@ -46,9 +46,9 @@
+     <!--  Text for redo menu item [CHAR LIMIT=20] -->
+     <string name="filtershow_redo">Redo</string>
+     <!--  Text for the image menu item showing the filters that have been applied [CHAR LIMIT=30] -->
+-    <string name="show_imagestate_panel">Show Applied Effects</string>
++    <string name="show_imagestate_panel">Show applied effects</string>
+     <!--  Text for the image state panel menu item [CHAR LIMIT=30] -->
+-    <string name="hide_imagestate_panel">Hide Applied Effects</string>
++    <string name="hide_imagestate_panel">Hide applied effects</string>
+     <!--  Text for the menu item to export a flattened photo[CHAR LIMIT=30] -->
+     <string name="export_image">Export</string>
+     <!-- Text for the print menu item [CHAR LIMIT=20] -->
+@@ -57,7 +57,7 @@
+     <!-- Export Dialog-->
+ 
+     <!--  Text for the dialog title to export a flattened photo[CHAR LIMIT=25] -->
+-    <string name="export_flattened">Export Flattened Image</string>
++    <string name="export_flattened">Export image</string>
+     <!--  Text for selecting export image quality [CHAR LIMIT=100] -->
+     <string name="select_output_settings">The exported image will be a copy, without the history.</string>
+     <!--  Text for quality value tag [CHAR LIMIT=30] -->
+@@ -73,15 +73,15 @@
+     <!--  Exit Dialog -->
+ 
+     <!--  String displayed when exiting with unsaved changes [CHAR LIMIT=NONE] -->
+-    <string name="unsaved">There are unsaved changes to this image.</string>
++    <string name="unsaved">Your edits will be lost unless you save a copy.</string>
+     <!--  String displayed when exiting with unsaved changes [CHAR LIMIT=NONE] -->
+-    <string name="save_before_exit">Do you want to save before exiting?</string>
++    <string name="save_before_exit">Save your changes?</string>
+     <!--  String displayed when saving and exiting editor [CHAR LIMIT=NONE] -->
+-    <string name="save_and_exit">Save and Exit</string>
++    <string name="save_and_exit">Save copy</string>
+     <!--  String displayed when saving and exiting editor [CHAR LIMIT=NONE] -->
+     <string name="save_and_processing">Processing full resolution image...</string>
+     <!--  String displayed when exiting editor[CHAR LIMIT=NONE] -->
+-    <string name="exit">Exit</string>
++    <string name="exit">Discard</string>
+ 
+     <!--  History Panel -->
+ 
+@@ -143,9 +143,9 @@
+     <!--  Label for the image saturation (brightens colors) filter button [CHAR LIMIT=10] -->
+     <string name="saturation">Saturation</string>
+     <!--  Label for the image BW filter (makes black & white) button [CHAR LIMIT=10] -->
+-    <string name="bwfilter">BW Filter</string>
++    <string name="bwfilter">Black &amp; white</string>
+     <!--  Label for the image Autocolor filter (makes off-white colors whiter) button [CHAR LIMIT=10] -->
+-    <string name="wbalance">Autocolor</string>
++    <string name="wbalance">Auto color</string>
+     <!--  Label for the image Hue filter (color, shade, tinge, tone) button [CHAR LIMIT=10] -->
+     <string name="hue">Hue</string>
+     <!--  Label for the image shadow recovery (lightens/darkens shadows) filter button [CHAR LIMIT=10] -->
+@@ -290,7 +290,7 @@
+     <string name="filtershow_preset_name">Preset Name</string>
+ 
+     <!-- Label for showing the image information panel [CHAR LIMIT=50] -->
+-    <string name="filtershow_show_info_panel">Information</string>
++    <string name="filtershow_show_info_panel">Image info</string>
+     <!-- Label for the information panel [CHAR LIMIT=30] -->
+     <string name="filtershow_show_info_panel_name">Image Name</string>
+     <!-- Label for the information panel [CHAR LIMIT=30] -->
+diff --git a/res/values/plait_editor_colors.xml b/res/values/plait_editor_colors.xml
+index 1908a54..05c7a93 100644
+--- a/res/values/plait_editor_colors.xml
++++ b/res/values/plait_editor_colors.xml
+@@ -12,4 +12,6 @@
+     <color name="plait_bar_icon">@android:color/system_on_surface_variant_light</color>
+     <color name="plait_bar_label_selected">@android:color/system_on_surface_light</color>
+     <color name="plait_on_accent">@android:color/system_on_primary_light</color>
++    <!-- PlaitOS: sheets (PlaitSheet): the raised surface -->
++    <color name="plait_sheet">@android:color/system_surface_container_high_light</color>
+ </resources>
+diff --git a/res/values/plait_gallery.xml b/res/values/plait_gallery.xml
+index b3b6d2a..9d0b6a8 100644
+--- a/res/values/plait_gallery.xml
++++ b/res/values/plait_gallery.xml
+@@ -78,6 +78,19 @@
+     <string name="plait_editor_tune_image">Tune image</string>
+     <string name="plait_editor_frames">Frames</string>
+     <string name="plait_editor_auto_color">Auto color</string>
++    <string name="plait_trim_title">Trim video</string>
++    <string name="plait_frame_none">None</string>
++    <string name="plait_frame_film">Film</string>
++    <string name="plait_frame_brush">Brush</string>
++    <string name="plait_frame_grunge">Grunge</string>
++    <string name="plait_frame_ink">Ink</string>
++    <string name="plait_frame_tape">Tape</string>
++    <string name="plait_frame_black">Black</string>
++    <string name="plait_frame_black_rounded">Black, rounded</string>
++    <string name="plait_frame_white">White</string>
++    <string name="plait_frame_white_rounded">White, rounded</string>
++    <string name="plait_frame_cream">Cream</string>
++    <string name="plait_frame_cream_rounded">Cream, rounded</string>
+     <string name="plait_editor_black_white">Black &amp; white</string>
+     <string name="plait_editor_effects">Effects</string>
+     <string name="plait_editor_adjustments">Adjustments</string>
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index 2231cfb..e76c5b1 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -15,11 +15,15 @@
+ -->
+ 
+ <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+-    <style name="Theme.GalleryBase" parent="android:Theme.Holo">
++    <!-- PlaitOS: the legacy screens (photo picker, video player, trim, crop) on the system's
++         Material You theme instead of Holo: wallpaper-tinted controls, dialogs and menus; dark,
++         since these screens show photos and video on black -->
++    <style name="Theme.GalleryBase" parent="android:Theme.DeviceDefault">
++        <item name="android:actionMenuTextAppearance">@style/PlaitActionMenuText</item>
+         <item name="listPreferredItemHeightSmall">48dp</item>
+         <item name="switchStyle">@android:style/Widget.CompoundButton</item>
+     </style>
+-    <style name="Theme.Gallery.Dialog" parent="android:Theme.Holo.Dialog"/>
++    <style name="Theme.Gallery.Dialog" parent="android:Theme.DeviceDefault.Dialog"/>
+     <style name="Theme.Gallery" parent="Theme.GalleryBase">
+         <item name="android:displayOptions"></item>
+         <item name="android:windowContentOverlay">@null</item>
+@@ -39,11 +43,23 @@
+         <item name="android:colorBackgroundCacheHint">@null</item>
+         <item name="android:windowBackground">@drawable/filtershow_tiled_background</item>
+     </style>
+-    <style name="Holo.ActionBar" parent="android:Widget.Holo.ActionBar">
+-        <item name="android:displayOptions">useLogo|showHome</item>
++    <style name="Holo.ActionBar" parent="android:Widget.DeviceDefault.ActionBar">
++        <!-- PlaitOS: title, no app logo; sentence-case title (PlaitActionBarTitle) -->
++        <item name="android:displayOptions">showHome|showTitle</item>
++        <item name="android:titleTextStyle">@style/PlaitActionBarTitle</item>
++        <item name="android:icon">@drawable/plait_empty</item>
++        <item name="android:logo">@drawable/plait_empty</item>
+         <item name="android:background">@drawable/plait_scrim_bar</item>
+         <item name="android:backgroundStacked">@null</item>
+     </style>
++    <!-- PlaitOS: action bar title and menu text: sentence case, the guide's sizes -->
++    <style name="PlaitActionBarTitle" parent="@android:style/TextAppearance.DeviceDefault.Widget.ActionBar.Title">
++        <item name="android:textSize">18sp</item>
++        <item name="android:fontFamily">sans-serif-medium</item>
++    </style>
++    <style name="PlaitActionMenuText" parent="@android:style/TextAppearance.DeviceDefault.Widget.ActionBar.Menu">
++        <item name="android:textAllCaps">false</item>
++    </style>
+     <style name="MediaButton.Play" parent="@android:style/MediaButton.Play">
+         <item name="android:background">@null</item>
+         <item name="android:src">@drawable/icn_media_play</item>
+@@ -54,8 +70,8 @@
+     </style>
+     <bool name="picker_is_dialog">false</bool>
+     <color name="darker_transparent">#C1000000</color>
+-    <style name="ActionBarTwoLinePrimary" parent="@android:style/TextAppearance.Holo.Widget.ActionBar.Title"></style>
+-    <style name="ActionBarTwoLineSecondary" parent="@android:style/TextAppearance.Holo.Widget.ActionBar.Subtitle"></style>
++    <style name="ActionBarTwoLinePrimary" parent="@android:style/TextAppearance.DeviceDefault.Widget.ActionBar.Title"></style>
++    <style name="ActionBarTwoLineSecondary" parent="@android:style/TextAppearance.DeviceDefault.Widget.ActionBar.Subtitle"></style>
+     <style name="ActionBarTwoLineItem">
+         <item name="android:background">@drawable/action_bar_two_line_background</item>
+     </style>
+diff --git a/src/com/android/gallery3d/app/MovieActivity.java b/src/com/android/gallery3d/app/MovieActivity.java
+index a92a46d..a9060d3 100644
+--- a/src/com/android/gallery3d/app/MovieActivity.java
++++ b/src/com/android/gallery3d/app/MovieActivity.java
+@@ -133,10 +133,11 @@ public class MovieActivity extends Activity {
+         if (actionBar == null) {
+             return;
+         }
+-        setActionBarLogoFromIntent(intent);
++        // PlaitOS: back arrow and title only, no app logo or icon (the design guide's header)
+         actionBar.setDisplayOptions(
+-                ActionBar.DISPLAY_HOME_AS_UP,
+-                ActionBar.DISPLAY_HOME_AS_UP);
++                ActionBar.DISPLAY_HOME_AS_UP | ActionBar.DISPLAY_SHOW_TITLE,
++                ActionBar.DISPLAY_HOME_AS_UP | ActionBar.DISPLAY_SHOW_TITLE
++                        | ActionBar.DISPLAY_SHOW_HOME | ActionBar.DISPLAY_USE_LOGO);
+ 
+         String title = intent.getStringExtra(Intent.EXTRA_TITLE);
+         if (title != null) {
+@@ -178,9 +179,9 @@ public class MovieActivity extends Activity {
+         // So, we only share the video if it's "content:".
+         MenuItem shareItem = menu.findItem(R.id.action_share);
+         if (ContentResolver.SCHEME_CONTENT.equals(mUri.getScheme())) {
++            // PlaitOS: the system share sheet (onOptionsItemSelected), as the photo viewer does,
++            // not the old inline list of recent targets
+             shareItem.setVisible(true);
+-            ((ShareActionProvider) shareItem.getActionProvider())
+-                    .setShareIntent(createShareIntent());
+         } else {
+             shareItem.setVisible(false);
+         }
+@@ -191,6 +192,7 @@ public class MovieActivity extends Activity {
+         Intent intent = new Intent(Intent.ACTION_SEND);
+         intent.setType("video/*");
+         intent.putExtra(Intent.EXTRA_STREAM, mUri);
++        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+         return intent;
+     }
+ 
+@@ -201,7 +203,7 @@ public class MovieActivity extends Activity {
+             if (mTreatUpAsBack) {
+                 finish();
+             } else {
+-                startActivity(new Intent(this, GalleryActivity.class));
++                startActivity(new Intent(this, PlaitGalleryActivity.class)); // PlaitOS
+                 finish();
+             }
+             return true;
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index 52665af..d1cfdaf 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -915,15 +915,15 @@ public final class PlaitGalleryActivity extends Activity {
+     }
+ 
+     private void settings() {
++        // PlaitOS: a sheet with a switch row (was a dialog with a checkbox)
+         boolean enabled = getPreferences(MODE_PRIVATE).getBoolean(GROUP_DATES, true);
+-        new AlertDialog.Builder(this).setTitle(R.string.plait_gallery_settings)
+-                .setMultiChoiceItems(new String[]{getString(R.string.plait_gallery_group_dates)},
+-                        new boolean[]{enabled}, (dialog, which, checked) -> {
+-                            getPreferences(MODE_PRIVATE).edit().putBoolean(GROUP_DATES, checked)
+-                                    .apply();
+-                            updateTiles();
+-                        })
+-                .setPositiveButton(android.R.string.ok, null).show();
++        com.android.gallery3d.util.PlaitSheet sheet = new com.android.gallery3d.util.PlaitSheet(
++                this, getText(R.string.plait_gallery_settings));
++        sheet.add(sheet.switchRow(getText(R.string.plait_gallery_group_dates), null, enabled, checked -> {
++            getPreferences(MODE_PRIVATE).edit().putBoolean(GROUP_DATES, checked).apply();
++            updateTiles();
++        }));
++        sheet.show();
+     }
+ 
+     private void openViewer(Media item) {
+@@ -1195,18 +1195,20 @@ public final class PlaitGalleryActivity extends Activity {
+                     && volume.equals(MediaStore.getVolumeName(item.uri))) continue;
+             albums.putIfAbsent(volume + "/" + candidate.folder, candidate);
+         }
++        // PlaitOS: a sheet of album rows (name, folder underneath) with New album first
+         List<Media> destinations = new ArrayList<>(albums.values());
+-        String[] names = destinations.stream().map(album -> album.folder)
+-                .toArray(String[]::new);
+-        AlertDialog.Builder picker = new AlertDialog.Builder(this)
+-                .setTitle(R.string.plait_gallery_add_to_album)
+-                .setPositiveButton(R.string.plait_gallery_new_album, (dialog, which) -> newAlbum(item))
+-                .setNegativeButton(android.R.string.cancel, null);
+-        if (names.length > 0) picker.setItems(names, (dialog, which) -> {
+-            Media album = destinations.get(which);
+-            copyToAlbum(item, MediaStore.getVolumeName(album.uri), album.folder, album.uri);
+-        });
+-        picker.show();
++        com.android.gallery3d.util.PlaitSheet sheet = new com.android.gallery3d.util.PlaitSheet(
++                this, getText(R.string.plait_gallery_add_to_album));
++        sheet.add(sheet.row(R.drawable.ps_album_add, getText(R.string.plait_gallery_new_album), null,
++                () -> newAlbum(item)));
++        for (Media album : destinations) {
++            String folder = album.folder.endsWith("/")
++                    ? album.folder.substring(0, album.folder.length() - 1) : album.folder;
++            String name = folder.substring(folder.lastIndexOf('/') + 1);
++            sheet.add(sheet.row(R.drawable.ps_folder, name, folder, () ->
++                    copyToAlbum(item, MediaStore.getVolumeName(album.uri), album.folder, album.uri)));
++        }
++        sheet.show();
+     }
+ 
+     private void newAlbum(Media item) {
+@@ -1218,7 +1220,7 @@ public final class PlaitGalleryActivity extends Activity {
+         field.addView(input);
+         AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.plait_gallery_new_album)
+                 .setView(field).setNegativeButton(android.R.string.cancel, null)
+-                .setPositiveButton(android.R.string.ok, null).create();
++                .setPositiveButton(R.string.plait_gallery_add_to_album, null).create();
+         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                 .setOnClickListener(view -> {
+                     String name = input.getText().toString().trim();
+@@ -1296,7 +1298,8 @@ public final class PlaitGalleryActivity extends Activity {
+ 
+     private void details(Media item) {
+         mediaLoader.execute(() -> {
+-            StringBuilder data = new StringBuilder();
++            java.util.List<String[]> data = new java.util.ArrayList<>();
++            java.util.List<String[]> exifRows = new java.util.ArrayList<>();
+             appendDetail(data, R.string.plait_gallery_album_name, item.album);
+             appendDetail(data, R.string.plait_gallery_folder, item.folder);
+             if (item.date > 0) appendDetail(data, R.string.plait_gallery_taken,
+@@ -1330,23 +1333,27 @@ public final class PlaitGalleryActivity extends Activity {
+                     String value = exif.getAttribute(key);
+                     if (value != null && !value.isBlank()) fields.put(key, value);
+                 }
+-                if (!fields.isEmpty()) {
+-                    data.append('\n').append(getString(R.string.plait_gallery_exif)).append('\n');
+-                    fields.forEach((key, value) -> data.append(key).append(": ").append(value).append('\n'));
+-                }
++                fields.forEach((key, value) -> exifRows.add(new String[] {key, value}));
+             } catch (IOException | IllegalAccessException | RuntimeException unavailable) {
+                 // MediaStore details remain available for images without readable EXIF.
+             }
+             runOnUiThread(() -> {
+                 if (isDestroyed() || selected == null || !selected.uri.equals(item.uri)) return;
+-                new AlertDialog.Builder(this).setTitle(item.name).setMessage(data.toString().trim())
+-                        .setPositiveButton(android.R.string.ok, null).show();
++                // PlaitOS: a sheet of label-over-value details (was a dialog of plain text)
++                com.android.gallery3d.util.PlaitSheet sheet =
++                        new com.android.gallery3d.util.PlaitSheet(this, item.name);
++                for (String[] row : data) sheet.add(sheet.detail(row[0], row[1]));
++                if (!exifRows.isEmpty()) {
++                    sheet.add(sheet.section(getText(R.string.plait_gallery_exif)));
++                    for (String[] row : exifRows) sheet.add(sheet.detail(row[0], row[1]));
++                }
++                sheet.show();
+             });
+         });
+     }
+ 
+-    private void appendDetail(StringBuilder data, int label, String value) {
+-        if (!value.isBlank()) data.append(getString(label)).append(": ").append(value).append('\n');
++    private void appendDetail(java.util.List<String[]> data, int label, String value) {
++        if (value != null && !value.isBlank()) data.add(new String[] {getString(label), value});
+     }
+ 
+     @Override public void onBackPressed() {
+diff --git a/src/com/android/gallery3d/app/TrimVideo.java b/src/com/android/gallery3d/app/TrimVideo.java
+index a064e60..b343b71 100644
+--- a/src/com/android/gallery3d/app/TrimVideo.java
++++ b/src/com/android/gallery3d/app/TrimVideo.java
+@@ -82,9 +82,14 @@ public class TrimVideo extends Activity implements
+         actionBar.setDisplayOptions(0, displayOptions);
+         displayOptions = ActionBar.DISPLAY_SHOW_CUSTOM;
+         actionBar.setDisplayOptions(displayOptions, displayOptions);
+-        actionBar.setCustomView(R.layout.trim_menu);
+-
+-        mSaveVideoTextView = (TextView) findViewById(R.id.start_trim);
++        // PlaitOS: the shared header (close, "Trim video", Save) instead of an all-caps SAVE
++        actionBar.setCustomView(R.layout.filtershow_actionbar);
++        View header = actionBar.getCustomView();
++        ((TextView) header.findViewById(R.id.plait_header_title)).setText(R.string.plait_trim_title);
++        header.findViewById(R.id.plait_editor_close).setOnClickListener(view -> finish());
++
++        mSaveVideoTextView = (TextView) header.findViewById(R.id.filtershow_done);
++        mSaveVideoTextView.setText(R.string.save);
+         mSaveVideoTextView.setOnClickListener(new View.OnClickListener() {
+             @Override
+             public void onClick(View arg0) {
+diff --git a/src/com/android/gallery3d/filtershow/FilterShowActivity.java b/src/com/android/gallery3d/filtershow/FilterShowActivity.java
+index 0f96493..fa14abe 100644
+--- a/src/com/android/gallery3d/filtershow/FilterShowActivity.java
++++ b/src/com/android/gallery3d/filtershow/FilterShowActivity.java
+@@ -571,6 +571,24 @@ public class FilterShowActivity extends FragmentActivity implements OnItemClickL
+         mLoadBitmapTask.execute(uri);
+     }
+ 
++    private String plaitFrameName(String serialization) {
++        if (serialization == null) return getString(R.string.plait_editor_frames);
++        switch (serialization) {
++            case "FRAME_4X5": return getString(R.string.plait_frame_film);
++            case "FRAME_BRUSH": return getString(R.string.plait_frame_brush);
++            case "FRAME_GRUNGE": return getString(R.string.plait_frame_grunge);
++            case "FRAME_SUMI_E": return getString(R.string.plait_frame_ink);
++            case "FRAME_TAPE": return getString(R.string.plait_frame_tape);
++            case "FRAME_BLACK": return getString(R.string.plait_frame_black);
++            case "FRAME_BLACK_ROUNDED": return getString(R.string.plait_frame_black_rounded);
++            case "FRAME_WHITE": return getString(R.string.plait_frame_white);
++            case "FRAME_WHITE_ROUNDED": return getString(R.string.plait_frame_white_rounded);
++            case "FRAME_CREAM": return getString(R.string.plait_frame_cream);
++            case "FRAME_CREAM_ROUNDED": return getString(R.string.plait_frame_cream_rounded);
++            default: return getString(R.string.plait_editor_frames);
++        }
++    }
++
+     private void fillBorders() {
+         FiltersManager filtersManager = FiltersManager.getManager();
+         ArrayList<FilterRepresentation> borders = filtersManager.getBorders();
+@@ -587,10 +605,11 @@ public class FilterShowActivity extends FragmentActivity implements OnItemClickL
+             mCategoryBordersAdapter.clear();
+         }
+         mCategoryBordersAdapter = new CategoryAdapter(this);
+-        for (FilterRepresentation representation : borders) {
+-            if (representation.getTextId() != 0) {
+-                representation.setName(getString(representation.getTextId()));
+-            }
++        for (int i = 0; i < borders.size(); i++) {
++            FilterRepresentation representation = borders.get(i);
++            // PlaitOS: each frame by its own name (every one was "None": the text id overwrote it)
++            representation.setName(i == 0 ? getString(R.string.plait_frame_none)
++                    : plaitFrameName(representation.getSerializationName()));
+             mCategoryBordersAdapter.add(new Action(this, representation, Action.FULL_VIEW));
+         }
+     }
+diff --git a/src/com/android/gallery3d/filtershow/controller/ColorChooser.java b/src/com/android/gallery3d/filtershow/controller/ColorChooser.java
+index f9f29bc..ff9c7fc 100644
+--- a/src/com/android/gallery3d/filtershow/controller/ColorChooser.java
++++ b/src/com/android/gallery3d/filtershow/controller/ColorChooser.java
+@@ -70,7 +70,7 @@ public class ColorChooser implements Control {
+             button.setTag(hsvo);
+             GradientDrawable sd = ((GradientDrawable) button.getBackground());
+             sd.setColor(palette[i]);
+-            sd.setStroke(3, (mSelectedButton == i) ? mSelected : mTransparent);
++            sd.setStroke(Math.round(3 * mContext.getResources().getDisplayMetrics().density), (mSelectedButton == i) ? mSelected : mTransparent); // PlaitOS: 3 dp ring
+ 
+             final int buttonNo = i;
+             button.setOnClickListener(new View.OnClickListener() {
+@@ -115,7 +115,7 @@ public class ColorChooser implements Control {
+             final Button button = mButton[i];
+             GradientDrawable sd = ((GradientDrawable) button.getBackground());
+             sd.setColor(palette[i]);
+-            sd.setStroke(3, (mSelectedButton == i) ? mSelected : mTransparent);
++            sd.setStroke(Math.round(3 * mContext.getResources().getDisplayMetrics().density), (mSelectedButton == i) ? mSelected : mTransparent); // PlaitOS: 3 dp ring
+         }
+     }
+ 
+diff --git a/src/com/android/gallery3d/filtershow/crop/CropActivity.java b/src/com/android/gallery3d/filtershow/crop/CropActivity.java
+index a215d46..938c3ef 100644
+--- a/src/com/android/gallery3d/filtershow/crop/CropActivity.java
++++ b/src/com/android/gallery3d/filtershow/crop/CropActivity.java
+@@ -110,12 +110,17 @@ public class CropActivity extends Activity {
+             actionBar.setDisplayOptions(ActionBar.DISPLAY_SHOW_CUSTOM);
+             actionBar.setCustomView(R.layout.filtershow_actionbar);
+ 
+-            View mSaveButton = actionBar.getCustomView();
+-            mSaveButton.setOnClickListener(new OnClickListener() {
+-                @Override
+-                public void onClick(View view) {
+-                    startFinishOutput();
+-                }
++            // PlaitOS: the shared header with this screen's title and action; its buttons work
++            // (only the bar as a whole was wired, so close and Save copy did nothing)
++            View header = actionBar.getCustomView();
++            ((android.widget.TextView) header.findViewById(R.id.plait_header_title))
++                    .setText(R.string.crop_action);
++            android.widget.Button done = (android.widget.Button) header.findViewById(R.id.filtershow_done);
++            done.setText(R.string.done);
++            done.setOnClickListener(view -> startFinishOutput());
++            header.findViewById(R.id.plait_editor_close).setOnClickListener(view -> {
++                setResult(RESULT_CANCELED);
++                finish();
+             });
+         }
+         if (intent.getData() != null) {
+diff --git a/src/com/android/gallery3d/filtershow/editors/EditorStraighten.java b/src/com/android/gallery3d/filtershow/editors/EditorStraighten.java
+index 3222627..ac14d55 100644
+--- a/src/com/android/gallery3d/filtershow/editors/EditorStraighten.java
++++ b/src/com/android/gallery3d/filtershow/editors/EditorStraighten.java
+@@ -39,9 +39,8 @@ public class EditorStraighten extends Editor implements EditorInfo {
+ 
+     @Override
+     public String calculateUserMessage(Context context, String effectName, Object parameterValue) {
+-        String apply = context.getString(R.string.apply_effect);
+-        apply += " " + effectName;
+-        return apply; // PlaitOS: sentence case
++        // PlaitOS: the tool's name, like every other tool (was "Apply")
++        return context.getString(R.string.straighten);
+     }
+ 
+     @Override
+diff --git a/src/com/android/gallery3d/filtershow/state/StateView.java b/src/com/android/gallery3d/filtershow/state/StateView.java
+index 6875de1..cbf3d06 100644
+--- a/src/com/android/gallery3d/filtershow/state/StateView.java
++++ b/src/com/android/gallery3d/filtershow/state/StateView.java
+@@ -280,7 +280,7 @@ public class StateView extends View implements SwipableView {
+ 
+     public void setState(State state) {
+         mState = state;
+-        mText = mState.getText().toUpperCase();
++        mText = mState.getText(); // PlaitOS: sentence case
+         mType = mState.getType();
+         invalidate();
+     }
+diff --git a/src/com/android/gallery3d/util/PlaitSheet.java b/src/com/android/gallery3d/util/PlaitSheet.java
+new file mode 100644
+index 0000000..bdb8ca7
+--- /dev/null
++++ b/src/com/android/gallery3d/util/PlaitSheet.java
+@@ -0,0 +1,255 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.gallery3d.util;
++
++import android.app.Dialog;
++import android.content.Context;
++import android.content.res.ColorStateList;
++import android.graphics.Typeface;
++import android.graphics.drawable.ColorDrawable;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.RippleDrawable;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.view.Window;
++import android.view.WindowManager;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.Switch;
++import android.widget.TextView;
++
++import com.android.gallery3d.R;
++
++import java.util.function.Consumer;
++
++/**
++ * PlaitOS: the design guide's PlaitSheet for views (the Gallery has no Compose or Material
++ * components): pickers, details and quick settings slide up from the bottom on the raised surface
++ * with 28 dp top corners and a handle, an optional title, and rows from the guide (ListRow with a
++ * tonal tile, SwitchRow, a label over a value). Confirmations stay AlertDialogs.
++ */
++public final class PlaitSheet {
++    private final Context mContext;
++    private final Dialog mDialog;
++    private final LinearLayout mContent;
++
++    public PlaitSheet(Context context, CharSequence title) {
++        mContext = context;
++        mDialog = new Dialog(context);
++        mDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
++
++        LinearLayout sheet = new LinearLayout(context);
++        sheet.setOrientation(LinearLayout.VERTICAL);
++        GradientDrawable surface = new GradientDrawable();
++        float r = dp(28);
++        surface.setCornerRadii(new float[] {r, r, r, r, 0, 0, 0, 0});
++        surface.setColor(context.getColor(R.color.plait_sheet));
++        sheet.setBackground(surface);
++        sheet.setPadding(dp(16), dp(10), dp(16), dp(24));
++
++        View handle = new View(context);
++        GradientDrawable pill = new GradientDrawable();
++        pill.setCornerRadius(dp(2));
++        pill.setColor(context.getColor(R.color.plait_bar_icon));
++        handle.setBackground(pill);
++        handle.setAlpha(0.4f);
++        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(dp(32), dp(4));
++        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
++        handleParams.bottomMargin = dp(14);
++        sheet.addView(handle, handleParams);
++
++        if (title != null) {
++            TextView heading = text(title, 22, R.color.plait_editor_label);
++            heading.setTypeface(Typeface.create(Typeface.DEFAULT, 600, false));
++            heading.setPadding(dp(4), 0, dp(4), dp(8));
++            sheet.addView(heading);
++        }
++
++        mContent = new LinearLayout(context);
++        mContent.setOrientation(LinearLayout.VERTICAL);
++        ScrollView scroll = new ScrollView(context);
++        scroll.addView(mContent);
++        sheet.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.WRAP_CONTENT));
++
++        // Short sheets open fully; a long one stops at 85 % of the screen and scrolls
++        FrameLayout limiter = new FrameLayout(context) {
++            @Override protected void onMeasure(int widthSpec, int heightSpec) {
++                int max = (int) (getResources().getDisplayMetrics().heightPixels * 0.85f);
++                super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(
++                        Math.min(max, MeasureSpec.getSize(heightSpec)), MeasureSpec.AT_MOST));
++            }
++        };
++        limiter.addView(sheet);
++        mDialog.setContentView(limiter);
++        Window window = mDialog.getWindow();
++        if (window != null) {
++            window.setBackgroundDrawable(new ColorDrawable(0));
++            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
++            window.setGravity(Gravity.BOTTOM);
++            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
++            window.setDimAmount(0.5f);
++            window.setWindowAnimations(android.R.style.Animation_InputMethod);
++            window.setNavigationBarColor(context.getColor(R.color.plait_sheet));
++        }
++    }
++
++    public PlaitSheet add(View view) {
++        mContent.addView(view);
++        return this;
++    }
++
++    public void show() {
++        mDialog.show();
++    }
++
++    public void dismiss() {
++        mDialog.dismiss();
++    }
++
++    /** A list row: tonal tile, title, optional second line; tapping runs onClick and closes. */
++    public View row(int icon, CharSequence title, CharSequence subtitle, Runnable onClick) {
++        LinearLayout row = rowContainer();
++        if (icon != 0) {
++            FrameLayout tile = new FrameLayout(mContext);
++            GradientDrawable shape = new GradientDrawable();
++            shape.setCornerRadius(dp(12));
++            shape.setColor(mContext.getColor(R.color.plait_editor_tone));
++            tile.setBackground(shape);
++            ImageView image = new ImageView(mContext);
++            image.setImageResource(icon);
++            image.setImageTintList(ColorStateList.valueOf(mContext.getColor(R.color.plait_editor_on_tone)));
++            tile.addView(image, new FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER));
++            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(40), dp(40));
++            params.setMarginEnd(dp(16));
++            row.addView(tile, params);
++        }
++        row.addView(twoLines(title, subtitle, false), new LinearLayout.LayoutParams(0,
++                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
++        row.setOnClickListener(v -> {
++            dismiss();
++            if (onClick != null) onClick.run();
++        });
++        return row;
++    }
++
++    /** A switch row: the whole row toggles it. */
++    public View switchRow(CharSequence title, CharSequence subtitle, boolean checked,
++            Consumer<Boolean> onChange) {
++        LinearLayout row = rowContainer();
++        row.addView(twoLines(title, subtitle, false), new LinearLayout.LayoutParams(0,
++                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
++        Switch toggle = new Switch(mContext);
++        toggle.setChecked(checked);
++        toggle.setClickable(false);
++        toggle.setFocusable(false);
++        int accent = mContext.getColor(R.color.plait_editor_accent);
++        int muted = mContext.getColor(R.color.plait_bar_icon);
++        int[][] states = {{android.R.attr.state_checked}, {}};
++        toggle.setThumbTintList(new ColorStateList(states,
++                new int[] {mContext.getColor(R.color.plait_on_accent), muted}));
++        toggle.setTrackTintList(new ColorStateList(states,
++                new int[] {accent, (muted & 0xffffff) | 0x40000000}));
++        row.addView(toggle);
++        row.setOnClickListener(v -> {
++            toggle.setChecked(!toggle.isChecked());
++            onChange.accept(toggle.isChecked());
++        });
++        return row;
++    }
++
++    /** A detail: a muted label over its value (selectable, so it can be copied). */
++    public View detail(CharSequence label, CharSequence value) {
++        View lines = twoLines(value, label, true);
++        lines.setPadding(dp(4), dp(8), dp(4), dp(8));
++        return lines;
++    }
++
++    /** A section label over a group of rows. */
++    public View section(CharSequence label) {
++        TextView text = text(label, 14, R.color.plait_editor_accent);
++        text.setTypeface(Typeface.create(Typeface.DEFAULT, 600, false));
++        text.setPadding(dp(4), dp(16), dp(4), dp(4));
++        return text;
++    }
++
++    /** A row of buttons at the end of the sheet; main = the one filled (primary) button. */
++    public View buttons(CharSequence[] labels, boolean[] main, Runnable[] actions) {
++        LinearLayout row = new LinearLayout(mContext);
++        row.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
++        row.setPadding(0, dp(12), 0, 0);
++        for (int i = 0; i < labels.length; i++) {
++            TextView button = text(labels[i], 14, main[i] ? R.color.plait_on_accent : R.color.plait_editor_on_tone);
++            button.setTypeface(Typeface.create(Typeface.DEFAULT, 500, false));
++            button.setGravity(Gravity.CENTER);
++            button.setPadding(dp(20), 0, dp(20), 0);
++            GradientDrawable shape = new GradientDrawable();
++            shape.setCornerRadius(dp(10));
++            shape.setColor(mContext.getColor(main[i] ? R.color.plait_editor_accent : R.color.plait_editor_tone));
++            button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), shape, null));
++            final Runnable action = actions[i];
++            button.setOnClickListener(v -> {
++                dismiss();
++                if (action != null) action.run();
++            });
++            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
++                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
++            params.setMarginStart(dp(12));
++            row.addView(button, params);
++        }
++        return row;
++    }
++
++    private LinearLayout rowContainer() {
++        LinearLayout row = new LinearLayout(mContext);
++        row.setGravity(Gravity.CENTER_VERTICAL);
++        row.setMinimumHeight(dp(64));
++        row.setPadding(dp(4), dp(8), dp(4), dp(8));
++        GradientDrawable mask = new GradientDrawable();
++        mask.setCornerRadius(dp(14));
++        mask.setColor(0xffffffff);
++        row.setBackground(new RippleDrawable(ColorStateList.valueOf(
++                (mContext.getColor(R.color.plait_editor_accent) & 0xffffff) | 0x29000000), null, mask));
++        row.setClickable(true);
++        row.setFocusable(true);
++        return row;
++    }
++
++    /** Title 16 sp over a second line 14 sp (or, as a detail, the label small above the value). */
++    private View twoLines(CharSequence first, CharSequence second, boolean labelAbove) {
++        LinearLayout lines = new LinearLayout(mContext);
++        lines.setOrientation(LinearLayout.VERTICAL);
++        TextView main = text(first, 16, R.color.plait_editor_label);
++        if (labelAbove) {
++            TextView label = text(second, 12, R.color.plait_bar_icon);
++            lines.addView(label);
++            main.setTextIsSelectable(true);
++            lines.addView(main);
++        } else {
++            lines.addView(main);
++            if (second != null && second.length() > 0) {
++                lines.addView(text(second, 14, R.color.plait_bar_icon));
++            }
++        }
++        return lines;
++    }
++
++    private TextView text(CharSequence value, int sp, int color) {
++        TextView text = new TextView(mContext);
++        text.setText(value);
++        text.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
++        text.setTextColor(mContext.getColor(color));
++        return text;
++    }
++
++    private int dp(int value) {
++        return Math.round(value * mContext.getResources().getDisplayMetrics().density);
++    }
++}
+-- 
+2.56.1
+

@@ -1,0 +1,144 @@
+From d41996369675b3ac7b98aec98ed6ec519e12f411 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 10:25:52 -0600
+Subject: [PATCH] PlaitOS: the LocalSend button is labelled LocalSend with the
+ app's own icon
+
+The menu item carries LocalSend's icon (from the package manager); the selection bar shows
+an app's icon untinted at a tile's size. Bar labels use the full action width.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ .../menu/action_mode_menu_m3.xml              |  1 -
+ res/values/plait_files.xml                    |  5 ++---
+ src/com/android/documentsui/MenuManager.java  |  6 ++++++
+ src/com/android/documentsui/PlaitCompose.kt   | 20 +++++++++++++++----
+ .../documentsui/files/MenuManager.java        |  9 +++++++++
+ 5 files changed, 33 insertions(+), 8 deletions(-)
+
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/menu/action_mode_menu_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/menu/action_mode_menu_m3.xml
+index d4c13c7..e6c4266 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/menu/action_mode_menu_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/menu/action_mode_menu_m3.xml
+@@ -48,7 +48,6 @@
+         <item
+             android:id="@+id/plait_menu_send_nearby"
+             android:title="@string/plait_send_nearby"
+-            android:titleCondensed="@string/plait_send_nearby_short"
+             android:visible="false"
+             app:showAsAction="never" />
+     </group>
+diff --git a/res/values/plait_files.xml b/res/values/plait_files.xml
+index 46582c7..aa4288f 100644
+--- a/res/values/plait_files.xml
++++ b/res/values/plait_files.xml
+@@ -39,9 +39,8 @@
+     <string name="plait_open_from_app">Open from an app</string>
+     <string name="plait_paste_here">Paste here</string>
+     <string name="plait_up">Up one folder</string>
+-    <!-- Selection action: send the files to a nearby device with LocalSend -->
+-    <string name="plait_send_nearby">Send nearby</string>
+-    <string name="plait_send_nearby_short">Nearby</string>
++    <!-- Selection action: send the files to a nearby device with LocalSend (the app's name) -->
++    <string name="plait_send_nearby" translatable="false">LocalSend</string>
+     <!-- Paste bar: what is waiting, and where it goes -->
+     <plurals name="plait_items_to_move">
+         <item quantity="one">%1$d item to move</item>
+diff --git a/src/com/android/documentsui/MenuManager.java b/src/com/android/documentsui/MenuManager.java
+index 32cea8f..964a37c 100644
+--- a/src/com/android/documentsui/MenuManager.java
++++ b/src/com/android/documentsui/MenuManager.java
+@@ -108,6 +108,7 @@ public abstract class MenuManager {
+             MenuItem share = menu.findItem(getRes(R.id.action_menu_share));
+             Menus.setEnabledAndVisible(nearby, share != null && share.isVisible()
+                     && share.isEnabled() && plaitSendNearbyAvailable());
++            if (nearby.isVisible() && nearby.getIcon() == null) nearby.setIcon(plaitSendNearbyIcon());
+         }
+         updateRename(menu.findItem(getRes(R.id.action_menu_rename)), selection);
+         updateCompress(menu.findItem(getRes(R.id.action_menu_compress)), selection);
+@@ -566,6 +567,11 @@ public abstract class MenuManager {
+         return false;
+     }
+ 
++    /** PlaitOS: LocalSend's own app icon for its button (null: the design-guide icon). */
++    protected @Nullable android.graphics.drawable.Drawable plaitSendNearbyIcon() {
++        return null;
++    }
++
+     protected void updateDelete(MenuItem delete, SelectionDetails selectionDetails) {
+         boolean enabled = selectionDetails.canDelete();
+         Menus.setEnabledAndVisible(delete, enabled);
+diff --git a/src/com/android/documentsui/PlaitCompose.kt b/src/com/android/documentsui/PlaitCompose.kt
+index d02b6a9..a9ea5d7 100644
+--- a/src/com/android/documentsui/PlaitCompose.kt
++++ b/src/com/android/documentsui/PlaitCompose.kt
+@@ -198,6 +198,16 @@ internal fun ProviderIcon(drawable: Drawable, modifier: Modifier = Modifier) {
+     }
+ }
+ 
++/** An app's own icon, untinted, at a tonal tile's size (LocalSend's button in the selection bar). */
++@Composable
++internal fun AppIcon(drawable: Drawable, modifier: Modifier = Modifier) {
++    AndroidView(
++        factory = { ImageView(it).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } },
++        update = { it.setImageDrawable(drawable.constantState?.newDrawable() ?: drawable) },
++        modifier = modifier.size(40.dp),
++    )
++}
++
+ /** The drawable to show and whether to tint it (see [ProviderIcon]). */
+ private fun themedIcon(source: Drawable): Pair<Drawable, Boolean> {
+     val drawable = source.constantState?.newDrawable()?.mutate() ?: source
+@@ -313,12 +323,12 @@ internal class PlaitSelectionActions(private val activity: AppCompatActivity) :
+                             ) {
+                                 ui.actions.forEach { row ->
+                                     Column(
+-                                        Modifier.weight(1f).clickable { row.action?.run() }.padding(4.dp),
++                                        Modifier.weight(1f).clickable { row.action?.run() }.padding(vertical = 4.dp),
+                                         horizontalAlignment = Alignment.CenterHorizontally,
+                                     ) {
+-                                        TonalTile(row.icon)
++                                        if (row.drawable != null) AppIcon(row.drawable) else TonalTile(row.icon)
+                                         Text(row.label, style = MaterialTheme.typography.labelSmall,
+-                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
++                                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                     }
+                                 }
+                             }
+@@ -349,9 +359,11 @@ internal class PlaitSelectionActions(private val activity: AppCompatActivity) :
+         fun row(item: android.view.MenuItem, icon: Int, drawable: Drawable? = null) =
+             PlaitCompose.SheetRow((item.titleCondensed ?: item.title).toString(), icon, drawable,
+                 Runnable { invoke.accept(item) })
++        // LocalSend's button shows the app's own icon (its menu item carries it)
+         val direct = visible.filter { it.itemId in primary }
+             .sortedBy { primary.keys.indexOf(it.itemId) }
+-            .map { row(it, primary.getValue(it.itemId)) }
++            .map { row(it, primary.getValue(it.itemId),
++                if (it.itemId == R.id.plait_menu_send_nearby) it.icon else null) }
+         val more = visible.filter { it.itemId !in primary }
+         val actions = if (more.isEmpty()) direct else direct + PlaitCompose.SheetRow(
+             activity.getString(R.string.plait_more), art.More, null,
+diff --git a/src/com/android/documentsui/files/MenuManager.java b/src/com/android/documentsui/files/MenuManager.java
+index 573d200..5067517 100644
+--- a/src/com/android/documentsui/files/MenuManager.java
++++ b/src/com/android/documentsui/files/MenuManager.java
+@@ -318,6 +318,15 @@ public final class MenuManager extends com.android.documentsui.MenuManager {
+         return ActionHandler.plaitSendNearbyIntent(mContext) != null;
+     }
+ 
++    @Override
++    protected android.graphics.drawable.Drawable plaitSendNearbyIcon() {
++        try {
++            return mContext.getPackageManager().getApplicationIcon(ActionHandler.LOCALSEND);
++        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
++            return null;
++        }
++    }
++
+     @Override
+     protected void updateShare(MenuItem share, SelectionDetails selectionDetails) {
+         boolean enabled = !selectionDetails.containsDirectories()
+-- 
+2.56.1
+

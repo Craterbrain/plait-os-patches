@@ -20,6 +20,7 @@ config default off there too) is not ported: it rewrites the saved setting
 around each scan. Revisit if fingerprint unlock suffers with it on.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  packages/SystemUI/res/values/config.xml       |  2 +-
  .../SystemUI/res/values/plait_strings.xml     |  7 +++

@@ -13,6 +13,7 @@ Subject: [PATCH 48/78] PlaitOS: Section 4 fixes from review
   addition didn't)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../shade/QuickSettingsControllerImpl.java    | 13 ++++++++-----
  .../headsup/HeadsUpManagerImpl.java           | 19 +++++++++++--------

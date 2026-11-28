@@ -20,6 +20,7 @@ Hooking the package manager's icon loading was inspired by RichardLuo's
 Global Icon Pack (an Xposed module); no code from it is used.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../app/ApplicationPackageManager.java        |   8 +-
  core/java/android/app/PlaitIconPack.java      | 156 ++++++++++++++++++

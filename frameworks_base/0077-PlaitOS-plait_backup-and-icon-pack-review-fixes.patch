@@ -31,6 +31,7 @@ Icon packs:
   app; only activities showing the app's icon do.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  core/java/android/app/PlaitIconPack.java      |  73 +++++++----
  .../content/pm/PackageManagerInternal.java    |   8 ++

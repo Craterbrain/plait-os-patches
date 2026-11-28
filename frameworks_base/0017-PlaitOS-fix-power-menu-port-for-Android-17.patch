@@ -11,6 +11,7 @@ Subject: [PATCH 17/78] PlaitOS: fix power menu port for Android 17
   navigation; it always shows once chosen in plait_power_menu_actions
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../GlobalActionsDialogLite.java              | 35 +++++++++----------
  1 file changed, 17 insertions(+), 18 deletions(-)

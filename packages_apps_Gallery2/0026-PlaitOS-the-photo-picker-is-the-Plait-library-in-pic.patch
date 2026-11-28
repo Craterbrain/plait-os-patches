@@ -1,0 +1,251 @@
+From 7f2f5da82b1660ba32b0b11138fa11d114b3b473 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 23:03:51 -0600
+Subject: [PATCH] PlaitOS: the photo picker is the Plait library in picker mode
+
+Other apps' GET_CONTENT and PICK (images, videos or both) now open the
+Plait library instead of the legacy GL picker: the same grid, albums,
+explore and search, only the requested type, a header with close and
+"Select a photo" (photos, video, videos, either), no settings gear. One tap
+returns the item; with EXTRA_ALLOW_MULTIPLE taps select and a filled Done
+returns them all (data + ClipData, read permission granted). Back or close
+cancels. Filter chips that cannot match the requested type are hidden.
+versionCode 40065.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                           |  16 +--
+ res/values/plait_gallery.xml                  |   6 +
+ .../gallery3d/app/PlaitGalleryActivity.java   | 109 +++++++++++++++++-
+ 3 files changed, 120 insertions(+), 11 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 085a7fc..01f6702 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40063"
+-        android:versionName="1.1.40063"
++<manifest android:versionCode="40065"
++        android:versionName="1.1.40065"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+@@ -103,11 +103,8 @@
+                 <category android:name="android.intent.category.LAUNCHER" />
+                 <category android:name="android.intent.category.APP_GALLERY" />
+             </intent-filter>
+-        </activity>
+-
+-        <activity android:name="com.android.gallery3d.app.GalleryActivity" android:label="@string/app_name"
+-                android:exported="true"
+-                android:configChanges="keyboardHidden|orientation|screenSize">
++            <!-- PlaitOS: other apps' photo and video picks open the library in picker mode
++                 (moved from the legacy GL GalleryActivity) -->
+             <intent-filter>
+                 <action android:name="android.intent.action.GET_CONTENT" />
+                 <category android:name="android.intent.category.OPENABLE" />
+@@ -134,6 +131,11 @@
+                 <data android:mimeType="vnd.android.cursor.dir/image" />
+                 <data android:mimeType="vnd.android.cursor.dir/video" />
+             </intent-filter>
++        </activity>
++
++        <activity android:name="com.android.gallery3d.app.GalleryActivity" android:label="@string/app_name"
++                android:exported="true"
++                android:configChanges="keyboardHidden|orientation|screenSize">
+             <intent-filter>
+                 <action android:name="android.intent.action.VIEW" />
+                 <category android:name="android.intent.category.DEFAULT" />
+diff --git a/res/values/plait_gallery.xml b/res/values/plait_gallery.xml
+index 9d0b6a8..737a9a0 100644
+--- a/res/values/plait_gallery.xml
++++ b/res/values/plait_gallery.xml
+@@ -79,6 +79,12 @@
+     <string name="plait_editor_frames">Frames</string>
+     <string name="plait_editor_auto_color">Auto color</string>
+     <string name="plait_trim_title">Trim video</string>
++    <string name="plait_pick_photo">Select a photo</string>
++    <string name="plait_pick_photos">Select photos</string>
++    <string name="plait_pick_video">Select a video</string>
++    <string name="plait_pick_videos">Select videos</string>
++    <string name="plait_pick_item">Select a photo or video</string>
++    <string name="plait_pick_items">Select photos or videos</string>
+     <string name="plait_frame_none">None</string>
+     <string name="plait_frame_film">Film</string>
+     <string name="plait_frame_brush">Brush</string>
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index d1cfdaf..600b702 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -151,8 +151,57 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+     }
+ 
++    // PlaitOS: picker mode, for other apps' GET_CONTENT / PICK (was the legacy GL picker): the
++    // library itself, only the requested type, one tap returns the item (or several, with Done)
++    private boolean picker;
++    private boolean pickMultiple;
++    private boolean pickImages = true;
++    private boolean pickVideos = true;
++
++    private void readPickerIntent(Intent intent) {
++        String action = intent == null ? null : intent.getAction();
++        picker = Intent.ACTION_GET_CONTENT.equals(action) || Intent.ACTION_PICK.equals(action);
++        if (!picker) return;
++        pickMultiple = intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
++        String type = intent.resolveType(this);
++        if (type == null) type = intent.getType();
++        if (type != null) {
++            type = type.toLowerCase(Locale.ROOT);
++            boolean image = type.startsWith("image/") || type.endsWith("/image");
++            boolean video = type.startsWith("video/") || type.endsWith("/video");
++            if (image && !video) pickVideos = false;
++            if (video && !image) pickImages = false;
++        }
++    }
++
++    private CharSequence pickerTitle() {
++        int res;
++        if (pickImages && !pickVideos) res = pickMultiple ? R.string.plait_pick_photos : R.string.plait_pick_photo;
++        else if (pickVideos && !pickImages) res = pickMultiple ? R.string.plait_pick_videos : R.string.plait_pick_video;
++        else res = pickMultiple ? R.string.plait_pick_items : R.string.plait_pick_item;
++        return getText(res);
++    }
++
++    /** Hands the chosen items to the app that asked, readable by it, and closes. */
++    private void returnPicked(List<Uri> uris) {
++        if (uris.isEmpty()) return;
++        Intent result = new Intent().setData(uris.get(0))
++                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++        ClipData clip = ClipData.newUri(getContentResolver(), "", uris.get(0));
++        for (int i = 1; i < uris.size(); i++) clip.addItem(new ClipData.Item(uris.get(i)));
++        result.setClipData(clip);
++        setResult(RESULT_OK, result);
++        finish();
++    }
++
++    private void cancelPicker() {
++        setResult(RESULT_CANCELED);
++        finish();
++    }
++
+     @Override public void onCreate(Bundle state) {
+         super.onCreate(state);
++        readPickerIntent(getIntent());
+         if (state != null) {
+             tab = state.getInt("tab");
+             category = state.getString("category");
+@@ -249,6 +298,7 @@ public final class PlaitGalleryActivity extends Activity {
+                 error = true;
+             }
+             loaded.sort((a, b) -> Long.compare(b.date, a.date));
++            if (picker) loaded.removeIf(item -> item.video ? !pickVideos : !pickImages);
+             boolean loadError = error;
+             runOnUiThread(() -> {
+                 if (isDestroyed() || request != generation) return;
+@@ -449,8 +499,13 @@ public final class PlaitGalleryActivity extends Activity {
+             filters.setPadding(dp(12), 0, dp(12), 0);
+             addChip(filters, R.string.plait_gallery_all, null, category == null);
+             addChip(filters, R.string.plait_gallery_favorites, "favorites", "favorites".equals(category));
+-            addChip(filters, R.string.plait_gallery_videos, "videos", "videos".equals(category));
+-            addChip(filters, R.string.plait_gallery_screenshots, "screenshots", "screenshots".equals(category));
++            // PlaitOS: in picker mode, only the chips that can match the requested type
++            if (!picker || (pickVideos && pickImages)) {
++                addChip(filters, R.string.plait_gallery_videos, "videos", "videos".equals(category));
++            }
++            if (!picker || pickImages) {
++                addChip(filters, R.string.plait_gallery_screenshots, "screenshots", "screenshots".equals(category));
++            }
+             scroller.addView(filters);
+             searchBar.addView(scroller);
+         } else if (category != null) {
+@@ -520,6 +575,10 @@ public final class PlaitGalleryActivity extends Activity {
+ 
+     private void updateLibraryTitle() {
+         libraryTitle.removeAllViews();
++        if (picker && checkedMedia.isEmpty()) {
++            libraryTitle.addView(pickerHeader());
++            return;
++        }
+         if (checkedMedia.isEmpty()) {
+             libraryTitle.addView(header(title(), true));
+             return;
+@@ -540,6 +599,16 @@ public final class PlaitGalleryActivity extends Activity {
+         title.setEllipsize(TextUtils.TruncateAt.END);
+         title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+         bar.addView(title, new LinearLayout.LayoutParams(0, dp(56), 1));
++        if (picker) {
++            // The one filled action: hand the selection back
++            Button done = pickerDone();
++            done.setOnClickListener(view -> returnPicked(new ArrayList<>(checkedMedia)));
++            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(40));
++            params.setMarginEnd(dp(8));
++            bar.addView(done, params);
++            libraryTitle.addView(bar);
++            return;
++        }
+         bar.addView(selectionButton(R.drawable.ps_share, R.string.plait_gallery_share,
+                 this::shareSelection), new LinearLayout.LayoutParams(dp(48), dp(48)));
+         bar.addView(selectionButton(R.drawable.ps_delete, R.string.plait_gallery_trash,
+@@ -547,6 +616,36 @@ public final class PlaitGalleryActivity extends Activity {
+         libraryTitle.addView(bar);
+     }
+ 
++    /** Picker header: close (cancel), what to choose; no settings. */
++    private LinearLayout pickerHeader() {
++        LinearLayout bar = new LinearLayout(this);
++        bar.setGravity(Gravity.CENTER_VERTICAL);
++        bar.setPadding(dp(4), 0, dp(8), 0);
++        bar.addView(selectionButton(R.drawable.ps_close, android.R.string.cancel, this::cancelPicker),
++                new LinearLayout.LayoutParams(dp(48), dp(48)));
++        TextView name = label(pickerTitle().toString(), 22, true);
++        name.setGravity(Gravity.CENTER_VERTICAL);
++        name.setSingleLine();
++        name.setEllipsize(TextUtils.TruncateAt.END);
++        name.setPadding(dp(4), 0, 0, 0);
++        bar.addView(name, new LinearLayout.LayoutParams(0, dp(56), 1));
++        return bar;
++    }
++
++    /** The filled Done button (primary, 10 dp corners, as PlaitFilledButton). */
++    private Button pickerDone() {
++        Button done = new Button(this, null, android.R.attr.borderlessButtonStyle);
++        done.setText(R.string.done);
++        done.setAllCaps(false);
++        done.setTextColor(getColor(R.color.plait_on_accent));
++        done.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF),
++                shape(getColor(R.color.plait_editor_accent), 10), null));
++        done.setPadding(dp(20), 0, dp(20), 0);
++        done.setMinWidth(0);
++        done.setMinHeight(0);
++        return done;
++    }
++
+     private ImageButton selectionButton(int icon, int description, Runnable action) {
+         ImageButton button = new ImageButton(this, null, android.R.attr.borderlessButtonStyle);
+         button.setImageResource(icon);
+@@ -1524,13 +1623,15 @@ public final class PlaitGalleryActivity extends Activity {
+                 if (collection) {
+                     category = tile.category;
+                     showLibrary();
+-                } else if (!checkedMedia.isEmpty()) {
++                } else if (picker && !pickMultiple) {
++                    returnPicked(java.util.Collections.singletonList(tile.media.uri));
++                } else if (picker || !checkedMedia.isEmpty()) {
+                     toggleSelection(tile.media);
+                 } else {
+                     openViewer(tile.media);
+                 }
+             });
+-            if (!collection) cell.setOnLongClickListener(view -> {
++            if (!collection && !(picker && !pickMultiple)) cell.setOnLongClickListener(view -> {
+                 toggleSelection(tile.media);
+                 return true;
+             });
+-- 
+2.56.1
+

@@ -1,0 +1,40 @@
+From bcef6b135b8741435e9c2027ee1ee60467da03f9 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:18:33 -0600
+Subject: [PATCH] PlaitOS: advance Gallery photos at a 35 percent swipe
+
+---
+ AndroidManifest.xml                                     | 4 ++--
+ src/com/android/gallery3d/app/PlaitGalleryActivity.java | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 4aefc93..3df6268 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40042"
+-        android:versionName="1.1.40042"
++<manifest android:versionCode="40043"
++        android:versionName="1.1.40043"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index 8fcebe9..f653a49 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -888,7 +888,7 @@ public final class PlaitGalleryActivity extends Activity {
+                     int next = page;
+                     // Keep ViewPager's drag and settle animations, with our release threshold.
+                     if (singlePointer && getWidth() > 0
+-                            && Math.abs(distance) >= getWidth() * .5f) {
++                            && Math.abs(distance) >= getWidth() * .35f) {
+                         next += distance < 0 ? 1 : -1;
+                     }
+                     MotionEvent cancel = MotionEvent.obtain(event);
+-- 
+2.56.1
+

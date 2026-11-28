@@ -12,6 +12,7 @@ Subject: [PATCH] PlaitOS: Settings rows and icon styles on Android 17's pages
 - List summaries use %s: an entry like 50% crashed Settings in String.format
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  res/drawable/ic_homepage_plait.xml            | 21 +++++++++++++++++++
  res/xml/top_level_settings_expressive.xml     |  8 +++++++

@@ -1,0 +1,306 @@
+From c56984b256a033eab8bd3408b95063291f1ec88d Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 19:56:11 -0600
+Subject: [PATCH] PlaitOS: page Gallery photos interactively and use system
+ trash access
+
+---
+ Android.bp                                    |   1 +
+ AndroidManifest.xml                           |   4 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 193 ++++++++++--------
+ 3 files changed, 108 insertions(+), 90 deletions(-)
+
+diff --git a/Android.bp b/Android.bp
+index 0f835d8..67e868c 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -13,6 +13,7 @@ android_app {
+ 
+     static_libs: [
+         "androidx.fragment_fragment",
++        "androidx.viewpager_viewpager",
+         "androidx.legacy_legacy-support-core-ui",
+         "androidx.core_core",
+         "androidx.legacy_legacy-support-v13",
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index fd6d551..461ab2c 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40038"
+-        android:versionName="1.1.40038"
++<manifest android:versionCode="40039"
++        android:versionName="1.1.40039"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index 3e5ada1..ef6235d 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -6,6 +6,7 @@ package com.android.gallery3d.app;
+ import android.app.Activity;
+ import android.app.AlertDialog;
+ import android.content.ContentUris;
++import android.content.ContentValues;
+ import android.content.Intent;
+ import android.content.pm.PackageManager;
+ import android.database.Cursor;
+@@ -24,8 +25,6 @@ import android.text.format.DateUtils;
+ import android.util.LruCache;
+ import android.util.Size;
+ import android.view.Gravity;
+-import android.view.MotionEvent;
+-import android.view.accessibility.AccessibilityNodeInfo;
+ import android.view.View;
+ import android.view.ViewGroup;
+ import android.widget.BaseAdapter;
+@@ -43,6 +42,9 @@ import android.widget.LinearLayout;
+ import android.widget.TextView;
+ import android.widget.Toast;
+ 
++import androidx.viewpager.widget.PagerAdapter;
++import androidx.viewpager.widget.ViewPager;
++
+ import com.android.gallery3d.R;
+ import com.android.gallery3d.filtershow.FilterShowActivity;
+ 
+@@ -72,7 +74,7 @@ public final class PlaitGalleryActivity extends Activity {
+     private String query = "";
+     private Media selected;
+     private final List<Media> viewerPhotos = new ArrayList<>();
+-    private int viewerPosition;
++    private boolean trashInProgress;
+     private LinearLayout root;
+     private ListView grid;
+     private final List<Row> rows = new ArrayList<>();
+@@ -377,7 +379,6 @@ public final class PlaitGalleryActivity extends Activity {
+     private void showLibrary() {
+         selected = null;
+         viewerPhotos.clear();
+-        viewerPosition = -1;
+         root = column();
+         root.addView(header(title(), true));
+         EditText search = new EditText(this);
+@@ -672,106 +673,124 @@ public final class PlaitGalleryActivity extends Activity {
+                 if (tile.category == null && !tile.media.video) viewerPhotos.add(tile.media);
+             }
+         }
+-        viewerPosition = viewerPhotos.indexOf(item);
+         showPhoto(item);
+     }
+ 
+-    private boolean stepPhoto(int offset) {
+-        if (viewerPosition < 0) return false;
+-        for (int next = viewerPosition + offset; next >= 0 && next < viewerPhotos.size();
+-                next += offset) {
+-            Media snapshot = viewerPhotos.get(next);
+-            for (Media item : media) {
+-                if (item.uri.equals(snapshot.uri)) {
+-                    viewerPosition = next;
+-                    showPhoto(item);
+-                    return true;
+-                }
+-            }
++    private void showPhoto(Media item) {
++        selected = item;
++        LinearLayout photo = column();
++        LinearLayout titleSlot = column();
++        updateViewerHeader(titleSlot);
++        photo.addView(titleSlot);
++
++        List<Media> pages = new ArrayList<>(viewerPhotos);
++        if (pages.isEmpty()) pages.add(item);
++        if (getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) {
++            java.util.Collections.reverse(pages);
+         }
+-        return false;
+-    }
+-
+-    private void attachPhotoPaging(ImageView image) {
+-        image.setOnTouchListener(new View.OnTouchListener() {
+-            private float startX;
+-            private float startY;
+-            private boolean multiplePointers;
+-
+-            @Override public boolean onTouch(View view, MotionEvent event) {
+-                switch (event.getActionMasked()) {
+-                    case MotionEvent.ACTION_DOWN:
+-                        startX = event.getX();
+-                        startY = event.getY();
+-                        multiplePointers = false;
+-                        return true;
+-                    case MotionEvent.ACTION_POINTER_DOWN:
+-                        multiplePointers = true;
+-                        return true;
+-                    case MotionEvent.ACTION_UP:
+-                        float dx = event.getX() - startX;
+-                        float dy = event.getY() - startY;
+-                        if (!multiplePointers && Math.abs(dx) >= dp(48)
+-                                && Math.abs(dx) > 1.4f * Math.abs(dy)) {
+-                            int direction = dx < 0 ? 1 : -1;
+-                            stepPhoto(view.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL
+-                                    ? -direction : direction);
+-                        }
+-                        return true;
+-                    default:
+-                        return true;
+-                }
++        ViewPager pager = new ViewPager(this);
++        pager.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
++        pager.setAdapter(new PagerAdapter() {
++            @Override public int getCount() {
++                return pages.size();
++            }
++
++            @Override public boolean isViewFromObject(View view, Object page) {
++                return view == page;
++            }
++
++            @Override public Object instantiateItem(ViewGroup container, int position) {
++                Media page = pages.get(position);
++                ImageView image = new ImageView(PlaitGalleryActivity.this);
++                image.setContentDescription(page.name);
++                image.setScaleType(ImageView.ScaleType.FIT_CENTER);
++                loadImage(image, page.uri, 1200, false);
++                container.addView(image);
++                return image;
++            }
++
++            @Override public void destroyItem(ViewGroup container, int position, Object page) {
++                View view = (View) page;
++                view.setTag(null);
++                container.removeView(view);
+             }
+         });
+-        image.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+-            @Override public void onInitializeAccessibilityNodeInfo(View host,
+-                    AccessibilityNodeInfo info) {
+-                super.onInitializeAccessibilityNodeInfo(host, info);
+-                info.setScrollable(viewerPhotos.size() > 1);
+-                if (viewerPosition > 0) info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+-                if (viewerPosition + 1 < viewerPhotos.size()) {
+-                    info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
++        pager.setCurrentItem(Math.max(0, pages.indexOf(item)), false);
++        pager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
++            @Override public void onPageSelected(int position) {
++                Media page = pages.get(position);
++                selected = page;
++                for (Media latest : media) {
++                    if (latest.uri.equals(page.uri)) {
++                        selected = latest;
++                        break;
++                    }
+                 }
++                updateViewerHeader(titleSlot);
+             }
++        });
++        photo.addView(pager, new LinearLayout.LayoutParams(-1, 0, 1));
+ 
+-            @Override public boolean performAccessibilityAction(View host, int action, Bundle args) {
+-                if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) return stepPhoto(1);
+-                if (action == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) return stepPhoto(-1);
+-                return super.performAccessibilityAction(host, action, args);
+-            }
++        LinearLayout actions = new LinearLayout(this);
++        addAction(actions, R.string.plait_gallery_edit, () -> open(selected, true));
++        addAction(actions, R.string.plait_gallery_details, () -> details(selected));
++        addAction(actions, R.string.plait_gallery_share, () -> {
++            Media current = selected;
++            Intent share = new Intent(Intent.ACTION_SEND).setType(current.mime)
++                    .putExtra(Intent.EXTRA_STREAM, current.uri)
++                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++            startActivity(Intent.createChooser(share, getText(R.string.plait_gallery_share)));
+         });
++        addAction(actions, R.string.plait_gallery_trash, this::trashPhoto);
++        photo.addView(actions);
++        setContentView(photo);
+     }
+ 
+-    private void showPhoto(Media item) {
+-        selected = item;
+-        LinearLayout photo = column();
+-        LinearLayout title = header(item.name, false);
++    private void updateViewerHeader(LinearLayout slot) {
++        LinearLayout title = header(selected.name, false);
+         favoriteButton = new Button(this, null, android.R.attr.borderlessButtonStyle);
+         favoriteButton.setTextSize(24);
+         favoriteButton.setMinWidth(0);
+-        favoriteButton.setOnClickListener(view -> changeMedia(false));
++        favoriteButton.setOnClickListener(view -> requestMediaChange(selected, false));
+         title.addView(favoriteButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+         updateFavoriteLabel();
+-        photo.addView(title);
+-        ImageView image = new ImageView(this);
+-        image.setContentDescription(item.name);
+-        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+-        attachPhotoPaging(image);
+-        loadImage(image, item.uri, 1200, false);
+-        photo.addView(image, new LinearLayout.LayoutParams(-1, 0, 1));
+-        LinearLayout actions = new LinearLayout(this);
++        slot.removeAllViews();
++        slot.addView(title);
++    }
+ 
+-        addAction(actions, R.string.plait_gallery_edit, () -> open(item, true));
+-        addAction(actions, R.string.plait_gallery_details, () -> details(item));
+-        addAction(actions, R.string.plait_gallery_share, () -> {
+-            Intent share = new Intent(Intent.ACTION_SEND).setType(item.mime)
+-                    .putExtra(Intent.EXTRA_STREAM, item.uri)
+-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+-            startActivity(Intent.createChooser(share, getText(R.string.plait_gallery_share)));
++    private void trashPhoto() {
++        Media item = selected;
++        if (item == null || trashInProgress) return;
++        trashInProgress = true;
++        mediaLoader.execute(() -> {
++            ContentValues values = new ContentValues();
++            values.put(MediaStore.MediaColumns.IS_TRASHED, 1);
++            boolean moved = false;
++            boolean needsConsent = false;
++            try {
++                // The ROM's SYSTEM_GALLERY role grants write access to shared photo media.
++                moved = getContentResolver().update(item.uri, values, null, null) > 0;
++            } catch (SecurityException denied) {
++                needsConsent = true;
++            } catch (RuntimeException error) {
++                android.util.Log.w("PlaitGallery", "Could not move photo to Trash", error);
++            }
++            boolean success = moved;
++            boolean prompt = needsConsent;
++            runOnUiThread(() -> {
++                if (isDestroyed()) return;
++                trashInProgress = false;
++                if (success) {
++                    showLibrary();
++                    refresh();
++                } else if (prompt) {
++                    requestMediaChange(item, true);
++                } else {
++                    Toast.makeText(this, R.string.plait_gallery_unavailable,
++                            Toast.LENGTH_SHORT).show();
++                }
++            });
+         });
+-        addAction(actions, R.string.plait_gallery_trash, () -> changeMedia(true));
+-        photo.addView(actions);
+-        setContentView(photo);
+     }
+ 
+     private void updateFavoriteLabel() {
+@@ -781,9 +800,7 @@ public final class PlaitGalleryActivity extends Activity {
+                 ? R.string.plait_gallery_remove_favorite : R.string.plait_gallery_favorites));
+     }
+ 
+-    private void changeMedia(boolean trash) {
+-        Media item = selected;
+-        if (item == null) return;
++    private void requestMediaChange(Media item, boolean trash) {
+         try {
+             android.app.PendingIntent request = trash
+                     ? MediaStore.createTrashRequest(getContentResolver(), List.of(item.uri), true)
+-- 
+2.56.1
+

@@ -11,6 +11,7 @@ too) and updates the pref_icon_pack preference, so recents clears its
 task icons as before. Per-app overrides stay in the launcher.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../launcher3/customization/IconDatabase.java | 19 +++++++++++----
  .../launcher3/icons/pack/IconPackManager.java | 24 +++++++++++++++++++

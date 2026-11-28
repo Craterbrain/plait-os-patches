@@ -1,0 +1,240 @@
+From 60161be18a6f0a2c330824707f7c38c9ef72d603 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 17:02:14 -0600
+Subject: [PATCH] PlaitOS: memory keys instead of the brackets, 00 instead of
+ the extra %
+
+- Function pad (5x3, phone portrait, where the operator pad has "( )"):
+  MR (long press: MC) and M+ (long press: M-) replace "(" and ")". M+
+  stores the result when the memory is empty, otherwise adds to it; the
+  memory is the calculator's own (the one its long-press menus use)
+- Number pad: 00 replaces the % added before (the function pad has %)
+- versionCode 40
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                         |  2 +-
+ res/layout/pad_advanced_5x3.xml             | 14 ++--
+ res/layout/pad_numeric.xml                  |  8 +--
+ res/values/plait_strings.xml                | 12 ++++
+ src/com/android/calculator2/Calculator.java | 78 ++++++++++++++++++++-
+ src/com/android/calculator2/Evaluator.java  |  5 ++
+ 6 files changed, 105 insertions(+), 14 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index de810c2..18ce1c2 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -18,7 +18,7 @@
+ <manifest
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     package="com.android.calculator2"
+-    android:versionCode="39">
++    android:versionCode="40">
+     <!-- PlaitOS: above the platform's default (37), so the restyle can be installed as an
+          update of the ROM's copy; raise it again for the next app-only update -->
+ 
+diff --git a/res/layout/pad_advanced_5x3.xml b/res/layout/pad_advanced_5x3.xml
+index 21ed723..500d380 100644
+--- a/res/layout/pad_advanced_5x3.xml
++++ b/res/layout/pad_advanced_5x3.xml
+@@ -171,19 +171,21 @@
+         app:layout_row="2"
+         app:layout_column="1" />
+ 
++    <!-- PlaitOS: memory instead of the brackets, which the operator pad's "( )" key covers here.
++         Long press: M+ subtracts (M-), MR clears the memory (MC). -->
+     <Button
+-        android:id="@+id/lparen"
++        android:id="@+id/plait_mr"
+         style="@style/PadButtonStyle.Advanced"
+-        android:contentDescription="@string/desc_lparen"
+-        android:text="@string/lparen"
++        android:contentDescription="@string/desc_plait_mr"
++        android:text="@string/plait_mr"
+         app:layout_row="2"
+         app:layout_column="2" />
+ 
+     <Button
+-        android:id="@+id/rparen"
++        android:id="@+id/plait_mplus"
+         style="@style/PadButtonStyle.Advanced"
+-        android:contentDescription="@string/desc_rparen"
+-        android:text="@string/rparen"
++        android:contentDescription="@string/desc_plait_mplus"
++        android:text="@string/plait_mplus"
+         app:layout_row="2"
+         app:layout_column="3" />
+ 
+diff --git a/res/layout/pad_numeric.xml b/res/layout/pad_numeric.xml
+index 9cbe27f..c29df38 100644
+--- a/res/layout/pad_numeric.xml
++++ b/res/layout/pad_numeric.xml
+@@ -109,12 +109,12 @@
+         app:layout_row="3"
+         app:layout_column="2" />
+ 
+-    <!-- PlaitOS: percent in the cell "=" leaves empty where "=" sits in the operator column -->
++    <!-- PlaitOS: double zero in the cell "=" leaves empty where "=" sits in the operator column -->
+     <Button
+-        android:id="@+id/plait_pct"
++        android:id="@+id/plait_00"
+         style="@style/PadButtonStyle.Numeric.Extra"
+-        android:contentDescription="@string/desc_op_pct"
+-        android:text="@string/op_pct"
++        android:contentDescription="@string/desc_plait_00"
++        android:text="@string/plait_00"
+         app:layout_row="3"
+         app:layout_column="2" />
+ 
+diff --git a/res/values/plait_strings.xml b/res/values/plait_strings.xml
+index 20ffedf..b02feba 100644
+--- a/res/values/plait_strings.xml
++++ b/res/values/plait_strings.xml
+@@ -5,4 +5,16 @@
+     <string name="desc_plait_ac">clear all</string>
+     <string name="plait_paren" translatable="false">( )</string>
+     <string name="desc_plait_paren">parenthesis</string>
++    <string name="plait_00" translatable="false">00</string>
++    <string name="desc_plait_00">double zero</string>
++    <string name="plait_mr" translatable="false">MR</string>
++    <string name="desc_plait_mr">memory recall. Long press to clear the memory</string>
++    <string name="plait_mplus" translatable="false">M+</string>
++    <string name="desc_plait_mplus">add to memory. Long press to subtract from memory</string>
++    <string name="plait_memory_added">Added to memory</string>
++    <string name="plait_memory_subtracted">Subtracted from memory</string>
++    <string name="plait_memory_stored">Stored in memory</string>
++    <string name="plait_memory_cleared">Memory cleared</string>
++    <string name="plait_memory_empty">Memory is empty</string>
++    <string name="plait_memory_nothing">Nothing to store yet</string>
+ </resources>
+diff --git a/src/com/android/calculator2/Calculator.java b/src/com/android/calculator2/Calculator.java
+index a121b17..c3ce438 100644
+--- a/src/com/android/calculator2/Calculator.java
++++ b/src/com/android/calculator2/Calculator.java
+@@ -425,6 +425,11 @@ public class Calculator extends Activity
+         mFormulaText.setOnTextSizeChangeListener(this);
+         mFormulaText.addTextChangedListener(mFormulaTextWatcher);
+         mDeleteButton.setOnLongClickListener(this);
++        // PlaitOS: M- and MC on the memory keys' long press (the keys are not in every layout)
++        for (int memoryKey : new int[] {R.id.plait_mplus, R.id.plait_mr}) {
++            final View key = findViewById(memoryKey);
++            if (key != null) key.setOnLongClickListener(this);
++        }
+ 
+         if (savedInstanceState != null) {
+             restoreInstanceState(savedInstanceState);
+@@ -827,9 +832,23 @@ public class Calculator extends Activity
+         cancelUnrequested();
+ 
+         int id = view.getId();
+-        // PlaitOS: the extra pad keys stand for existing ones
+-        if (id == R.id.plait_pct) {
+-            id = R.id.op_pct;
++        // PlaitOS: the extra pad keys
++        if (id == R.id.plait_00) {
++            plaitAppend(R.id.digit_0);
++            plaitAppend(R.id.digit_0);
++            showOrHideToolbar();
++            return;
++        } else if (id == R.id.plait_mr) {
++            if (mEvaluator.getMemoryIndex() == 0) {
++                plaitToast(R.string.plait_memory_empty);
++            } else {
++                mOnFormulaContextMenuClickListener.onMemoryRecall();
++            }
++            showOrHideToolbar();
++            return;
++        } else if (id == R.id.plait_mplus) {
++            plaitMemory(false);
++            return;
+         } else if (id == R.id.plait_paren) {
+             id = smartParen();
+         } else if (id == R.id.plait_ac) {
+@@ -888,6 +907,46 @@ public class Calculator extends Activity
+         showOrHideToolbar();
+     }
+ 
++    /** PlaitOS: one key, as the default branch of onButtonClick handles it. */
++    private void plaitAppend(int id) {
++        cancelIfEvaluating(false);
++        if (haveUnprocessed()) {
++            addChars(KeyMaps.toString(this, id), true);
++        } else {
++            addExplicitKeyToExpr(id);
++            redisplayAfterFormulaChange();
++        }
++    }
++
++    /**
++     * PlaitOS: M+ (and M- on a long press) with the current result: stores it when the memory is
++     * empty, otherwise adds it to (or subtracts it from) the value in memory.
++     */
++    private void plaitMemory(boolean subtract) {
++        if (mEvaluator.getExpr(Evaluator.MAIN_INDEX).isEmpty() || haveUnprocessed()) {
++            plaitToast(R.string.plait_memory_nothing);
++            return;
++        }
++        if (mEvaluator.getMemoryIndex() == 0) {
++            if (subtract) {
++                plaitToast(R.string.plait_memory_empty);
++                return;
++            }
++            mResultText.onMemoryStore();
++            plaitToast(R.string.plait_memory_stored);
++        } else if (subtract) {
++            mResultText.onMemorySubtract();
++            plaitToast(R.string.plait_memory_subtracted);
++        } else {
++            mResultText.onMemoryAdd();
++            plaitToast(R.string.plait_memory_added);
++        }
++    }
++
++    private void plaitToast(int message) {
++        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show();
++    }
++
+     /**
+      * PlaitOS: the "( )" key. Closes a bracket when one is open and the formula ends in something
+      * a bracket can close (a number, a constant, a closing bracket or a postfix operator);
+@@ -933,6 +992,19 @@ public class Calculator extends Activity
+             onClear();
+             return true;
+         }
++        if (view.getId() == R.id.plait_mplus) {
++            plaitMemory(true);
++            return true;
++        }
++        if (view.getId() == R.id.plait_mr) {
++            if (mEvaluator.getMemoryIndex() != 0) {
++                mEvaluator.clearMemory();
++                plaitToast(R.string.plait_memory_cleared);
++            } else {
++                plaitToast(R.string.plait_memory_empty);
++            }
++            return true;
++        }
+         return false;
+     }
+ 
+diff --git a/src/com/android/calculator2/Evaluator.java b/src/com/android/calculator2/Evaluator.java
+index eee9fa8..2afd94c 100644
+--- a/src/com/android/calculator2/Evaluator.java
++++ b/src/com/android/calculator2/Evaluator.java
+@@ -1622,6 +1622,11 @@ public class Evaluator implements CalculatorExpr.ExprResolver {
+         }
+     }
+ 
++    /** PlaitOS: the MR key's long press (MC). */
++    public void clearMemory() {
++        setMemoryIndex(0);
++    }
++
+     /**
+      * Set the local and persistent memory index.
+      */
+-- 
+2.56.1
+

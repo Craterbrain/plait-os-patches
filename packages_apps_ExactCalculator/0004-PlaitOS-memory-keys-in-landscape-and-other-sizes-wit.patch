@@ -1,0 +1,428 @@
+From 4dde8e0d185dc4a2ae76e29da6030878465ebb21 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 17:08:55 -0600
+Subject: [PATCH] PlaitOS: memory keys in landscape and other sizes with the "(
+ )" key
+
+The 3x5 and 4x4 function pads are shared between sizes whose operator pad
+has the "( )" key and sizes whose pad does not. Both pairs now sit in the
+brackets' cells; per size bucket, styles show MR/M+ where the operator pad
+is two columns (has "( )") and the brackets elsewhere. versionCode 41.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                      |  2 +-
+ res/layout/pad_advanced_3x5.xml          | 23 +++++++++++++++++++++--
+ res/layout/pad_advanced_4x4.xml          | 23 +++++++++++++++++++++--
+ res/values-w230dp-h275dp/styles.xml      |  8 ++++++++
+ res/values-w230dp-h375dp/styles.xml      |  8 ++++++++
+ res/values-w230dp-h475dp-port/styles.xml |  8 ++++++++
+ res/values-w375dp-h220dp/styles.xml      |  8 ++++++++
+ res/values-w375dp-h275dp/styles.xml      |  8 ++++++++
+ res/values-w375dp-h375dp/styles.xml      |  8 ++++++++
+ res/values-w375dp-h500dp-port/styles.xml |  8 ++++++++
+ res/values-w375dp-h768dp-port/styles.xml |  8 ++++++++
+ res/values-w520dp-h220dp-land/styles.xml |  8 ++++++++
+ res/values-w520dp-h275dp-land/styles.xml |  8 ++++++++
+ res/values-w520dp-h375dp-land/styles.xml |  8 ++++++++
+ res/values-w520dp-h500dp-land/styles.xml |  8 ++++++++
+ res/values-w520dp-h768dp-land/styles.xml |  8 ++++++++
+ res/values-w520dp-h768dp-port/styles.xml |  8 ++++++++
+ res/values/styles.xml                    |  9 +++++++++
+ 18 files changed, 164 insertions(+), 5 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 18ce1c2..5aecff4 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -18,7 +18,7 @@
+ <manifest
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     package="com.android.calculator2"
+-    android:versionCode="40">
++    android:versionCode="41">
+     <!-- PlaitOS: above the platform's default (37), so the restyle can be installed as an
+          update of the ROM's copy; raise it again for the next app-only update -->
+ 
+diff --git a/res/layout/pad_advanced_3x5.xml b/res/layout/pad_advanced_3x5.xml
+index cf38fe6..5a6a1cc 100644
+--- a/res/layout/pad_advanced_3x5.xml
++++ b/res/layout/pad_advanced_3x5.xml
+@@ -173,7 +173,7 @@
+ 
+     <Button
+         android:id="@+id/lparen"
+-        style="@style/PadButtonStyle.Advanced"
++        style="@style/PadButtonStyle.Advanced.Paren"
+         android:contentDescription="@string/desc_lparen"
+         android:text="@string/lparen"
+         app:layout_row="4"
+@@ -181,12 +181,31 @@
+ 
+     <Button
+         android:id="@+id/rparen"
+-        style="@style/PadButtonStyle.Advanced"
++        style="@style/PadButtonStyle.Advanced.Paren"
+         android:contentDescription="@string/desc_rparen"
+         android:text="@string/rparen"
+         app:layout_row="4"
+         app:layout_column="1" />
+ 
++    <!-- PlaitOS: memory in the brackets' cells where the operator pad has the "( )" key (these
++         pads are shared with sizes whose operator pad has none); styles pick which pair shows.
++         Long press: M+ subtracts (M-), MR clears the memory (MC). -->
++    <Button
++        android:id="@+id/plait_mr"
++        style="@style/PadButtonStyle.Advanced.Memory"
++        android:contentDescription="@string/desc_plait_mr"
++        android:text="@string/plait_mr"
++        app:layout_row="4"
++        app:layout_column="0" />
++
++    <Button
++        android:id="@+id/plait_mplus"
++        style="@style/PadButtonStyle.Advanced.Memory"
++        android:contentDescription="@string/desc_plait_mplus"
++        android:text="@string/plait_mplus"
++        app:layout_row="4"
++        app:layout_column="1" />
++
+     <Button
+         android:id="@+id/op_sqrt"
+         style="@style/PadButtonStyle.Advanced"
+diff --git a/res/layout/pad_advanced_4x4.xml b/res/layout/pad_advanced_4x4.xml
+index dd5a792..2000b46 100644
+--- a/res/layout/pad_advanced_4x4.xml
++++ b/res/layout/pad_advanced_4x4.xml
+@@ -165,7 +165,7 @@
+ 
+     <Button
+         android:id="@+id/lparen"
+-        style="@style/PadButtonStyle.Advanced"
++        style="@style/PadButtonStyle.Advanced.Paren"
+         android:contentDescription="@string/desc_lparen"
+         android:text="@string/lparen"
+         app:layout_row="3"
+@@ -173,12 +173,31 @@
+ 
+     <Button
+         android:id="@+id/rparen"
+-        style="@style/PadButtonStyle.Advanced"
++        style="@style/PadButtonStyle.Advanced.Paren"
+         android:contentDescription="@string/desc_rparen"
+         android:text="@string/rparen"
+         app:layout_row="3"
+         app:layout_column="1" />
+ 
++    <!-- PlaitOS: memory in the brackets' cells where the operator pad has the "( )" key (these
++         pads are shared with sizes whose operator pad has none); styles pick which pair shows.
++         Long press: M+ subtracts (M-), MR clears the memory (MC). -->
++    <Button
++        android:id="@+id/plait_mr"
++        style="@style/PadButtonStyle.Advanced.Memory"
++        android:contentDescription="@string/desc_plait_mr"
++        android:text="@string/plait_mr"
++        app:layout_row="3"
++        app:layout_column="0" />
++
++    <Button
++        android:id="@+id/plait_mplus"
++        style="@style/PadButtonStyle.Advanced.Memory"
++        android:contentDescription="@string/desc_plait_mplus"
++        android:text="@string/plait_mplus"
++        app:layout_row="3"
++        app:layout_column="1" />
++
+     <Button
+         android:id="@+id/op_sqrt"
+         style="@style/PadButtonStyle.Advanced"
+diff --git a/res/values-w230dp-h275dp/styles.xml b/res/values-w230dp-h275dp/styles.xml
+index 3588210..24a194e 100644
+--- a/res/values-w230dp-h275dp/styles.xml
++++ b/res/values-w230dp-h275dp/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">16dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">visible</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">gone</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">14dip</item>
+diff --git a/res/values-w230dp-h375dp/styles.xml b/res/values-w230dp-h375dp/styles.xml
+index bf6f4ec..74f01ae 100644
+--- a/res/values-w230dp-h375dp/styles.xml
++++ b/res/values-w230dp-h375dp/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">17dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">visible</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">gone</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">15dip</item>
+diff --git a/res/values-w230dp-h475dp-port/styles.xml b/res/values-w230dp-h475dp-port/styles.xml
+index 798a0eb..24b10ab 100644
+--- a/res/values-w230dp-h475dp-port/styles.xml
++++ b/res/values-w230dp-h475dp-port/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">20dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">visible</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">gone</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">17dip</item>
+diff --git a/res/values-w375dp-h220dp/styles.xml b/res/values-w375dp-h220dp/styles.xml
+index c37c32c..36f8bfd 100644
+--- a/res/values-w375dp-h220dp/styles.xml
++++ b/res/values-w375dp-h220dp/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">14dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">12dip</item>
+diff --git a/res/values-w375dp-h275dp/styles.xml b/res/values-w375dp-h275dp/styles.xml
+index 19ef6b5..b0c0270 100644
+--- a/res/values-w375dp-h275dp/styles.xml
++++ b/res/values-w375dp-h275dp/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">17dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">14dip</item>
+diff --git a/res/values-w375dp-h375dp/styles.xml b/res/values-w375dp-h375dp/styles.xml
+index edda0f5..718ab2e 100644
+--- a/res/values-w375dp-h375dp/styles.xml
++++ b/res/values-w375dp-h375dp/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">17dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">15dip</item>
+diff --git a/res/values-w375dp-h500dp-port/styles.xml b/res/values-w375dp-h500dp-port/styles.xml
+index 6e66345..a17d99d 100644
+--- a/res/values-w375dp-h500dp-port/styles.xml
++++ b/res/values-w375dp-h500dp-port/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">23dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">visible</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">gone</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">20dip</item>
+diff --git a/res/values-w375dp-h768dp-port/styles.xml b/res/values-w375dp-h768dp-port/styles.xml
+index 95252d6..7d55388 100644
+--- a/res/values-w375dp-h768dp-port/styles.xml
++++ b/res/values-w375dp-h768dp-port/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">27dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">24dip</item>
+diff --git a/res/values-w520dp-h220dp-land/styles.xml b/res/values-w520dp-h220dp-land/styles.xml
+index 50364b2..1cc087f 100644
+--- a/res/values-w520dp-h220dp-land/styles.xml
++++ b/res/values-w520dp-h220dp-land/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">14dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">12dip</item>
+diff --git a/res/values-w520dp-h275dp-land/styles.xml b/res/values-w520dp-h275dp-land/styles.xml
+index 80459d2..0945b5d 100644
+--- a/res/values-w520dp-h275dp-land/styles.xml
++++ b/res/values-w520dp-h275dp-land/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">17dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">14dip</item>
+diff --git a/res/values-w520dp-h375dp-land/styles.xml b/res/values-w520dp-h375dp-land/styles.xml
+index 80de862..4644eee 100644
+--- a/res/values-w520dp-h375dp-land/styles.xml
++++ b/res/values-w520dp-h375dp-land/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">20dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">17dip</item>
+diff --git a/res/values-w520dp-h500dp-land/styles.xml b/res/values-w520dp-h500dp-land/styles.xml
+index 468ad50..98cda78 100644
+--- a/res/values-w520dp-h500dp-land/styles.xml
++++ b/res/values-w520dp-h500dp-land/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">23dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">20dip</item>
+diff --git a/res/values-w520dp-h768dp-land/styles.xml b/res/values-w520dp-h768dp-land/styles.xml
+index 18da0bf..b29ce33 100644
+--- a/res/values-w520dp-h768dp-land/styles.xml
++++ b/res/values-w520dp-h768dp-land/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">30dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>s
+         <item name="android:textSize">26dip</item>
+diff --git a/res/values-w520dp-h768dp-port/styles.xml b/res/values-w520dp-h768dp-port/styles.xml
+index 83a0956..df63c2e 100644
+--- a/res/values-w520dp-h768dp-port/styles.xml
++++ b/res/values-w520dp-h768dp-port/styles.xml
+@@ -23,6 +23,14 @@
+         <item name="android:textSize">32dip</item>
+     </style>
+ 
++
++    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">gone</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">visible</item>
++    </style>
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">28dip</item>
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index 5c65814..8a7f70d 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -80,6 +80,15 @@
+         <item name="android:textSize">14dip</item>
+     </style>
+ 
++    <!-- PlaitOS: brackets or memory keys in the same cells of the shared function pads; memory
++         where the operator pad has the "( )" key (pad_operator_two_col) -->    <style name="PadButtonStyle.Advanced.Paren">
++        <item name="android:visibility">visible</item>
++    </style>
++
++    <style name="PadButtonStyle.Advanced.Memory">
++        <item name="android:visibility">gone</item>
++    </style>
++
+     <style name="PadButtonStyle.Advanced.Text">
+         <item name="android:textAllCaps">true</item>
+         <item name="android:textSize">12dip</item>
+-- 
+2.56.1
+

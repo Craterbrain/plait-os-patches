@@ -27,6 +27,10 @@ declare -A MAP=(
   [packages_apps_Contacts]=packages/apps/Contacts
   [packages_apps_Updater]=packages/apps/Updater
   [packages_apps_Traceur]=packages/apps/Traceur
+  [packages_apps_DeskClock]=packages/apps/DeskClock
+  [packages_apps_ExactCalculator]=packages/apps/ExactCalculator
+  [packages_apps_Gallery2]=packages/apps/Gallery2
+  [packages_apps_DocumentsUI]=packages/apps/DocumentsUI
 )
 
 [ "$CHECK" = 1 ] || git config --global user.email >/dev/null 2>&1 || [ "$CHECK" = 1 ] || git config --global user.email "plaitos-build@localhost"

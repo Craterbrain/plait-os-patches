@@ -4,6 +4,7 @@ Date: Fri, 20 Nov 2026 20:48:43 -0600
 Subject: [PATCH] Slim Recents: close at once on the home key
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3UdaCB3bu67ZPQkVe
 ---
  .../com/android/systemui/slimrecent/RecentController.java    | 5 ++++-
  1 file changed, 4 insertions(+), 1 deletion(-)

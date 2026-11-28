@@ -1,0 +1,118 @@
+From c1aaa1ce0ca4033eef4fa0bc1c34efdb4a5d1a92 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:38:30 -0600
+Subject: [PATCH] PlaitOS: preserve Gallery fling when settling library bars
+
+---
+ AndroidManifest.xml                           |  4 +--
+ .../gallery3d/app/PlaitGalleryActivity.java   | 30 +++++++++++++++----
+ 2 files changed, 27 insertions(+), 7 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 3377fe4..604bd2f 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40047"
+-        android:versionName="1.1.40047"
++<manifest android:versionCode="40048"
++        android:versionName="1.1.40048"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index d2ee0e8..1d2202e 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -32,6 +32,7 @@ import android.view.VelocityTracker;
+ import android.view.ViewConfiguration;
+ import android.view.View;
+ import android.view.ViewGroup;
++import android.widget.AbsListView;
+ import android.widget.BaseAdapter;
+ import android.widget.Button;
+ import android.widget.EditText;
+@@ -652,7 +653,7 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+     }
+ 
+-    private final class LibraryBarScroll {
++    private final class LibraryBarScroll implements AbsListView.OnScrollListener {
+         private final ListView list;
+         private final EditText search;
+         private final View titleBar;
+@@ -665,6 +666,8 @@ public final class PlaitGalleryActivity extends Activity {
+         private float startX;
+         private float collapse;
+         private boolean tracking;
++        private boolean settlePending;
++        private int scrollState = SCROLL_STATE_IDLE;
+         private ValueAnimator animator;
+ 
+         LibraryBarScroll(ListView list, EditText search, View titleBar, View searchBar,
+@@ -674,6 +677,15 @@ public final class PlaitGalleryActivity extends Activity {
+             this.titleBar = titleBar;
+             this.searchBar = searchBar;
+             this.bottomBar = bottomBar;
++            list.setOnScrollListener(this);
++        }
++
++        @Override public void onScrollStateChanged(AbsListView view, int state) {
++            scrollState = state;
++            if (state == SCROLL_STATE_IDLE && settlePending) list.post(this::settleWhenIdle);
++        }
++
++        @Override public void onScroll(AbsListView view, int first, int visible, int count) {
+         }
+ 
+         void track(MotionEvent event) {
+@@ -681,6 +693,7 @@ public final class PlaitGalleryActivity extends Activity {
+             switch (event.getActionMasked()) {
+                 case MotionEvent.ACTION_DOWN:
+                     if (animator != null) animator.cancel();
++                    settlePending = false;
+                     startX = event.getRawX();
+                     startY = event.getRawY();
+                     tracking = false;
+@@ -700,10 +713,11 @@ public final class PlaitGalleryActivity extends Activity {
+                     break;
+                 case MotionEvent.ACTION_UP:
+                 case MotionEvent.ACTION_CANCEL:
+-                    if (titleHeight > 0 && collapse > 0 && collapse < searchHeight + titleHeight) {
+-                        settleBars();
+-                    }
+                     tracking = false;
++                    settlePending = titleHeight > 0 && collapse > 0
++                            && collapse < searchHeight + titleHeight;
++                    // Let ListView process the release and enter its fling state first.
++                    if (settlePending) list.post(this::settleWhenIdle);
+                     break;
+                 default:
+                     break;
+@@ -723,6 +737,7 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+ 
+         void reveal() {
++            settlePending = false;
+             if (animator != null) animator.cancel();
+             if (titleHeight > 0) moveBars(0);
+         }
+@@ -734,7 +749,12 @@ public final class PlaitGalleryActivity extends Activity {
+             setBarHeight(titleBar, titleHeight, distance - searchHeight);
+         }
+ 
+-        private void settleBars() {
++        private void settleWhenIdle() {
++            if (!settlePending || scrollState != SCROLL_STATE_IDLE || !list.isAttachedToWindow()) {
++                return;
++            }
++            settlePending = false;
++            // Resizing ListView during a fling interrupts its native scrolling runnable.
+             float end = searchHeight + titleHeight;
+             float target = collapse >= end / 2 ? end : 0f;
+             animator = ValueAnimator.ofFloat(collapse, target);
+-- 
+2.56.1
+

@@ -8,6 +8,7 @@ Settings icon style; "Material expressive (stock)" is still one of the
 choices, and Reset PlaitOS settings returns to the colored style.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  src/com/android/settings/plait/PlaitIconStyler.kt | 13 ++++++++-----
  src/com/android/settings/plait/PlaitSettings.kt   |  2 +-

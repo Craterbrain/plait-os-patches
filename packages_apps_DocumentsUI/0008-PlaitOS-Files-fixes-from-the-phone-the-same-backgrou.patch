@@ -1,0 +1,397 @@
+From 556249085f1cec8eeb93eb17888871912667e6ea Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 21:28:24 -0600
+Subject: [PATCH] PlaitOS: Files fixes from the phone; the same background as
+ Broker
+
+- Background: the screen, status bar (edge to edge, the root's background) and system bars
+  use the theme's surface role, like every Plait app, instead of surfaceBright /
+  surfaceContainer / a neutral tone; Places cards stay surfaceContainer
+- Cut and Copy (with Paste here) instead of the Copy to / Move to destination picker, so
+  there is one way to do each job
+- One delete in the selection bar: "Delete" moves to the trash where there is one; Delete
+  forever goes to More
+- More sheet rows get design-guide icons (open with, info, rename, zip, ...)
+- The picker's preview button is a small badge on the tile's bottom corner, clear of the check
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ .../coordinator_layout_background.xml         |  7 ++--
+ ...in_container_bottom_section_background.xml |  2 +-
+ ...in_container_middle_section_background.xml |  2 +-
+ .../main_container_top_section_background.xml |  2 +-
+ .../layout/column_headers_m3.xml              |  2 +-
+ .../layout/directory_app_bar_m3.xml           |  6 ++--
+ .../layout/drawer_layout_m3.xml               |  6 ++--
+ .../layout/fixed_layout_m3.xml                |  2 +-
+ .../layout/item_doc_grid_m3.xml               | 18 +++++-----
+ .../layout/item_doc_inflated_message_m3.xml   |  2 +-
+ .../layout/nav_rail_layout.xml                |  2 +-
+ .../menu/action_mode_menu_m3.xml              |  1 +
+ .../values-night-v34/plait_colors_m3.xml      |  7 ++++
+ .../values-v34/plait_colors_m3.xml            |  7 ++++
+ .../values/themes_m3.xml                      |  6 ++--
+ src/com/android/documentsui/MenuManager.java  |  8 ++++-
+ src/com/android/documentsui/PlaitCompose.kt   | 36 +++++++++++++++++--
+ 17 files changed, 83 insertions(+), 33 deletions(-)
+ create mode 100644 res/flag(com.android.documentsui.flags.use_material3)/values-night-v34/plait_colors_m3.xml
+ create mode 100644 res/flag(com.android.documentsui.flags.use_material3)/values-v34/plait_colors_m3.xml
+
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/drawable/coordinator_layout_background.xml b/res/flag(com.android.documentsui.flags.use_material3)/drawable/coordinator_layout_background.xml
+index 809af42..cc5a97a 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/drawable/coordinator_layout_background.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/drawable/coordinator_layout_background.xml
+@@ -15,11 +15,12 @@
+ -->
+ 
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+-    <!-- Override the focus color to avoid the default gray overlay. -->
++    <!-- Override the focus color to avoid the default gray overlay. PlaitOS: the screen surface
++         (shows under the status bar, edge to edge), like every Plait app. -->
+     <item android:state_focused="true">
+-        <color android:color="?attr/colorSurfaceContainer" />
++        <color android:color="?attr/colorSurface" />
+     </item>
+     <item>
+-        <color android:color="?attr/colorSurfaceContainer" />
++        <color android:color="?attr/colorSurface" />
+     </item>
+ </selector>
+\ No newline at end of file
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_bottom_section_background.xml b/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_bottom_section_background.xml
+index 04f425e..01be7de 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_bottom_section_background.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_bottom_section_background.xml
+@@ -15,7 +15,7 @@
+ -->
+ <shape xmlns:android="http://schemas.android.com/apk/res/android"
+     android:shape="rectangle">
+-    <solid android:color="?attr/colorSurfaceBright" />
++    <solid android:color="?attr/colorSurface" />
+     <corners
+         android:topLeftRadius="@dimen/main_container_corner_radius_small"
+         android:topRightRadius="@dimen/main_container_corner_radius_small"
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_middle_section_background.xml b/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_middle_section_background.xml
+index 8b0b42b..2aa6406 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_middle_section_background.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_middle_section_background.xml
+@@ -15,6 +15,6 @@
+ -->
+ <shape xmlns:android="http://schemas.android.com/apk/res/android"
+     android:shape="rectangle">
+-    <solid android:color="?attr/colorSurfaceBright" />
++    <solid android:color="?attr/colorSurface" />
+     <corners android:radius="@dimen/main_container_corner_radius_small" />
+ </shape>
+\ No newline at end of file
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_top_section_background.xml b/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_top_section_background.xml
+index b35ed40..174d338 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_top_section_background.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/drawable/main_container_top_section_background.xml
+@@ -15,7 +15,7 @@
+ -->
+ <shape xmlns:android="http://schemas.android.com/apk/res/android"
+     android:shape="rectangle">
+-    <solid android:color="?attr/colorSurfaceBright" />
++    <solid android:color="?attr/colorSurface" />
+     <corners
+         android:topLeftRadius="@dimen/main_container_corner_radius_large"
+         android:topRightRadius="@dimen/main_container_corner_radius_large"
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/layout/column_headers_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/layout/column_headers_m3.xml
+index 67026fd..ba739af 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/layout/column_headers_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/layout/column_headers_m3.xml
+@@ -26,7 +26,7 @@
+     android:paddingStart="@dimen/list_item_padding_start"
+     android:paddingEnd="@dimen/list_item_padding_end"
+     android:layout_marginEnd="@dimen/list_item_icon_margin_end"
+-    android:background="?attr/colorSurfaceBright"
++    android:background="?attr/colorSurface"
+     android:visibility="gone">
+ 
+     <!-- Column headers: Name only for compact/medium size screen -->
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/layout/directory_app_bar_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/layout/directory_app_bar_m3.xml
+index 83cc5b8..dc76bf8 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/layout/directory_app_bar_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/layout/directory_app_bar_m3.xml
+@@ -36,7 +36,7 @@
+             android:layout_width="match_parent"
+             android:layout_height="wrap_content"
+             android:orientation="vertical"
+-            android:background="?attr/colorSurfaceBright">
++            android:background="?attr/colorSurface">
+ 
+             <include layout="@layout/directory_header_m3" />
+ 
+@@ -55,7 +55,7 @@
+             android:layout_width="match_parent"
+             android:layout_height="?attr/actionBarSize"
+             android:touchscreenBlocksFocus="false"
+-            android:background="?attr/colorSurfaceBright"
++            android:background="?attr/colorSurface"
+             app:layout_collapseMode="pin">
+ 
+             <com.google.android.material.textview.MaterialTextView
+@@ -86,7 +86,7 @@
+             android:layout_width="match_parent"
+             android:layout_height="?attr/actionBarSize"
+             android:touchscreenBlocksFocus="false"
+-            android:background="?attr/colorSurfaceBright"
++            android:background="?attr/colorSurface"
+             android:visibility="gone"
+             app:layout_collapseMode="pin"/>
+ 
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/layout/drawer_layout_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/layout/drawer_layout_m3.xml
+index 54a3941..68cd441 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/layout/drawer_layout_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/layout/drawer_layout_m3.xml
+@@ -42,7 +42,7 @@
+             android:layout_width="match_parent"
+             android:layout_height="match_parent"
+             android:orientation="vertical"
+-            android:background="?attr/colorSurfaceBright">
++            android:background="?attr/colorSurface">
+ 
+             <!-- Container for app bar and list area -->
+             <androidx.coordinatorlayout.widget.CoordinatorLayout
+@@ -100,7 +100,7 @@
+                     android:id="@+id/horizontal_breadcrumb"
+                     android:layout_width="match_parent"
+                     android:layout_height="wrap_content"
+-                    android:background="?attr/colorSurfaceBright"
++                    android:background="?attr/colorSurface"
+                     android:paddingHorizontal="@dimen/breadcrumb_padding_horizontal" />
+ 
+                 <!-- We only want the path item to be focusable, the whole row should not be
+@@ -110,7 +110,7 @@
+                     android:focusable="false"
+                     android:layout_width="match_parent"
+                     android:layout_height="wrap_content"
+-                    android:background="?attr/colorSurfaceBright"
++                    android:background="?attr/colorSurface"
+                     android:paddingHorizontal="@dimen/breadcrumb_padding_horizontal" />
+ 
+                 <androidx.coordinatorlayout.widget.CoordinatorLayout
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/layout/fixed_layout_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/layout/fixed_layout_m3.xml
+index 280bb52..a057f85 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/layout/fixed_layout_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/layout/fixed_layout_m3.xml
+@@ -157,7 +157,7 @@
+                 <com.android.documentsui.breadcrumbs.BreadcrumbView
+                     android:id="@+id/breadcrumb_view_v2"
+                     android:focusable="false"
+-                    android:background="?attr/colorSurfaceBright"
++                    android:background="?attr/colorSurface"
+                     android:layout_width="match_parent"
+                     android:layout_height="wrap_content"
+                     android:paddingHorizontal="@dimen/breadcrumb_padding_horizontal" />
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/layout/item_doc_grid_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/layout/item_doc_grid_m3.xml
+index 0c18f78..8e1f94a 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/layout/item_doc_grid_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/layout/item_doc_grid_m3.xml
+@@ -111,26 +111,24 @@
+ 
+         <FrameLayout
+             android:id="@+id/preview_icon"
+-            android:layout_width="@dimen/button_container_size"
+-            android:layout_height="@dimen/button_container_size"
+-            android:layout_gravity="top|end"
+-            android:layout_marginEnd="@dimen/preview_icon_margin"
+-            android:layout_marginTop="@dimen/preview_icon_margin"
++            android:layout_width="24dp"
++            android:layout_height="24dp"
++            android:layout_gravity="bottom|end"
+             android:clickable="true"
+             android:focusable="true"
+             android:pointerIcon="hand">
+ 
+-                <!-- Black circle background -->
++                <!-- PlaitOS: a small badge on the tile's bottom corner (the check has the top one) -->
+                 <ImageView
+-                    android:layout_width="@dimen/preview_icon_circle_size"
+-                    android:layout_height="@dimen/preview_icon_circle_size"
++                    android:layout_width="20dp"
++                    android:layout_height="20dp"
+                     android:layout_gravity="center"
+                     android:background="@drawable/circle_button_background_m3" />
+ 
+                 <!-- White eye icon -->
+                 <ImageView
+-                    android:layout_width="@dimen/preview_icon_eye_size"
+-                    android:layout_height="@dimen/preview_icon_eye_size"
++                    android:layout_width="12dp"
++                    android:layout_height="12dp"
+                     android:layout_gravity="center"
+                     android:src="@drawable/ic_zoom_out_m3" />
+ 
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/layout/item_doc_inflated_message_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/layout/item_doc_inflated_message_m3.xml
+index 5a5ff64..d70e5c3 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/layout/item_doc_inflated_message_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/layout/item_doc_inflated_message_m3.xml
+@@ -19,7 +19,7 @@
+     android:id="@android:id/empty"
+     android:layout_width="match_parent"
+     android:layout_height="wrap_content"
+-    android:background="?attr/colorSurfaceBright">
++    android:background="?attr/colorSurface">
+ 
+     <include android:id="@+id/content" layout="@layout/item_doc_inflated_message_content_m3"/>
+     <include android:id="@+id/cross_profile"
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/layout/nav_rail_layout.xml b/res/flag(com.android.documentsui.flags.use_material3)/layout/nav_rail_layout.xml
+index 13c4f19..40598bd 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/layout/nav_rail_layout.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/layout/nav_rail_layout.xml
+@@ -193,7 +193,7 @@
+                         android:focusable="false"
+                         android:layout_width="match_parent"
+                         android:layout_height="wrap_content"
+-                        android:background="?attr/colorSurfaceBright"
++                        android:background="?attr/colorSurface"
+                         android:paddingHorizontal="@dimen/breadcrumb_padding_horizontal" />
+                 </LinearLayout>
+ 
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/menu/action_mode_menu_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/menu/action_mode_menu_m3.xml
+index e6c4266..ba61f80 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/menu/action_mode_menu_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/menu/action_mode_menu_m3.xml
+@@ -95,6 +95,7 @@
+             android:id="@+id/action_menu_move_to_trash"
+             android:icon="@drawable/ic_menu_delete"
+             android:title="@string/menu_move_to_trash"
++            android:titleCondensed="@string/menu_delete"
+             android:visible="false"
+             app:showAsAction="always"/>
+         <item
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/values-night-v34/plait_colors_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/values-night-v34/plait_colors_m3.xml
+new file mode 100644
+index 0000000..0a206d7
+--- /dev/null
++++ b/res/flag(com.android.documentsui.flags.use_material3)/values-night-v34/plait_colors_m3.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the window, status bar and scrolled header take the theme's surface (the wallpaper's
++     surface role), the background every Plait app (Broker, Settings) uses, not a neutral tone. -->
++<resources>
++    <color name="app_background_color_m3">@android:color/system_surface_dark</color>
++    <color name="color_surface_header_m3">@android:color/system_surface_dark</color>
++</resources>
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/values-v34/plait_colors_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/values-v34/plait_colors_m3.xml
+new file mode 100644
+index 0000000..7e335c0
+--- /dev/null
++++ b/res/flag(com.android.documentsui.flags.use_material3)/values-v34/plait_colors_m3.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the window, status bar and scrolled header take the theme's surface (the wallpaper's
++     surface role), the background every Plait app (Broker, Settings) uses, not a neutral tone. -->
++<resources>
++    <color name="app_background_color_m3">@android:color/system_surface_light</color>
++    <color name="color_surface_header_m3">@android:color/system_surface_light</color>
++</resources>
+diff --git a/res/flag(com.android.documentsui.flags.use_material3)/values/themes_m3.xml b/res/flag(com.android.documentsui.flags.use_material3)/values/themes_m3.xml
+index 657ce31..24bd9bb 100644
+--- a/res/flag(com.android.documentsui.flags.use_material3)/values/themes_m3.xml
++++ b/res/flag(com.android.documentsui.flags.use_material3)/values/themes_m3.xml
+@@ -66,9 +66,9 @@
+         <!-- Menu text appearance -->
+         <item name="android:itemTextAppearance">@style/MenuItemTextAppearanceM3</item>
+ 
+-        <!-- System bar colors. -->
+-        <item name="android:statusBarColor">?attr/colorSurfaceContainer</item>
+-        <item name="android:navigationBarColor">?attr/colorSurfaceContainer</item>
++        <!-- System bar colors. PlaitOS: the screen's surface, like every Plait app -->
++        <item name="android:statusBarColor">?attr/colorSurface</item>
++        <item name="android:navigationBarColor">?attr/colorSurface</item>
+     </style>
+ 
+     <!-- Similar to Widget.Material3.SideSheet.Modal.Detached, but with a different width. Manually
+diff --git a/src/com/android/documentsui/MenuManager.java b/src/com/android/documentsui/MenuManager.java
+index 964a37c..8a644dc 100644
+--- a/src/com/android/documentsui/MenuManager.java
++++ b/src/com/android/documentsui/MenuManager.java
+@@ -132,7 +132,13 @@ public abstract class MenuManager {
+ 
+         final boolean showCopyToMoveTo =
+                 mContext.getResources().getBoolean(R.bool.show_copy_to_move_to_menus);
+-        if (isDesktopUxPhase2FlagEnabled() && !showCopyToMoveTo) {
++        // PlaitOS: Cut and Copy, then Paste here (the FX clipboard); Copy to / Move to would be a
++        // second way to do the same job, so they stay hidden
++        if (isUseMaterial3FlagEnabled()) {
++            Menus.setEnabledAndVisible(menu.findItem(getRes(R.id.action_menu_move_to)), false);
++            Menus.setEnabledAndVisible(menu.findItem(getRes(R.id.action_menu_copy_to)), false);
++        }
++        if (isUseMaterial3FlagEnabled() || (isDesktopUxPhase2FlagEnabled() && !showCopyToMoveTo)) {
+             updateCopyAndCut(
+                     menu.findItem(getRes(R.id.action_menu_copy_to_clipboard)),
+                     menu.findItem(getRes(R.id.action_menu_cut_to_clipboard)),
+diff --git a/src/com/android/documentsui/PlaitCompose.kt b/src/com/android/documentsui/PlaitCompose.kt
+index 085e606..baec73c 100644
+--- a/src/com/android/documentsui/PlaitCompose.kt
++++ b/src/com/android/documentsui/PlaitCompose.kt
+@@ -372,6 +372,11 @@ internal class PlaitSelectionActions(private val activity: AppCompatActivity) :
+         visibility = GONE
+     }
+ 
++    /** Opens the More sheet, as tapping More does (screenshot scenes, keyboard). */
++    fun plaitOpenMore() {
++        selection?.actions?.lastOrNull { it.icon == app.plait.design.PlaitIcon.More }?.action?.run()
++    }
++
+     fun show(title: String, menu: android.view.Menu, clear: Runnable,
+         invoke: java.util.function.Consumer<android.view.MenuItem>) {
+         val visible = (0 until menu.size()).map(menu::getItem).filter { it.isVisible && it.isEnabled }
+@@ -388,22 +393,47 @@ internal class PlaitSelectionActions(private val activity: AppCompatActivity) :
+             PlaitCompose.SheetRow((item.titleCondensed ?: item.title).toString(), icon, drawable,
+                 Runnable { invoke.accept(item) })
+         // LocalSend's button shows the app's own icon (its menu item carries it)
+-        val direct = visible.filter { it.itemId in primary }
++        // One delete: Move to trash when the folder has a trash, Delete forever then goes to More
++        val trash = visible.any { it.itemId == appId(R.id.action_menu_move_to_trash) }
++        val main = if (trash) primary - appId(R.id.action_menu_delete) else primary
++        val direct = visible.filter { it.itemId in main }
+             .sortedBy { primary.keys.indexOf(it.itemId) }
+             .map { row(it, primary.getValue(it.itemId),
+                 if (it.itemId == R.id.plait_menu_send_nearby) it.icon else null) }
+-        val more = visible.filter { it.itemId !in primary }
++        val more = visible.filter { it.itemId !in main }
+         val actions = if (more.isEmpty()) direct else direct + PlaitCompose.SheetRow(
+             activity.getString(R.string.plait_more), art.More, null,
+             Runnable {
+                 PlaitCompose.showSheet(activity, activity.getString(R.string.plait_more), null,
+-                    more.map { row(it, 0, it.icon) })
++                    more.map { row(it, moreIcon(it.itemId), if (moreIcon(it.itemId) == 0) it.icon else null) })
+             },
+         )
+         selection = SelectionUi(title, clear, actions)
+         visibility = VISIBLE
+     }
+ 
++    /** Design-guide icons for the More sheet's rows (0: the item's own icon, if any). */
++    private fun moreIcon(id: Int): Int {
++        val art = app.plait.design.PlaitIcon
++        return when (id) {
++            appId(R.id.action_menu_open), appId(R.id.action_menu_open_with),
++            appId(R.id.action_menu_open_in_new_window), appId(R.id.action_menu_view_in_owner) -> art.OpenInNew
++            appId(R.id.action_menu_inspect) -> art.Info
++            appId(R.id.action_menu_rename) -> art.Rename
++            appId(R.id.action_menu_compress) -> art.Zip
++            appId(R.id.action_menu_extract_to), appId(R.id.action_menu_extract_here) -> art.Archive
++            appId(R.id.action_menu_browse) -> art.Files
++            appId(R.id.action_menu_delete), appId(R.id.action_menu_move_to_trash) -> art.Delete
++            appId(R.id.action_menu_restore_from_trash) -> art.Restore
++            appId(R.id.action_menu_paste_into_folder) -> art.Paste
++            appId(R.id.action_menu_copy_to), appId(R.id.action_menu_copy_to_clipboard) -> art.Copy
++            appId(R.id.action_menu_move_to) -> art.Move
++            appId(R.id.action_menu_cut_to_clipboard) -> art.Cut
++            appId(R.id.action_menu_share) -> art.Share
++            else -> 0
++        }
++    }
++
+     private fun appId(id: Int) = com.android.documentsui.util.Material3Config.getRes(id)
+     private data class SelectionUi(val title: String, val clear: Runnable,
+         val actions: List<PlaitCompose.SheetRow>)
+-- 
+2.56.1
+

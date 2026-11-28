@@ -8,6 +8,7 @@ plait_qqs_tiles_* keys (PlaitQsLayoutSettings) instead of new Settings API
 constants; unset = the stock resource values.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../data/repository/PlaitQsLayoutSettings.kt  | 19 +++++++++++++++++++
  .../data/repository/QSColumnsRepository.kt    |  8 ++++----

@@ -1,0 +1,234 @@
+From 0277345d1b626382f8bcdc0dac51c84128f4eb44 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 22:12:46 -0600
+Subject: [PATCH] PlaitOS: the LocalSend button hands over files LocalSend can
+ read
+
+LocalSend's share handler (share_handler) maps a storage document address
+(com.android.externalstorage.documents/document/primary:...) to a path in its own folder,
+finds nothing and drops the share (it opened on Receive). Any other content address it copies
+through a stream. So the button passes read-only stand-ins from PlaitShareProvider
+(not exported, read grant per document, served from the document), as FX's FileProvider
+addresses work.
+
+Share intents also take Android's documented ACTION_SEND shape: the file only in
+EXTRA_STREAM, no data (as FX sends); the LocalSend button opens it in its own task.
+
+Checked on the phone: one file and two files open on LocalSend's Send screen.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                           |   7 ++
+ .../documentsui/PlaitShareProvider.java       | 119 ++++++++++++++++++
+ .../documentsui/files/ActionHandler.java      |  36 ++++++
+ 3 files changed, 162 insertions(+)
+ create mode 100644 src/com/android/documentsui/PlaitShareProvider.java
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 6c12012..2a9a356 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -246,6 +246,13 @@
+             </intent-filter>
+         </activity>
+ 
++        <!-- PlaitOS: read-only stand-ins for files handed to LocalSend (see PlaitShareProvider) -->
++        <provider
++            android:name=".PlaitShareProvider"
++            android:authorities="com.android.documentsui.plaitshare"
++            android:exported="false"
++            android:grantUriPermissions="true" />
++
+         <provider
+             android:name=".picker.LastAccessedProvider"
+             android:authorities="com.android.documentsui.lastAccessed"
+diff --git a/src/com/android/documentsui/PlaitShareProvider.java b/src/com/android/documentsui/PlaitShareProvider.java
+new file mode 100644
+index 0000000..41cf29a
+--- /dev/null
++++ b/src/com/android/documentsui/PlaitShareProvider.java
+@@ -0,0 +1,119 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.documentsui;
++
++import android.content.ContentProvider;
++import android.content.ContentValues;
++import android.database.Cursor;
++import android.database.MatrixCursor;
++import android.net.Uri;
++import android.os.ParcelFileDescriptor;
++import android.provider.OpenableColumns;
++import android.util.Base64;
++
++import androidx.annotation.Nullable;
++
++import java.io.FileNotFoundException;
++import java.nio.charset.StandardCharsets;
++
++/**
++ * PlaitOS: read-only stand-ins for documents handed to LocalSend. LocalSend's share handler turns a
++ * storage document address (content://com.android.externalstorage.documents/document/primary:...)
++ * into a wrong file path in its own folder and drops the share; any other content address it copies
++ * through a stream, which works. So the LocalSend button passes
++ * content://com.android.documentsui.plaitshare/<document uri, base64>/<name>, served from the
++ * document itself.
++ *
++ * Not exported: an app reaches an address only through the read grant on the share intent, one
++ * address per granted document, read only.
++ */
++public final class PlaitShareProvider extends ContentProvider {
++    public static final String AUTHORITY = "com.android.documentsui.plaitshare";
++
++    /** The stand-in address for a document (name only makes the address readable). */
++    public static Uri wrap(Uri document, @Nullable String name) {
++        String encoded = Base64.encodeToString(document.toString().getBytes(StandardCharsets.UTF_8),
++                Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
++        Uri.Builder b = new Uri.Builder().scheme("content").authority(AUTHORITY).appendPath(encoded);
++        if (name != null && !name.isEmpty()) b.appendPath(name);
++        return b.build();
++    }
++
++    private static Uri unwrap(Uri uri) throws FileNotFoundException {
++        if (!AUTHORITY.equals(uri.getAuthority()) || uri.getPathSegments().isEmpty()) {
++            throw new FileNotFoundException(uri.toString());
++        }
++        try {
++            byte[] raw = Base64.decode(uri.getPathSegments().get(0),
++                    Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
++            return Uri.parse(new String(raw, StandardCharsets.UTF_8));
++        } catch (IllegalArgumentException e) {
++            throw new FileNotFoundException(uri.toString());
++        }
++    }
++
++    @Override
++    public boolean onCreate() {
++        return true;
++    }
++
++    @Override
++    public @Nullable Cursor query(Uri uri, @Nullable String[] projection, @Nullable String selection,
++            @Nullable String[] selectionArgs, @Nullable String sortOrder) {
++        final String[] columns = projection != null ? projection
++                : new String[] {OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE};
++        String name = null;
++        long size = -1;
++        try (Cursor c = getContext().getContentResolver().query(unwrap(uri),
++                new String[] {OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE}, null, null, null)) {
++            if (c != null && c.moveToFirst()) {
++                name = c.getString(0);
++                size = c.isNull(1) ? -1 : c.getLong(1);
++            }
++        } catch (FileNotFoundException | RuntimeException e) {
++            return null;
++        }
++        MatrixCursor out = new MatrixCursor(columns, 1);
++        Object[] row = new Object[columns.length];
++        for (int i = 0; i < columns.length; i++) {
++            if (OpenableColumns.DISPLAY_NAME.equals(columns[i])) row[i] = name;
++            else if (OpenableColumns.SIZE.equals(columns[i])) row[i] = size >= 0 ? size : null;
++        }
++        out.addRow(row);
++        return out;
++    }
++
++    @Override
++    public @Nullable String getType(Uri uri) {
++        try {
++            return getContext().getContentResolver().getType(unwrap(uri));
++        } catch (FileNotFoundException e) {
++            return null;
++        }
++    }
++
++    @Override
++    public @Nullable ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
++        if (!"r".equals(mode)) throw new SecurityException("read only");
++        return getContext().getContentResolver().openFileDescriptor(unwrap(uri), "r");
++    }
++
++    @Override
++    public @Nullable Uri insert(Uri uri, @Nullable ContentValues values) {
++        throw new UnsupportedOperationException("read only");
++    }
++
++    @Override
++    public int delete(Uri uri, @Nullable String selection, @Nullable String[] selectionArgs) {
++        throw new UnsupportedOperationException("read only");
++    }
++
++    @Override
++    public int update(Uri uri, @Nullable ContentValues values, @Nullable String selection,
++            @Nullable String[] selectionArgs) {
++        throw new UnsupportedOperationException("read only");
++    }
++}
+diff --git a/src/com/android/documentsui/files/ActionHandler.java b/src/com/android/documentsui/files/ActionHandler.java
+index 25f4fce..d719909 100644
+--- a/src/com/android/documentsui/files/ActionHandler.java
++++ b/src/com/android/documentsui/files/ActionHandler.java
+@@ -427,6 +427,14 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+             return null;
+         }
+         intent.addCategory(Intent.CATEGORY_DEFAULT);
++        // PlaitOS: the shape Android documents for ACTION_SEND (and FX sends): the file only in
++        // EXTRA_STREAM (startActivity copies it to the ClipData that carries the read grant), no
++        // data. With the file also set as the data, LocalSend opened on its Receive screen and
++        // dropped the share.
++        if (Intent.ACTION_SEND.equals(intent.getAction()) && intent.getData() != null) {
++            final String type = intent.getType();
++            intent.setDataAndType(null, type);
++        }
+         return intent;
+     }
+ 
+@@ -618,6 +626,29 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+         return context.getPackageManager().queryIntentActivities(probe, 0).isEmpty() ? null : probe;
+     }
+ 
++    private void plaitWrapForLocalSend(Intent intent) {
++        if (Intent.ACTION_SEND.equals(intent.getAction())) {
++            Uri doc = intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class);
++            if (doc != null) {
++                Uri wrapped = com.android.documentsui.PlaitShareProvider.wrap(doc, null);
++                intent.putExtra(Intent.EXTRA_STREAM, wrapped);
++                intent.setClipData(android.content.ClipData.newRawUri("", wrapped));
++            }
++        } else {
++            java.util.ArrayList<Uri> docs =
++                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri.class);
++            if (docs != null && !docs.isEmpty()) {
++                java.util.ArrayList<Uri> wrapped = new java.util.ArrayList<>();
++                for (Uri doc : docs) wrapped.add(com.android.documentsui.PlaitShareProvider.wrap(doc, null));
++                intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, wrapped);
++                android.content.ClipData clip = android.content.ClipData.newRawUri("", wrapped.get(0));
++                for (int i = 1; i < wrapped.size(); i++) clip.addItem(new android.content.ClipData.Item(wrapped.get(i)));
++                intent.setClipData(clip);
++            }
++        }
++        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++    }
++
+     /** PlaitOS: the selection straight to LocalSend, the same intent Share builds, no chooser. */
+     @Override
+     public void plaitSendNearby() {
+@@ -630,6 +661,11 @@ public class ActionHandler<T extends FragmentActivity & AbstractActionHandler.Co
+         Intent intent = createShareIntent(selection);
+         if (intent == null) return;
+         intent.setPackage(LOCALSEND);
++        // LocalSend can't read storage document addresses (it maps them to a wrong path); hand it
++        // read-only stand-ins it copies through a stream, like FX's FileProvider addresses
++        plaitWrapForLocalSend(intent);
++        // Its own task, as when FX hands files to it
++        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+         try {
+             mActivity.startActivity(intent);
+         } catch (android.content.ActivityNotFoundException e) {
+-- 
+2.56.1
+

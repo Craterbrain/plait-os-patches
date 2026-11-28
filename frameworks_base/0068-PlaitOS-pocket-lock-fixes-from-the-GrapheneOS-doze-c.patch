@@ -19,6 +19,7 @@ in the changed lines; the fingerprint listen condition only gains
 !mIsDeviceInPocket, which is always false while pocket mode is off.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../android/keyguard/KeyguardUpdateMonitor.java  | 16 +++++++++-------
  .../java/com/android/server/SystemServer.java    |  7 +------

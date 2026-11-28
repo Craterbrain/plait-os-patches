@@ -1,0 +1,1154 @@
+From 9e9b17638f0b240a9485b9347a79903c46bf7bee Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 17:24:19 -0600
+Subject: [PATCH] PlaitOS: bring Gallery browsing and editing closer to the
+ mockup
+
+---
+ AndroidManifest.xml                           |   4 +-
+ res/drawable/plait_gallery_albums.xml         |   6 +
+ res/drawable/plait_gallery_explore.xml        |   6 +
+ res/drawable/plait_gallery_markup.xml         |   5 +
+ res/drawable/plait_gallery_photos.xml         |   6 +
+ res/layout-land/filtershow_main_panel.xml     | 102 +++--
+ res/layout/filtershow_actionbar.xml           |  34 +-
+ res/layout/filtershow_activity.xml            |   2 +-
+ res/layout/filtershow_main_panel.xml          | 104 +++--
+ res/values/plait_gallery.xml                  |  21 +-
+ res/values/styles.xml                         |   4 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 419 ++++++++++++++----
+ .../filtershow/FilterShowActivity.java        |  18 +-
+ .../filtershow/category/MainPanel.java        |  23 +-
+ 14 files changed, 570 insertions(+), 184 deletions(-)
+ create mode 100644 res/drawable/plait_gallery_albums.xml
+ create mode 100644 res/drawable/plait_gallery_explore.xml
+ create mode 100644 res/drawable/plait_gallery_markup.xml
+ create mode 100644 res/drawable/plait_gallery_photos.xml
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index a9f4f38..b799a74 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40031"
+-        android:versionName="1.1.40031"
++<manifest android:versionCode="40032"
++        android:versionName="1.1.40032"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/res/drawable/plait_gallery_albums.xml b/res/drawable/plait_gallery_albums.xml
+new file mode 100644
+index 0000000..7d27eb2
+--- /dev/null
++++ b/res/drawable/plait_gallery_albums.xml
+@@ -0,0 +1,6 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="22dp" android:height="22dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
++        android:pathData="M2,5h8l2,2h10v13H2zM4,9v9h16V9z"/>
++</vector>
+diff --git a/res/drawable/plait_gallery_explore.xml b/res/drawable/plait_gallery_explore.xml
+new file mode 100644
+index 0000000..2c40894
+--- /dev/null
++++ b/res/drawable/plait_gallery_explore.xml
+@@ -0,0 +1,6 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="22dp" android:height="22dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
++        android:pathData="M12,2a10,10 0,1 0,0 20a10,10 0,1 0,0 -20zM12,4a8,8 0,1 1,0 16a8,8 0,1 1,0 -16zM16.5,7.5l-2.4,6.6 -6.6,2.4 2.4,-6.6zM12,10.7a1.3,1.3 0,1 0,0 2.6a1.3,1.3 0,1 0,0 -2.6z"/>
++</vector>
+diff --git a/res/drawable/plait_gallery_markup.xml b/res/drawable/plait_gallery_markup.xml
+new file mode 100644
+index 0000000..3e518af
+--- /dev/null
++++ b/res/drawable/plait_gallery_markup.xml
+@@ -0,0 +1,5 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF"
++        android:pathData="M3,17.25V21h3.75L17.81,9.94 14.06,6.19zM20.71,7.04a1,1 0,0 0,0 -1.41L18.37,3.29a1,1 0,0 0,-1.41 0L15.13,5.12l3.75,3.75z"/>
++</vector>
+diff --git a/res/drawable/plait_gallery_photos.xml b/res/drawable/plait_gallery_photos.xml
+new file mode 100644
+index 0000000..98af84d
+--- /dev/null
++++ b/res/drawable/plait_gallery_photos.xml
+@@ -0,0 +1,6 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="22dp" android:height="22dp"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
++        android:pathData="M3,4h18v16H3zM5,6v12h14V6zM6,16l4,-5 3,4 2,-2 3,3zM15,10a1.5,1.5 0,1 0,0 -3a1.5,1.5 0,0 0,0 3z"/>
++</vector>
+diff --git a/res/layout-land/filtershow_main_panel.xml b/res/layout-land/filtershow_main_panel.xml
+index 6a36de2..f0152ec 100644
+--- a/res/layout-land/filtershow_main_panel.xml
++++ b/res/layout-land/filtershow_main_panel.xml
+@@ -36,53 +36,89 @@
+     <com.android.gallery3d.filtershow.CenteredLinearLayout
+             xmlns:custom="http://schemas.android.com/apk/res/com.android.gallery3d"
+             android:layout_width="match_parent"
+-            android:layout_height="48dip"
++            android:layout_height="58dp"
+             android:layout_gravity="center|bottom"
+             custom:max_width="400dip"
+             android:orientation="vertical">
+ 
+-        <LinearLayout android:layout_width="wrap_content"
++        <LinearLayout android:layout_width="match_parent"
+                       android:layout_height="match_parent"
+-                      android:background="@color/background_main_toolbar">
++                      android:background="?android:attr/colorBackgroundFloating">
+ 
+-            <ImageButton
+-                    android:id="@+id/fxButton"
+-                    android:layout_width="@dimen/thumbnail_size"
++            <Button
++                    android:id="@+id/geometryButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+-                    android:background="@drawable/filtershow_button_background"
+-                    android:scaleType="centerInside"
+-                    android:src="@drawable/ic_photoeditor_effects"/>
+-
+-            <ImageButton
+-                    android:id="@+id/borderButton"
+-                    android:layout_width="@dimen/thumbnail_size"
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_geometry"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/ic_photoeditor_fix"
++                    android:drawableTint="?android:attr/textColorPrimary" />
++
++            <Button
++                    android:id="@+id/colorsButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+-                    android:background="@drawable/filtershow_button_background"
+-                    android:padding="2dip"
+-                    android:scaleType="centerInside"
+-                    android:src="@drawable/ic_photoeditor_border"/>
+-
+-            <ImageButton
+-                    android:id="@+id/geometryButton"
+-                    android:layout_width="@dimen/thumbnail_size"
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_adjust"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/ic_photoeditor_color"
++                    android:drawableTint="?android:attr/textColorPrimary" />
++
++            <Button
++                    android:id="@+id/fxButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+-                    android:background="@drawable/filtershow_button_background"
+-                    android:padding="2dip"
+-                    android:scaleType="centerInside"
+-                    android:src="@drawable/ic_photoeditor_fix"/>
+-
+-            <ImageButton
+-                    android:id="@+id/colorsButton"
+-                    android:layout_width="@dimen/thumbnail_size"
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_filters"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/ic_photoeditor_effects"
++                    android:drawableTint="?android:attr/textColorPrimary" />
++
++            <Button
++                    android:id="@+id/markupButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
++                    android:layout_height="match_parent"
++                    android:layout_weight="1"
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_markup"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/plait_gallery_markup"
++                    android:drawableTint="?android:attr/textColorPrimary" />
++
++            <Button
++                    android:id="@+id/borderButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+-                    android:background="@drawable/filtershow_button_background"
+-                    android:padding="2dip"
+-                    android:scaleType="centerInside"
+-                    android:src="@drawable/ic_photoeditor_color"/>
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_borders"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/ic_photoeditor_border"
++                    android:drawableTint="?android:attr/textColorPrimary" />
+ 
+         </LinearLayout>
+ 
+diff --git a/res/layout/filtershow_actionbar.xml b/res/layout/filtershow_actionbar.xml
+index 5f0aa3f..31cbd82 100644
+--- a/res/layout/filtershow_actionbar.xml
++++ b/res/layout/filtershow_actionbar.xml
+@@ -14,14 +14,28 @@
+      See the License for the specific language governing permissions and
+      limitations under the License.
+ -->
+-<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:layout_width="wrap_content"
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
+     android:layout_height="match_parent"
+-    android:background="@drawable/filtershow_button_background"
+-    android:id="@+id/filtershow_done"
+-    android:textAllCaps="true"
+-    android:text="@string/save"
+-    android:gravity="center_vertical"
+-    android:textSize="14sp"
+-    android:drawableLeft="@drawable/menu_save_photo"
+-    android:drawablePadding="8dip" />
+\ No newline at end of file
++    android:paddingStart="16dp"
++    android:paddingEnd="12dp"
++    android:gravity="center_vertical">
++
++    <TextView
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_weight="1"
++        android:text="@string/plait_gallery_edit_photo"
++        android:textColor="?android:attr/textColorPrimary"
++        android:textSize="20sp"
++        android:textStyle="bold" />
++
++    <Button
++        android:id="@+id/filtershow_done"
++        style="?android:attr/borderlessButtonStyle"
++        android:layout_width="wrap_content"
++        android:layout_height="48dp"
++        android:text="@string/plait_gallery_save_copy"
++        android:textAllCaps="false"
++        android:textColor="?android:attr/colorAccent" />
++</LinearLayout>
+diff --git a/res/layout/filtershow_activity.xml b/res/layout/filtershow_activity.xml
+index 79c315b..1bee3da 100644
+--- a/res/layout/filtershow_activity.xml
++++ b/res/layout/filtershow_activity.xml
+@@ -19,7 +19,7 @@
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:id="@+id/mainView"
+-             android:background="@drawable/filtershow_tiled_background">
++             android:background="?android:attr/colorBackground">
+ 
+     <LinearLayout
+             android:layout_width="match_parent"
+diff --git a/res/layout/filtershow_main_panel.xml b/res/layout/filtershow_main_panel.xml
+index d3400fa..d5a3027 100644
+--- a/res/layout/filtershow_main_panel.xml
++++ b/res/layout/filtershow_main_panel.xml
+@@ -22,7 +22,7 @@
+               android:orientation="vertical"
+               android:animateLayoutChanges="false"
+               android:visibility="visible"
+-              android:background="@color/background_main_toolbar" >
++              android:background="?android:attr/colorBackgroundFloating" >
+ 
+     <FrameLayout android:id="@+id/state_panel_container"
+                  android:layout_width="match_parent"
+@@ -47,53 +47,89 @@
+             xmlns:custom="http://schemas.android.com/apk/res/com.android.gallery3d"
+             android:id="@+id/bottom_panel"
+             android:layout_width="match_parent"
+-            android:layout_height="48dip"
++            android:layout_height="58dp"
+             android:layout_gravity="center|bottom"
+             custom:max_width="400dip"
+             android:orientation="vertical">
+ 
+-        <LinearLayout android:layout_width="wrap_content"
++        <LinearLayout android:layout_width="match_parent"
+                       android:layout_height="match_parent"
+-                      android:background="@color/background_main_toolbar">
++                      android:background="?android:attr/colorBackgroundFloating">
+ 
+-            <ImageButton
+-                    android:id="@+id/fxButton"
+-                    android:layout_width="@dimen/thumbnail_size"
++            <Button
++                    android:id="@+id/geometryButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+-                    android:background="@drawable/filtershow_button_background"
+-                    android:scaleType="centerInside"
+-                    android:src="@drawable/ic_photoeditor_effects"/>
+-
+-            <ImageButton
+-                    android:id="@+id/borderButton"
+-                    android:layout_width="@dimen/thumbnail_size"
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_geometry"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/ic_photoeditor_fix"
++                    android:drawableTint="?android:attr/textColorPrimary" />
++
++            <Button
++                    android:id="@+id/colorsButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+-                    android:background="@drawable/filtershow_button_background"
+-                    android:padding="2dip"
+-                    android:scaleType="centerInside"
+-                    android:src="@drawable/ic_photoeditor_border"/>
+-
+-            <ImageButton
+-                    android:id="@+id/geometryButton"
+-                    android:layout_width="@dimen/thumbnail_size"
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_adjust"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/ic_photoeditor_color"
++                    android:drawableTint="?android:attr/textColorPrimary" />
++
++            <Button
++                    android:id="@+id/fxButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+-                    android:background="@drawable/filtershow_button_background"
+-                    android:padding="2dip"
+-                    android:scaleType="centerInside"
+-                    android:src="@drawable/ic_photoeditor_fix"/>
+-
+-            <ImageButton
+-                    android:id="@+id/colorsButton"
+-                    android:layout_width="@dimen/thumbnail_size"
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_filters"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/ic_photoeditor_effects"
++                    android:drawableTint="?android:attr/textColorPrimary" />
++
++            <Button
++                    android:id="@+id/markupButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
++                    android:layout_height="match_parent"
++                    android:layout_weight="1"
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_markup"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/plait_gallery_markup"
++                    android:drawableTint="?android:attr/textColorPrimary" />
++
++            <Button
++                    android:id="@+id/borderButton"
++                    style="?android:attr/borderlessButtonStyle"
++                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+-                    android:background="@drawable/filtershow_button_background"
+-                    android:padding="2dip"
+-                    android:scaleType="centerInside"
+-                    android:src="@drawable/ic_photoeditor_color"/>
++                    android:minWidth="0dp"
++                    android:padding="2dp"
++                    android:text="@string/plait_gallery_borders"
++                    android:textAllCaps="false"
++                    android:textColor="?android:attr/textColorPrimary"
++                    android:textSize="11sp"
++                    android:drawableTop="@drawable/ic_photoeditor_border"
++                    android:drawableTint="?android:attr/textColorPrimary" />
+ 
+         </LinearLayout>
+ 
+diff --git a/res/values/plait_gallery.xml b/res/values/plait_gallery.xml
+index 0c3110b..732ba6e 100644
+--- a/res/values/plait_gallery.xml
++++ b/res/values/plait_gallery.xml
+@@ -5,7 +5,7 @@
+     <string name="plait_gallery_photos">Photos</string>
+     <string name="plait_gallery_albums">Albums</string>
+     <string name="plait_gallery_explore">Explore</string>
+-    <string name="plait_gallery_search">Search filenames or albums</string>
++    <string name="plait_gallery_search">Search photos and albums</string>
+     <string name="plait_gallery_settings">Settings</string>
+     <string name="plait_gallery_empty">No matching media</string>
+     <string name="plait_gallery_unavailable">Couldn’t read your media</string>
+@@ -19,4 +19,23 @@
+     <string name="plait_gallery_open">Open</string>
+     <string name="plait_gallery_share">Share</string>
+     <string name="plait_gallery_back">Back</string>
++    <string name="plait_gallery_edit_photo">Edit photo</string>
++    <string name="plait_gallery_save_copy">Save copy</string>
++    <string name="plait_gallery_geometry">Crop</string>
++    <string name="plait_gallery_adjust">Adjust</string>
++    <string name="plait_gallery_filters">Filters</string>
++    <string name="plait_gallery_markup">Markup</string>
++    <string name="plait_gallery_borders">Borders</string>
++    <string name="plait_gallery_all">All</string>
++    <string name="plait_gallery_favorites">Favorites</string>
++    <string name="plait_gallery_remove_favorite">Remove from Favorites</string>
++    <string name="plait_gallery_trash">Trash</string>
++    <string name="plait_gallery_browse">Browse by topic</string>
++    <string name="plait_gallery_today">Today</string>
++    <string name="plait_gallery_yesterday">Yesterday</string>
++    <string name="plait_gallery_unknown_date">Unknown date</string>
++    <plurals name="plait_gallery_count">
++        <item quantity="one">%d item</item>
++        <item quantity="other">%d items</item>
++    </plurals>
+ </resources>
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index 33dcbec..bae0851 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -28,8 +28,8 @@
+         <item name="android:colorBackground">@null</item>
+         <item name="android:colorBackgroundCacheHint">@null</item>
+     </style>
+-    <style name="Theme.FilterShow" parent="Theme.Gallery">
+-        <item name="android:windowBackground">@null</item>
++    <style name="Theme.FilterShow" parent="android:style/Theme.DeviceDefault">
++        <item name="android:windowBackground">?android:attr/colorBackground</item>
+     </style>
+     <style name="Theme.Crop" parent="Theme.GalleryBase">
+         <item name="android:displayOptions"></item>
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index e4add2b..ffd796d 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -29,7 +29,12 @@ import android.view.ViewGroup;
+ import android.widget.BaseAdapter;
+ import android.widget.Button;
+ import android.widget.EditText;
+-import android.widget.GridView;
++import android.widget.ListView;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.RippleDrawable;
++import android.content.res.ColorStateList;
++import android.text.TextUtils;
++import android.graphics.Typeface;
+ import android.widget.ImageButton;
+ import android.widget.ImageView;
+ import android.widget.LinearLayout;
+@@ -60,13 +65,25 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+     };
+     private final List<Media> media = new ArrayList<>();
+-    private final List<Tile> tiles = new ArrayList<>();
+     private int tab;
+     private String category;
+     private String query = "";
+     private Media selected;
+     private LinearLayout root;
+-    private GridView grid;
++    private ListView grid;
++    private final List<Row> rows = new ArrayList<>();
++    private TextView favoriteButton;
++
++    private static final class Row {
++        final String heading;
++        final List<Tile> cells;
++        final int columns;
++        Row(String heading, List<Tile> cells, int columns) {
++            this.heading = heading;
++            this.cells = cells;
++            this.columns = columns;
++        }
++    }
+     private TextView status;
+     private boolean loading;
+     private boolean failed;
+@@ -82,9 +99,10 @@ public final class PlaitGalleryActivity extends Activity {
+         final int width;
+         final int height;
+         final boolean video;
++        final boolean favorite;
+ 
+         Media(Uri uri, String name, String album, String folder, String mime, long date,
+-                int width, int height, boolean video) {
++                int width, int height, boolean video, boolean favorite) {
+             this.uri = uri;
+             this.name = name;
+             this.album = album;
+@@ -94,6 +112,7 @@ public final class PlaitGalleryActivity extends Activity {
+             this.width = width;
+             this.height = height;
+             this.video = video;
++            this.favorite = favorite;
+         }
+     }
+ 
+@@ -101,10 +120,12 @@ public final class PlaitGalleryActivity extends Activity {
+         final Media media;
+         final String label;
+         final String category;
+-        Tile(Media media, String label, String category) {
++        final int count;
++        Tile(Media media, String label, String category, int count) {
+             this.media = media;
+             this.label = label;
+             this.category = category;
++            this.count = count;
+         }
+     }
+ 
+@@ -158,7 +179,7 @@ public final class PlaitGalleryActivity extends Activity {
+             boolean error = false;
+             String[] columns = {"_id", "volume_name", "media_type", "_display_name",
+                     "bucket_display_name", "relative_path", "mime_type", "datetaken",
+-                    "date_added", "width", "height"};
++                    "date_added", "width", "height", "is_favorite"};
+             Uri files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL);
+             try (Cursor cursor = getContentResolver().query(files, columns,
+                     "media_type IN (?,?)", new String[]{
+@@ -168,15 +189,21 @@ public final class PlaitGalleryActivity extends Activity {
+                 if (cursor == null) {
+                     error = true;
+                 } else while (cursor.moveToNext() && !Thread.currentThread().isInterrupted()) {
++                    String folder = string(cursor, 5);
++                    String path = folder.toLowerCase(Locale.ROOT);
++                    if (path.startsWith("android/data/") || path.startsWith("android/obb/")
++                            || path.startsWith("plaitbackup/apps/")) {
++                        continue;
++                    }
+                     boolean video = cursor.getInt(2) == FileColumns.MEDIA_TYPE_VIDEO;
+                     Uri collection = video
+                             ? MediaStore.Video.Media.getContentUri(cursor.getString(1))
+                             : MediaStore.Images.Media.getContentUri(cursor.getString(1));
+                     long date = cursor.getLong(7);
+                     loaded.add(new Media(ContentUris.withAppendedId(collection, cursor.getLong(0)),
+-                            string(cursor, 3), string(cursor, 4), string(cursor, 5),
++                            string(cursor, 3), string(cursor, 4), folder,
+                             string(cursor, 6), date > 0 ? date : cursor.getLong(8) * 1000,
+-                            cursor.getInt(9), cursor.getInt(10), video));
++                            cursor.getInt(9), cursor.getInt(10), video, cursor.getInt(11) != 0));
+                 }
+             } catch (RuntimeException exception) {
+                 error = true;
+@@ -189,6 +216,16 @@ public final class PlaitGalleryActivity extends Activity {
+                 media.addAll(loaded);
+                 loading = false;
+                 failed = loadError;
++                if (selected != null) {
++                    for (Media item : media) {
++                        if (item.uri.equals(selected.uri)) {
++                            selected = item;
++                            updateFavoriteLabel();
++                            return;
++                        }
++                    }
++                    if (!failed) showLibrary();
++                }
+                 updateTiles();
+             });
+         });
+@@ -225,6 +262,8 @@ public final class PlaitGalleryActivity extends Activity {
+         TextView name = new TextView(this);
+         name.setText(title);
+         name.setTextSize(library ? 28 : 18);
++        name.setTextColor(color(android.R.attr.textColorPrimary));
++        name.setTypeface(null, Typeface.BOLD);
+         name.setMaxLines(1);
+         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+         header.addView(name, new LinearLayout.LayoutParams(0, dp(56), 1));
+@@ -265,6 +304,10 @@ public final class PlaitGalleryActivity extends Activity {
+         search.setHint(R.string.plait_gallery_search);
+         search.setText(query);
+         search.setPadding(dp(16), 0, dp(16), 0);
++        search.setTextSize(16);
++        search.setTextColor(color(android.R.attr.textColorPrimary));
++        search.setHintTextColor(color(android.R.attr.textColorSecondary));
++        search.setBackground(shape(color(android.R.attr.colorBackgroundFloating), 24));
+         search.addTextChangedListener(new TextWatcher() {
+             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+@@ -273,43 +316,67 @@ public final class PlaitGalleryActivity extends Activity {
+             }
+             @Override public void afterTextChanged(Editable s) {}
+         });
+-        root.addView(search, new LinearLayout.LayoutParams(-1, dp(48)));
++        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(48));
++        searchParams.setMargins(dp(16), dp(4), dp(16), dp(8));
++        root.addView(search, searchParams);
++        if (tab == PHOTOS) {
++            android.widget.HorizontalScrollView scroller = new android.widget.HorizontalScrollView(this);
++            scroller.setHorizontalScrollBarEnabled(false);
++            LinearLayout filters = new LinearLayout(this);
++            filters.setPadding(dp(12), 0, dp(12), 0);
++            addChip(filters, R.string.plait_gallery_all, null, category == null);
++            addChip(filters, R.string.plait_gallery_favorites, "favorites", "favorites".equals(category));
++            addChip(filters, R.string.plait_gallery_videos, "videos", "videos".equals(category));
++            addChip(filters, R.string.plait_gallery_screenshots, "screenshots", "screenshots".equals(category));
++            scroller.addView(filters);
++            root.addView(scroller);
++        } else if (category != null) {
++            root.addView(action(R.string.plait_gallery_back, this::onBackPressed));
++        }
+         status = new TextView(this);
+         status.setPadding(dp(16), dp(12), dp(16), dp(12));
+         root.addView(status);
+-        grid = new GridView(this);
+-        grid.setHorizontalSpacing(dp(4));
+-        grid.setVerticalSpacing(dp(4));
+-        grid.setPadding(dp(12), dp(4), dp(12), dp(4));
++        grid = new ListView(this);
++        grid.setDivider(null);
++        grid.setDividerHeight(0);
++        grid.setPadding(dp(12), 0, dp(12), dp(4));
+         grid.setClipToPadding(false);
+         grid.setAdapter(new TileAdapter());
+-        grid.setOnItemClickListener((parent, view, position, id) -> {
+-            Tile tile = tiles.get(position);
+-            if (tile.category == null) {
+-                showPhoto(tile.media);
+-            } else {
+-                category = tile.category;
+-                showLibrary();
+-            }
+-        });
+         root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
+         LinearLayout navigation = new LinearLayout(this);
+         int[] labels = {R.string.plait_gallery_photos, R.string.plait_gallery_albums,
+                 R.string.plait_gallery_explore};
++        navigation.setBackgroundColor(color(android.R.attr.colorBackgroundFloating));
++        int[] icons = {R.drawable.plait_gallery_photos, R.drawable.plait_gallery_albums,
++                R.drawable.plait_gallery_explore};
+         for (int index = 0; index < labels.length; index++) {
+             final int destination = index;
+-            Button button = action(labels[index], () -> {
++            LinearLayout button = column();
++            button.setGravity(Gravity.CENTER);
++            button.setSelected(tab == index);
++            button.setContentDescription(getText(labels[index]));
++            button.setFocusable(true);
++            button.setBackground(new RippleDrawable(
++                    ColorStateList.valueOf(color(android.R.attr.colorControlHighlight)), null,
++                    shape(0xffffffff, 0)));
++            ImageView icon = new ImageView(this);
++            icon.setImageResource(icons[index]);
++            int foreground = color(tab == index
++                    ? android.R.attr.colorAccent : android.R.attr.textColorSecondary);
++            icon.setColorFilter(foreground);
++            icon.setScaleType(ImageView.ScaleType.CENTER);
++            if (tab == index) icon.setBackground(shape((foreground & 0xffffff) | 0x29000000, 18));
++            button.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(32)));
++            TextView label = label(getString(labels[index]), 12, tab == index);
++            label.setTextColor(foreground);
++            button.addView(label);
++            button.setOnClickListener(view -> {
+                 tab = destination;
+                 category = null;
+                 query = "";
+                 showLibrary();
+             });
+-            button.setSelected(tab == index);
+-            if (tab == index) {
+-                button.setTextColor(color(android.R.attr.colorAccent));
+-                button.setTypeface(null, android.graphics.Typeface.BOLD);
+-            }
+-            navigation.addView(button, new LinearLayout.LayoutParams(0, dp(56), 1));
++            navigation.addView(button, new LinearLayout.LayoutParams(0, dp(64), 1));
+         }
+         root.addView(navigation);
+         root.setFocusableInTouchMode(true);
+@@ -327,55 +394,138 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+     }
+ 
++    private GradientDrawable shape(int fill, int radius) {
++        GradientDrawable drawable = new GradientDrawable();
++        drawable.setColor(fill);
++        drawable.setCornerRadius(dp(radius));
++        return drawable;
++    }
++
++    private TextView label(String value, int size, boolean bold) {
++        TextView text = new TextView(this);
++        text.setText(value);
++        text.setTextSize(size);
++        text.setTextColor(color(android.R.attr.textColorPrimary));
++        if (bold) text.setTypeface(null, Typeface.BOLD);
++        return text;
++    }
++
++    private void addChip(LinearLayout group, int name, String filter, boolean active) {
++        Button chip = action(name, () -> {
++            category = filter;
++            showLibrary();
++        });
++        chip.setMinWidth(0);
++        chip.setMinimumWidth(0);
++        chip.setPadding(dp(12), 0, dp(12), 0);
++        int accent = color(android.R.attr.colorAccent);
++        if (active) chip.setTextColor(accent);
++        chip.setBackground(shape(active ? (accent & 0xffffff) | 0x29000000
++                : color(android.R.attr.colorBackgroundFloating), 18));
++        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(36));
++        params.setMargins(dp(3), dp(4), dp(3), dp(8));
++        group.addView(chip, params);
++    }
++
+     private void updateTiles() {
+         if (grid == null || selected != null) return;
+-        tiles.clear();
+-        boolean folders = tab == ALBUMS && category == null && query.isEmpty();
+-        boolean topics = tab == EXPLORE && category == null && query.isEmpty();
+-        grid.setNumColumns(folders || topics ? 2 : 3);
+-        LinkedHashMap<String, Media> albums = new LinkedHashMap<>();
+-        String previousDate = null;
+-        boolean groupDates = tab == PHOTOS && getPreferences(MODE_PRIVATE)
+-                .getBoolean(GROUP_DATES, true);
+-        for (Media item : media) {
+-            if (!matches(item)) continue;
+-            if (folders) {
+-                albums.putIfAbsent(item.folder, item);
+-            } else if (!topics) {
+-                String label = item.video ? "▶" : "";
+-                if (groupDates) {
+-                    String date = DateUtils.formatDateTime(this, item.date,
+-                            DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_YEAR);
+-                    if (!date.equals(previousDate)) label = date + (item.video ? "  ▶" : "");
+-                    previousDate = date;
+-                }
+-                tiles.add(new Tile(item, label, null));
+-            }
+-        }
+-        for (Media item : albums.values()) {
+-            tiles.add(new Tile(item, item.album.isEmpty() ? item.folder : item.album, item.folder));
+-        }
+-        if (topics) {
+-            String[] keys = {"images", "videos", "screenshots", "downloads"};
+-            int[] labels = {R.string.plait_gallery_images, R.string.plait_gallery_videos,
+-                    R.string.plait_gallery_screenshots, R.string.plait_gallery_downloads};
+-            for (int index = 0; index < keys.length; index++) {
+-                String key = keys[index];
++        rows.clear();
++        boolean albums = tab == ALBUMS && category == null && query.isEmpty();
++        boolean explore = tab == EXPLORE && category == null && query.isEmpty();
++        LinkedHashMap<String, List<Media>> groups = new LinkedHashMap<>();
++        if (albums || explore) {
++            if (albums) {
++                groups.put("favorites", new ArrayList<>());
+                 for (Media item : media) {
+-                    if (inTopic(item, key)) {
+-                        tiles.add(new Tile(item, getString(labels[index]), key));
+-                        break;
+-                    }
++                    if (item.favorite) groups.get("favorites").add(item);
++                    groups.computeIfAbsent(item.folder, key -> new ArrayList<>()).add(item);
++                }
++            } else {
++                for (String topic : new String[]{"images", "videos", "screenshots", "downloads", "favorites"}) {
++                    groups.put(topic, new ArrayList<>());
++                    for (Media item : media) if (inTopic(item, topic)) groups.get(topic).add(item);
+                 }
+             }
++            List<Tile> cards = new ArrayList<>();
++            groups.forEach((key, items) -> {
++                if (items.isEmpty()) return;
++                Media cover = items.get(0);
++                String name = albums && !key.equals("favorites")
++                        ? cover.album.isEmpty() ? cover.folder : cover.album : topicLabel(key);
++                cards.add(new Tile(cover, name, key, items.size()));
++            });
++            addRows(getString(explore ? R.string.plait_gallery_browse : R.string.plait_gallery_albums),
++                    cards, explore ? 1 : 2);
++        } else {
++            boolean groupDates = tab == PHOTOS && category == null
++                    && getPreferences(MODE_PRIVATE).getBoolean(GROUP_DATES, true);
++            for (Media item : media) {
++                if (!matches(item)) continue;
++                String day = groupDates ? dayKey(item.date) : "";
++                groups.computeIfAbsent(day, key -> new ArrayList<>()).add(item);
++            }
++            if (category != null && !groups.isEmpty()) {
++                List<Media> items = groups.remove("");
++                String name = tab == ALBUMS && !category.equals("favorites")
++                        ? items.get(0).album : topicLabel(category);
++                groups.put(name, items);
++            }
++            groups.forEach((heading, items) -> {
++                List<Tile> cells = new ArrayList<>();
++                for (Media item : items) cells.add(new Tile(item, "", null, 0));
++                String day = groupDates ? dateLabel(items.get(0).date) : heading;
++                if (groupDates && cells.size() >= 3
++                        && day.equals(getString(R.string.plait_gallery_today))) {
++                    rows.add(new Row(day, null, 3));
++                    rows.add(new Row(null, cells.subList(0, 2), 2));
++                    addRows("", cells.subList(2, cells.size()), 3);
++                } else {
++                    addRows(day, cells, 3);
++                }
++            });
+         }
+         status.setText(failed ? R.string.plait_gallery_unavailable : R.string.plait_gallery_empty);
+-        status.setVisibility(tiles.isEmpty() && !loading ? View.VISIBLE : View.GONE);
++        status.setVisibility(rows.isEmpty() && !loading ? View.VISIBLE : View.GONE);
+         ((BaseAdapter) grid.getAdapter()).notifyDataSetChanged();
+     }
+ 
++    private static String dayKey(long date) {
++        if (date <= 0) return "unknown";
++        return java.time.Instant.ofEpochMilli(date).atZone(java.time.ZoneId.systemDefault())
++                .toLocalDate().toString();
++    }
++
++    private String dateLabel(long date) {
++        if (date <= 0) return getString(R.string.plait_gallery_unknown_date);
++        java.time.ZoneId zone = java.time.ZoneId.systemDefault();
++        java.time.LocalDate day = java.time.Instant.ofEpochMilli(date).atZone(zone).toLocalDate();
++        java.time.LocalDate today = java.time.LocalDate.now(zone);
++        if (day.equals(today)) return getString(R.string.plait_gallery_today);
++        if (day.equals(today.minusDays(1))) return getString(R.string.plait_gallery_yesterday);
++        return DateUtils.formatDateTime(this, date,
++                DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_YEAR);
++    }
++
++    private String topicLabel(String topic) {
++        switch (topic) {
++            case "favorites": return getString(R.string.plait_gallery_favorites);
++            case "screenshots": return getString(R.string.plait_gallery_screenshots);
++            case "downloads": return getString(R.string.plait_gallery_downloads);
++            case "videos": return getString(R.string.plait_gallery_videos);
++            default: return getString(R.string.plait_gallery_images);
++        }
++    }
++
++    private void addRows(String heading, List<Tile> entries, int columns) {
++        if (entries.isEmpty()) return;
++        if (!heading.isEmpty()) rows.add(new Row(heading, null, columns));
++        for (int i = 0; i < entries.size(); i += columns) {
++            rows.add(new Row(null, entries.subList(i, Math.min(i + columns, entries.size())), columns));
++        }
++    }
++
+     private boolean matches(Media item) {
+-        if (category != null && (tab == ALBUMS ? !category.equals(item.folder)
++        if (category != null && (tab == ALBUMS && !category.equals("favorites") ? !category.equals(item.folder)
+                 : !inTopic(item, category))) return false;
+         String term = query.toLowerCase(Locale.ROOT);
+         return item.name.toLowerCase(Locale.ROOT).contains(term)
+@@ -385,6 +535,7 @@ public final class PlaitGalleryActivity extends Activity {
+     private static boolean inTopic(Media item, String topic) {
+         String folder = item.folder.toLowerCase(Locale.ROOT);
+         switch (topic) {
++            case "favorites": return item.favorite;
+             case "images": return !item.video;
+             case "videos": return item.video;
+             case "screenshots": return folder.contains("screenshots/");
+@@ -412,14 +563,21 @@ public final class PlaitGalleryActivity extends Activity {
+         }
+         selected = item;
+         LinearLayout photo = column();
+-        photo.addView(header(item.name, false));
++        LinearLayout title = header(item.name, false);
++        favoriteButton = new Button(this, null, android.R.attr.borderlessButtonStyle);
++        favoriteButton.setTextSize(24);
++        favoriteButton.setMinWidth(0);
++        favoriteButton.setOnClickListener(view -> changeMedia(false));
++        title.addView(favoriteButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
++        updateFavoriteLabel();
++        photo.addView(title);
+         ImageView image = new ImageView(this);
+         image.setContentDescription(item.name);
+         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+         loadImage(image, item.uri, 1200, false);
+         photo.addView(image, new LinearLayout.LayoutParams(-1, 0, 1));
+         LinearLayout actions = new LinearLayout(this);
+-        addAction(actions, R.string.plait_gallery_open, () -> open(item, false));
++
+         addAction(actions, R.string.plait_gallery_edit, () -> open(item, true));
+         addAction(actions, R.string.plait_gallery_details, () -> details(item));
+         addAction(actions, R.string.plait_gallery_share, () -> {
+@@ -428,10 +586,39 @@ public final class PlaitGalleryActivity extends Activity {
+                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+             startActivity(Intent.createChooser(share, getText(R.string.plait_gallery_share)));
+         });
++        addAction(actions, R.string.plait_gallery_trash, () -> changeMedia(true));
+         photo.addView(actions);
+         setContentView(photo);
+     }
+ 
++    private void updateFavoriteLabel() {
++        if (favoriteButton == null || selected == null) return;
++        favoriteButton.setText(selected.favorite ? "★" : "☆");
++        favoriteButton.setContentDescription(getText(selected.favorite
++                ? R.string.plait_gallery_remove_favorite : R.string.plait_gallery_favorites));
++    }
++
++    private void changeMedia(boolean trash) {
++        Media item = selected;
++        if (item == null) return;
++        try {
++            android.app.PendingIntent request = trash
++                    ? MediaStore.createTrashRequest(getContentResolver(), List.of(item.uri), true)
++                    : MediaStore.createFavoriteRequest(getContentResolver(), List.of(item.uri),
++                            !item.favorite);
++            startIntentSenderForResult(request.getIntentSender(), trash ? 2 : 3, null, 0, 0, 0);
++        } catch (android.content.IntentSender.SendIntentException | RuntimeException exception) {
++            Toast.makeText(this, R.string.plait_gallery_unavailable, Toast.LENGTH_SHORT).show();
++        }
++    }
++
++    @Override protected void onActivityResult(int request, int result, Intent data) {
++        super.onActivityResult(request, result, data);
++        if (result != RESULT_OK) return;
++        if (request == 2) showLibrary();
++        if (request == 2 || request == 3) refresh();
++    }
++
+     private void addAction(LinearLayout row, int label, Runnable runnable) {
+         row.addView(action(label, runnable), new LinearLayout.LayoutParams(0, dp(56), 1));
+     }
+@@ -493,27 +680,87 @@ public final class PlaitGalleryActivity extends Activity {
+     }
+ 
+     private final class TileAdapter extends BaseAdapter {
+-        @Override public int getCount() { return tiles.size(); }
+-        @Override public Tile getItem(int position) { return tiles.get(position); }
++        @Override public int getCount() { return rows.size(); }
++        @Override public Row getItem(int position) { return rows.get(position); }
+         @Override public long getItemId(int position) { return position; }
++        @Override public boolean isEnabled(int position) { return false; }
+ 
+         @Override public View getView(int position, View convertView, ViewGroup parent) {
+-            LinearLayout cell = (LinearLayout) convertView;
+-            if (cell == null) {
+-                cell = column();
+-                ImageView thumbnail = new ImageView(PlaitGalleryActivity.this);
+-                thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+-                cell.addView(thumbnail, new LinearLayout.LayoutParams(-1, dp(110)));
+-                TextView label = new TextView(PlaitGalleryActivity.this);
+-                label.setSingleLine(true);
+-                label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+-                cell.addView(label, new LinearLayout.LayoutParams(-1, dp(22)));
++            Row row = getItem(position);
++            if (row.heading != null) {
++                TextView title = label(row.heading, 18, true);
++                title.setAccessibilityHeading(true);
++                title.setPadding(dp(4), dp(12), dp(4), dp(8));
++                return title;
++            }
++            LinearLayout line = new LinearLayout(PlaitGalleryActivity.this);
++            for (int index = 0; index < row.columns; index++) {
++                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
++                params.setMargins(dp(2), dp(2), dp(2), dp(2));
++                if (index >= row.cells.size()) {
++                    line.addView(new View(PlaitGalleryActivity.this), params);
++                    continue;
++                }
++                Tile tile = row.cells.get(index);
++                if (row.columns == 2 && tile.category == null && index == 0) params.weight = 1.45f;
++                line.addView(card(tile, row.columns), params);
+             }
+-            Tile tile = getItem(position);
+-            ImageView thumbnail = (ImageView) cell.getChildAt(0);
+-            thumbnail.setContentDescription(tile.media.name);
+-            loadImage(thumbnail, tile.media.uri, dp(180), true);
+-            ((TextView) cell.getChildAt(1)).setText(tile.label);
++            return line;
++        }
++
++        private View card(Tile tile, int columns) {
++            boolean collection = tile.category != null;
++            boolean topic = columns == 1;
++            LinearLayout cell = column();
++            if (topic) {
++                cell.setOrientation(LinearLayout.HORIZONTAL);
++                cell.setGravity(Gravity.CENTER_VERTICAL);
++                cell.setPadding(dp(8), dp(8), dp(8), dp(8));
++            }
++            cell.setBackground(shape(color(android.R.attr.colorBackgroundFloating),
++                    collection ? 16 : 6));
++            cell.setClipToOutline(true);
++            android.widget.FrameLayout imageFrame = new android.widget.FrameLayout(PlaitGalleryActivity.this);
++            int size = topic ? 62 : collection ? 106 : columns == 2 ? 145 : Math.max(85,
++                    (getResources().getConfiguration().screenWidthDp - 36) / 3);
++            ImageView thumbnail = new ImageView(PlaitGalleryActivity.this);
++            thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
++            imageFrame.addView(thumbnail, new android.widget.FrameLayout.LayoutParams(-1, -1));
++            cell.addView(imageFrame, new LinearLayout.LayoutParams(topic ? dp(70) : -1, dp(size)));
++            loadImage(thumbnail, tile.media.uri, dp(192), true);
++            if (!collection && (tile.media.video || tile.media.favorite)) {
++                TextView badge = label(tile.media.video ? "▶" : "★", 12, true);
++                badge.setTextColor(0xffffffff);
++                badge.setBackground(shape(0xb3000000, 8));
++                badge.setPadding(dp(6), dp(2), dp(6), dp(2));
++                android.widget.FrameLayout.LayoutParams badgeParams =
++                        new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
++                badgeParams.setMargins(dp(5), dp(5), dp(5), dp(5));
++                imageFrame.addView(badge, badgeParams);
++            }
++            if (collection) {
++                LinearLayout caption = column();
++                caption.setPadding(dp(10), dp(8), dp(10), dp(8));
++                TextView title = label(tile.label, 15, true);
++                title.setSingleLine();
++                title.setEllipsize(TextUtils.TruncateAt.END);
++                caption.addView(title);
++                TextView count = label(getResources().getQuantityString(R.plurals.plait_gallery_count,
++                        tile.count, tile.count), 12, false);
++                count.setTextColor(color(android.R.attr.textColorSecondary));
++                caption.addView(count);
++                cell.addView(caption);
++            }
++            cell.setContentDescription(collection ? tile.label : tile.media.name);
++            cell.setFocusable(true);
++            cell.setOnClickListener(view -> {
++                if (collection) {
++                    category = tile.category;
++                    showLibrary();
++                } else {
++                    showPhoto(tile.media);
++                }
++            });
+             return cell;
+         }
+     }
+diff --git a/src/com/android/gallery3d/filtershow/FilterShowActivity.java b/src/com/android/gallery3d/filtershow/FilterShowActivity.java
+index 7cb4614..26c0aac 100644
+--- a/src/com/android/gallery3d/filtershow/FilterShowActivity.java
++++ b/src/com/android/gallery3d/filtershow/FilterShowActivity.java
+@@ -54,6 +54,7 @@ import android.view.Menu;
+ import android.view.MenuItem;
+ import android.view.MotionEvent;
+ import android.view.View;
++import android.view.ViewGroup;
+ import android.view.View.OnClickListener;
+ import android.view.ViewPropertyAnimator;
+ import android.view.WindowManager;
+@@ -350,11 +351,18 @@ public class FilterShowActivity extends FragmentActivity implements OnItemClickL
+ 
+         ActionBar actionBar = getActionBar();
+         actionBar.setDisplayOptions(ActionBar.DISPLAY_SHOW_CUSTOM);
+-        actionBar.setCustomView(R.layout.filtershow_actionbar);
+-        actionBar.setBackgroundDrawable(new ColorDrawable(
+-                getResources().getColor(R.color.background_screen)));
+-
+-        mSaveButton = actionBar.getCustomView();
++        View header = getLayoutInflater().inflate(R.layout.filtershow_actionbar, null);
++        actionBar.setCustomView(header, new ActionBar.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
++        android.content.res.TypedArray colors = obtainStyledAttributes(
++                new int[]{android.R.attr.colorBackgroundFloating});
++        try {
++            actionBar.setBackgroundDrawable(new ColorDrawable(colors.getColor(0, 0)));
++        } finally {
++            colors.recycle();
++        }
++
++        mSaveButton = header.findViewById(R.id.filtershow_done);
+         mSaveButton.setOnClickListener(new OnClickListener() {
+             @Override
+             public void onClick(View view) {
+diff --git a/src/com/android/gallery3d/filtershow/category/MainPanel.java b/src/com/android/gallery3d/filtershow/category/MainPanel.java
+index a44bf42..46981e4 100644
+--- a/src/com/android/gallery3d/filtershow/category/MainPanel.java
++++ b/src/com/android/gallery3d/filtershow/category/MainPanel.java
+@@ -22,7 +22,7 @@ import androidx.fragment.app.FragmentTransaction;
+ import android.view.LayoutInflater;
+ import android.view.View;
+ import android.view.ViewGroup;
+-import android.widget.ImageButton;
++
+ import android.widget.LinearLayout;
+ 
+ import com.android.gallery3d.R;
+@@ -35,10 +35,10 @@ public class MainPanel extends Fragment {
+     private static final String LOGTAG = "MainPanel";
+ 
+     private LinearLayout mMainView;
+-    private ImageButton looksButton;
+-    private ImageButton bordersButton;
+-    private ImageButton geometryButton;
+-    private ImageButton filtersButton;
++    private View looksButton;
++    private View bordersButton;
++    private View geometryButton;
++    private View filtersButton;
+ 
+     public static final String FRAGMENT_TAG = "MainPanel";
+     public static final int LOOKS = 0;
+@@ -93,10 +93,10 @@ public class MainPanel extends Fragment {
+         mMainView = (LinearLayout) inflater.inflate(
+                 R.layout.filtershow_main_panel, null, false);
+ 
+-        looksButton = (ImageButton) mMainView.findViewById(R.id.fxButton);
+-        bordersButton = (ImageButton) mMainView.findViewById(R.id.borderButton);
+-        geometryButton = (ImageButton) mMainView.findViewById(R.id.geometryButton);
+-        filtersButton = (ImageButton) mMainView.findViewById(R.id.colorsButton);
++        looksButton = mMainView.findViewById(R.id.fxButton);
++        bordersButton = mMainView.findViewById(R.id.borderButton);
++        geometryButton = mMainView.findViewById(R.id.geometryButton);
++        filtersButton = mMainView.findViewById(R.id.colorsButton);
+ 
+         looksButton.setOnClickListener(new View.OnClickListener() {
+             @Override
+@@ -124,6 +124,9 @@ public class MainPanel extends Fragment {
+         });
+ 
+         FilterShowActivity activity = (FilterShowActivity) getActivity();
++        mMainView.findViewById(R.id.markupButton).setOnClickListener(view ->
++                activity.showRepresentation(
++                        new com.android.gallery3d.filtershow.filters.FilterDrawRepresentation()));
+         showImageStatePanel(activity.isShowingImageStatePanel());
+         showPanel(activity.getCurrentPanel());
+         return mMainView;
+@@ -242,7 +245,7 @@ public class MainPanel extends Fragment {
+         }
+     }
+ 
+-    public void setToggleVersionsPanelButton(ImageButton button) {
++    public void setToggleVersionsPanelButton(View button) {
+         if (button == null) {
+             return;
+         }
+-- 
+2.56.1
+

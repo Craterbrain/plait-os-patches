@@ -9,6 +9,7 @@ duplicates and find threads) before it adds rows, but personalQuery asked for th
 a restore-only grant failed with 'grant does not cover backup.apps of @call_log'.
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3UdaCB3bu67ZPQkVe
 ---
  .../com/android/server/plait/PlaitBackupService.java  | 11 +++++++++--
  1 file changed, 9 insertions(+), 2 deletions(-)

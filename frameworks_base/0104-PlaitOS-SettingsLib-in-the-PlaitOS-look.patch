@@ -17,6 +17,7 @@ follow plait-design:
 - Section labels in muted text (on-surface-variant) instead of the accent.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
 ---
  .../settingslib_expressive_icon_back.xml      | 32 +++++------
  .../res/values-v36/styles_expressive.xml      |  5 +-

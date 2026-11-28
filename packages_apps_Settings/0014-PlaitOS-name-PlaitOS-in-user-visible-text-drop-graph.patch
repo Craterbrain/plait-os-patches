@@ -5,6 +5,7 @@ Subject: [PATCH 14/14] PlaitOS: name PlaitOS in user-visible text, drop
  grapheneos.org links
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  res/values/strings_app_exploit_protection.xml                 | 2 +-
  res/values/strings_ext.xml                                    | 4 ++--

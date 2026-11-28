@@ -1,0 +1,415 @@
+From cab083ffaa05437cc0243a672933680a1d0c090b Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:48:37 -0600
+Subject: [PATCH] PlaitOS: add icon controls, album copies, and image metadata
+ to Gallery
+
+---
+ AndroidManifest.xml                           |   5 +-
+ res/drawable/plait_gallery_album_add.xml      |   7 +
+ res/drawable/plait_gallery_back.xml           |   7 +
+ res/drawable/plait_gallery_info.xml           |   7 +
+ res/drawable/plait_gallery_star.xml           |   7 +
+ res/drawable/plait_gallery_star_filled.xml    |   7 +
+ res/values/plait_gallery.xml                  |  15 ++
+ .../gallery3d/app/PlaitGalleryActivity.java   | 205 ++++++++++++++++--
+ 8 files changed, 237 insertions(+), 23 deletions(-)
+ create mode 100644 res/drawable/plait_gallery_album_add.xml
+ create mode 100644 res/drawable/plait_gallery_back.xml
+ create mode 100644 res/drawable/plait_gallery_info.xml
+ create mode 100644 res/drawable/plait_gallery_star.xml
+ create mode 100644 res/drawable/plait_gallery_star_filled.xml
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 2df0b28..52f6a9e 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40049"
+-        android:versionName="1.1.40049"
++<manifest android:versionCode="40050"
++        android:versionName="1.1.40050"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+@@ -28,6 +28,7 @@
+     <uses-permission android:name="android.permission.VIBRATE" />
+     <uses-permission android:name="android.permission.WAKE_LOCK" />
+     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
++    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+     <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
+diff --git a/res/drawable/plait_gallery_album_add.xml b/res/drawable/plait_gallery_album_add.xml
+new file mode 100644
+index 0000000..14b14a5
+--- /dev/null
++++ b/res/drawable/plait_gallery_album_add.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp" android:autoMirrored="false"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round"
++        android:pathData="M3,7h7l2,2h9v11H3zM15,11v7M11.5,14.5h7"/>
++</vector>
+diff --git a/res/drawable/plait_gallery_back.xml b/res/drawable/plait_gallery_back.xml
+new file mode 100644
+index 0000000..869d659
+--- /dev/null
++++ b/res/drawable/plait_gallery_back.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp" android:autoMirrored="true"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round"
++        android:pathData="M13,5l-7,7 7,7M6,12h14"/>
++</vector>
+diff --git a/res/drawable/plait_gallery_info.xml b/res/drawable/plait_gallery_info.xml
+new file mode 100644
+index 0000000..dc6d3bb
+--- /dev/null
++++ b/res/drawable/plait_gallery_info.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp" android:autoMirrored="false"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round"
++        android:pathData="M12,11v5M12,7.5v.1M21,12a9,9 0,1 1,-18 0a9,9 0,1 1,18 0"/>
++</vector>
+diff --git a/res/drawable/plait_gallery_star.xml b/res/drawable/plait_gallery_star.xml
+new file mode 100644
+index 0000000..575766c
+--- /dev/null
++++ b/res/drawable/plait_gallery_star.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp" android:autoMirrored="false"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round"
++        android:pathData="M12,3l2.8,5.7 6.2,.9 -4.5,4.4 1.1,6.2 -5.6,-2.9 -5.6,2.9 1.1,-6.2 -4.5,-4.4 6.2,-.9z"/>
++</vector>
+diff --git a/res/drawable/plait_gallery_star_filled.xml b/res/drawable/plait_gallery_star_filled.xml
+new file mode 100644
+index 0000000..6ad145e
+--- /dev/null
++++ b/res/drawable/plait_gallery_star_filled.xml
+@@ -0,0 +1,7 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp" android:height="24dp" android:autoMirrored="false"
++    android:viewportWidth="24" android:viewportHeight="24">
++    <path android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF"
++        android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round"
++        android:pathData="M12,3l2.8,5.7 6.2,.9 -4.5,4.4 1.1,6.2 -5.6,-2.9 -5.6,2.9 1.1,-6.2 -4.5,-4.4 6.2,-.9z"/>
++</vector>
+diff --git a/res/values/plait_gallery.xml b/res/values/plait_gallery.xml
+index e3200e5..ada8eb5 100644
+--- a/res/values/plait_gallery.xml
++++ b/res/values/plait_gallery.xml
+@@ -52,4 +52,19 @@
+         <item quantity="one">%d item selected</item>
+         <item quantity="other">%d items selected</item>
+     </plurals>
++    <string name="plait_gallery_add_to_album">Add to album</string>
++    <string name="plait_gallery_new_album">New album</string>
++    <string name="plait_gallery_album_name">Album</string>
++    <string name="plait_gallery_invalid_album">Enter a valid album name</string>
++    <string name="plait_gallery_album_added">Copied to album</string>
++    <string name="plait_gallery_album_failed">Couldn’t copy this photo to the album</string>
++    <string name="plait_gallery_folder">Folder</string>
++    <string name="plait_gallery_taken">Taken</string>
++    <string name="plait_gallery_dimensions">Dimensions</string>
++    <string name="plait_gallery_type">File type</string>
++    <string name="plait_gallery_size">File size</string>
++    <string name="plait_gallery_modified">Modified</string>
++    <string name="plait_gallery_source_app">Source app</string>
++    <string name="plait_gallery_subject">Subject</string>
++    <string name="plait_gallery_exif">Image metadata (EXIF)</string>
+ </resources>
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index 200883d..3a4ebc0 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -14,6 +14,7 @@ import android.content.pm.PackageManager;
+ import android.database.Cursor;
+ import android.graphics.Bitmap;
+ import android.net.Uri;
++import android.media.ExifInterface;
+ import android.os.Bundle;
+ import android.provider.MediaStore;
+ import android.provider.MediaStore.Files.FileColumns;
+@@ -54,6 +55,8 @@ import com.android.gallery3d.R;
+ import com.android.gallery3d.filtershow.FilterShowActivity;
+ 
+ import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
+ import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -86,7 +89,7 @@ public final class PlaitGalleryActivity extends Activity {
+     private final java.util.LinkedHashSet<Uri> checkedMedia = new java.util.LinkedHashSet<>();
+     private ListView grid;
+     private final List<Row> rows = new ArrayList<>();
+-    private TextView favoriteButton;
++    private ImageButton favoriteButton;
+ 
+     private static final class Row {
+         final String heading;
+@@ -363,7 +366,9 @@ public final class PlaitGalleryActivity extends Activity {
+         LinearLayout header = new LinearLayout(this);
+         header.setGravity(Gravity.CENTER_VERTICAL);
+         header.setPadding(dp(16), 0, dp(8), 0);
+-        if (!library) header.addView(action(R.string.plait_gallery_back, this::onBackPressed));
++        if (!library) header.addView(selectionButton(R.drawable.plait_gallery_back,
++                R.string.plait_gallery_back, this::onBackPressed),
++                new LinearLayout.LayoutParams(dp(48), dp(48)));
+         TextView name = new TextView(this);
+         name.setText(title);
+         name.setTextSize(library ? 28 : 18);
+@@ -1017,16 +1022,21 @@ public final class PlaitGalleryActivity extends Activity {
+         photo.addView(pager, new LinearLayout.LayoutParams(-1, 0, 1));
+ 
+         LinearLayout actions = new LinearLayout(this);
+-        addAction(actions, R.string.plait_gallery_edit, () -> open(selected, true));
+-        addAction(actions, R.string.plait_gallery_details, () -> details(selected));
+-        addAction(actions, R.string.plait_gallery_share, () -> {
++        addViewerAction(actions, R.drawable.plait_gallery_markup, R.string.plait_gallery_edit,
++                () -> open(selected, true));
++        addViewerAction(actions, R.drawable.plait_gallery_info, R.string.plait_gallery_details,
++                () -> details(selected));
++        addViewerAction(actions, R.drawable.plait_gallery_album_add,
++                R.string.plait_gallery_add_to_album, () -> chooseAlbum(selected));
++        addViewerAction(actions, R.drawable.plait_gallery_share, R.string.plait_gallery_share, () -> {
+             Media current = selected;
+             Intent share = new Intent(Intent.ACTION_SEND).setType(current.mime)
+                     .putExtra(Intent.EXTRA_STREAM, current.uri)
+                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+             startActivity(Intent.createChooser(share, getText(R.string.plait_gallery_share)));
+         });
+-        addAction(actions, R.string.plait_gallery_trash, this::trashPhoto);
++        addViewerAction(actions, R.drawable.plait_gallery_trash, R.string.plait_gallery_trash,
++                this::trashPhoto);
+         photo.addView(actions);
+         setContentView(photo);
+     }
+@@ -1103,10 +1113,8 @@ public final class PlaitGalleryActivity extends Activity {
+ 
+     private void updateViewerHeader(LinearLayout slot) {
+         LinearLayout title = header(selected.name, false);
+-        favoriteButton = new Button(this, null, android.R.attr.borderlessButtonStyle);
+-        favoriteButton.setTextSize(24);
+-        favoriteButton.setMinWidth(0);
+-        favoriteButton.setOnClickListener(view -> requestMediaChange(selected, false));
++        favoriteButton = selectionButton(R.drawable.plait_gallery_star,
++                R.string.plait_gallery_favorites, () -> requestMediaChange(selected, false));
+         title.addView(favoriteButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+         updateFavoriteLabel();
+         slot.removeAllViews();
+@@ -1150,7 +1158,9 @@ public final class PlaitGalleryActivity extends Activity {
+ 
+     private void updateFavoriteLabel() {
+         if (favoriteButton == null || selected == null) return;
+-        favoriteButton.setText(selected.favorite ? "★" : "☆");
++        favoriteButton.setImageResource(selected.favorite ? R.drawable.plait_gallery_star_filled
++                : R.drawable.plait_gallery_star);
++        favoriteButton.setSelected(selected.favorite);
+         favoriteButton.setContentDescription(getText(selected.favorite
+                 ? R.string.plait_gallery_remove_favorite : R.string.plait_gallery_favorites));
+     }
+@@ -1174,8 +1184,9 @@ public final class PlaitGalleryActivity extends Activity {
+         if (request == 2 || request == 3) refresh();
+     }
+ 
+-    private void addAction(LinearLayout row, int label, Runnable runnable) {
+-        row.addView(action(label, runnable), new LinearLayout.LayoutParams(0, dp(56), 1));
++    private void addViewerAction(LinearLayout row, int icon, int description, Runnable runnable) {
++        row.addView(selectionButton(icon, description, runnable),
++                new LinearLayout.LayoutParams(0, dp(56), 1));
+     }
+ 
+     private void open(Media item, boolean edit) {
+@@ -1187,15 +1198,167 @@ public final class PlaitGalleryActivity extends Activity {
+         startActivity(intent);
+     }
+ 
++    private void chooseAlbum(Media item) {
++        LinkedHashMap<String, Media> albums = new LinkedHashMap<>();
++        for (Media candidate : media) {
++            if (candidate.video || candidate.folder.isEmpty()) continue;
++            String volume = MediaStore.getVolumeName(candidate.uri);
++            if (candidate.folder.equals(item.folder)
++                    && volume.equals(MediaStore.getVolumeName(item.uri))) continue;
++            albums.putIfAbsent(volume + "/" + candidate.folder, candidate);
++        }
++        List<Media> destinations = new ArrayList<>(albums.values());
++        String[] names = destinations.stream().map(album -> album.folder)
++                .toArray(String[]::new);
++        AlertDialog.Builder picker = new AlertDialog.Builder(this)
++                .setTitle(R.string.plait_gallery_add_to_album)
++                .setPositiveButton(R.string.plait_gallery_new_album, (dialog, which) -> newAlbum(item))
++                .setNegativeButton(android.R.string.cancel, null);
++        if (names.length > 0) picker.setItems(names, (dialog, which) -> {
++            Media album = destinations.get(which);
++            copyToAlbum(item, MediaStore.getVolumeName(album.uri), album.folder, album.uri);
++        });
++        picker.show();
++    }
++
++    private void newAlbum(Media item) {
++        EditText input = new EditText(this);
++        input.setSingleLine(true);
++        input.setHint(R.string.plait_gallery_album_name);
++        LinearLayout field = column();
++        field.setPadding(dp(24), 0, dp(24), 0);
++        field.addView(input);
++        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.plait_gallery_new_album)
++                .setView(field).setNegativeButton(android.R.string.cancel, null)
++                .setPositiveButton(android.R.string.ok, null).create();
++        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
++                .setOnClickListener(view -> {
++                    String name = input.getText().toString().trim();
++                    if (name.isEmpty() || name.startsWith(".") || name.contains("/")
++                            || name.contains("\\") || name.codePoints().anyMatch(Character::isISOControl)) {
++                        input.setError(getString(R.string.plait_gallery_invalid_album));
++                        return;
++                    }
++                    dialog.dismiss();
++                    copyToAlbum(item, MediaStore.VOLUME_EXTERNAL_PRIMARY,
++                            "Pictures/" + name + "/", null);
++                }));
++        dialog.show();
++    }
++
++    private InputStream openPhotoData(Uri uri) throws IOException {
++        if (checkSelfPermission(android.Manifest.permission.ACCESS_MEDIA_LOCATION)
++                == PackageManager.PERMISSION_GRANTED) {
++            try {
++                InputStream original = getContentResolver().openInputStream(
++                        MediaStore.setRequireOriginal(uri));
++                if (original != null) return original;
++            } catch (IOException | IllegalArgumentException | SecurityException unavailable) {
++                // The provider can still expose metadata and image data with location redacted.
++            }
++        }
++        InputStream input = getContentResolver().openInputStream(uri);
++        if (input == null) throw new IOException("Photo unavailable");
++        return input;
++    }
++
++    private void copyToAlbum(Media item, String volume, String folder, Uri related) {
++        mediaLoader.execute(() -> {
++            Uri copy = null;
++            boolean saved = false;
++            try (InputStream source = openPhotoData(item.uri)) {
++                ContentValues metadata = new ContentValues();
++                metadata.put(MediaStore.MediaColumns.DISPLAY_NAME, item.name);
++                metadata.put(MediaStore.MediaColumns.MIME_TYPE, item.mime);
++                metadata.put(MediaStore.MediaColumns.RELATIVE_PATH, folder);
++                metadata.put(MediaStore.MediaColumns.IS_PENDING, 1);
++                if (item.date > 0) metadata.put(MediaStore.MediaColumns.DATE_TAKEN, item.date);
++                Bundle placement = new Bundle();
++                if (related != null) placement.putParcelable(MediaStore.QUERY_ARG_RELATED_URI, related);
++                copy = getContentResolver().insert(MediaStore.Images.Media.getContentUri(volume),
++                        metadata, placement);
++                if (copy == null) throw new IOException("Could not create album copy");
++                try (OutputStream output = getContentResolver().openOutputStream(copy)) {
++                    if (output == null) throw new IOException("Could not write album copy");
++                    source.transferTo(output);
++                }
++                ContentValues ready = new ContentValues();
++                ready.put(MediaStore.MediaColumns.IS_PENDING, 0);
++                saved = getContentResolver().update(copy, ready, null, null) > 0;
++            } catch (IOException | RuntimeException failure) {
++                android.util.Log.w("PlaitGallery", "Could not copy photo to album", failure);
++            } finally {
++                if (copy != null && !saved) {
++                    try {
++                        getContentResolver().delete(copy, null, null);
++                    } catch (RuntimeException failure) {
++                        android.util.Log.w("PlaitGallery", "Could not remove pending album copy", failure);
++                    }
++                }
++            }
++            boolean success = saved;
++            runOnUiThread(() -> {
++                if (isDestroyed()) return;
++                Toast.makeText(this, success ? R.string.plait_gallery_album_added
++                        : R.string.plait_gallery_album_failed, Toast.LENGTH_SHORT).show();
++                if (success) refresh();
++            });
++        });
++    }
++
+     private void details(Media item) {
+-        String date = DateUtils.formatDateTime(this, item.date,
+-                DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_TIME);
+-        new AlertDialog.Builder(this).setTitle(item.name)
+-                .setMessage(item.folder + "\n" + date + "\n" + item.width + " × " + item.height
+-                        + "\n" + item.mime
+-                        + (item.classification == null || item.classification.label.isEmpty()
+-                                ? "" : "\n" + item.classification.label))
+-                .setPositiveButton(android.R.string.ok, null).show();
++        mediaLoader.execute(() -> {
++            StringBuilder data = new StringBuilder();
++            appendDetail(data, R.string.plait_gallery_album_name, item.album);
++            appendDetail(data, R.string.plait_gallery_folder, item.folder);
++            if (item.date > 0) appendDetail(data, R.string.plait_gallery_taken,
++                    DateUtils.formatDateTime(this, item.date,
++                            DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_TIME));
++            if (item.width > 0 && item.height > 0) appendDetail(data,
++                    R.string.plait_gallery_dimensions, item.width + " × " + item.height);
++            appendDetail(data, R.string.plait_gallery_type, item.mime);
++            String[] columns = {MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED,
++                    MediaStore.MediaColumns.OWNER_PACKAGE_NAME};
++            try (Cursor cursor = getContentResolver().query(item.uri, columns, null, null, null)) {
++                if (cursor != null && cursor.moveToFirst()) {
++                    if (cursor.getLong(0) > 0) appendDetail(data, R.string.plait_gallery_size,
++                            android.text.format.Formatter.formatFileSize(this, cursor.getLong(0)));
++                    if (cursor.getLong(1) > 0) appendDetail(data, R.string.plait_gallery_modified,
++                            DateUtils.formatDateTime(this, cursor.getLong(1) * 1000,
++                                    DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_TIME));
++                    appendDetail(data, R.string.plait_gallery_source_app, string(cursor, 2));
++                }
++            } catch (RuntimeException unavailable) {
++                // Keep the metadata already available for this image.
++            }
++            if (item.classification != null) appendDetail(data, R.string.plait_gallery_subject,
++                    item.classification.label);
++            try (InputStream stream = openPhotoData(item.uri)) {
++                ExifInterface exif = new ExifInterface(stream);
++                java.util.TreeMap<String, String> fields = new java.util.TreeMap<>();
++                for (java.lang.reflect.Field field : ExifInterface.class.getFields()) {
++                    if (field.getType() != String.class || !field.getName().startsWith("TAG_")) continue;
++                    String key = (String) field.get(null);
++                    String value = exif.getAttribute(key);
++                    if (value != null && !value.isBlank()) fields.put(key, value);
++                }
++                if (!fields.isEmpty()) {
++                    data.append('\n').append(getString(R.string.plait_gallery_exif)).append('\n');
++                    fields.forEach((key, value) -> data.append(key).append(": ").append(value).append('\n'));
++                }
++            } catch (IOException | IllegalAccessException | RuntimeException unavailable) {
++                // MediaStore details remain available for images without readable EXIF.
++            }
++            runOnUiThread(() -> {
++                if (isDestroyed() || selected == null || !selected.uri.equals(item.uri)) return;
++                new AlertDialog.Builder(this).setTitle(item.name).setMessage(data.toString().trim())
++                        .setPositiveButton(android.R.string.ok, null).show();
++            });
++        });
++    }
++
++    private void appendDetail(StringBuilder data, int label, String value) {
++        if (!value.isBlank()) data.append(getString(label)).append(": ").append(value).append('\n');
+     }
+ 
+     @Override public void onBackPressed() {
+-- 
+2.56.1
+

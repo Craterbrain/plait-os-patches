@@ -1,0 +1,678 @@
+From 9197c56d49d21a28ce0c47fd5a6dbb43467e40ee Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 13:58:18 -0600
+Subject: [PATCH] PlaitOS: progress bar and update log on the updater page
+
+- A row at the top of the page shows the phase (copy, verify, install,
+  validate, finalize, done, failed), a progress bar with the percentage, a
+  short note on what the phase does and the last lines of the update log;
+  tapping it opens the whole log (copy, clear)
+- The log (device-protected storage, about 96 KB, also logcat UpdaterLog)
+  records the file, signature and metadata checks, the update's source and
+  target build, every update_engine status change and each 10% within it,
+  the result by name, and the build and slot after the restart
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ res/drawable/update_log_background.xml        |   7 +
+ res/layout/update_progress_preference.xml     |  55 +++++++
+ res/values/update_log.xml                     |  16 ++
+ res/xml/settings.xml                          |   5 +
+ .../seamlessupdate/client/BootReceiver.java   |   8 +
+ src/app/seamlessupdate/client/Service.java    |  62 ++++++-
+ src/app/seamlessupdate/client/Settings.java   |  43 +++++
+ src/app/seamlessupdate/client/UpdateLog.java  | 153 ++++++++++++++++++
+ .../client/UpdateProgressPreference.java      |  86 ++++++++++
+ 9 files changed, 431 insertions(+), 4 deletions(-)
+ create mode 100644 res/drawable/update_log_background.xml
+ create mode 100644 res/layout/update_progress_preference.xml
+ create mode 100644 res/values/update_log.xml
+ create mode 100644 src/app/seamlessupdate/client/UpdateLog.java
+ create mode 100644 src/app/seamlessupdate/client/UpdateProgressPreference.java
+
+diff --git a/res/drawable/update_log_background.xml b/res/drawable/update_log_background.xml
+new file mode 100644
+index 0000000..bf472f6
+--- /dev/null
++++ b/res/drawable/update_log_background.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the box behind the update log lines -->
++<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
++    <corners android:radius="12dp" />
++    <solid android:color="?android:attr/colorBackgroundFloating" />
++    <stroke android:width="1dp" android:color="?android:attr/colorControlHighlight" />
++</shape>
+diff --git a/res/layout/update_progress_preference.xml b/res/layout/update_progress_preference.xml
+new file mode 100644
+index 0000000..3e2486f
+--- /dev/null
++++ b/res/layout/update_progress_preference.xml
+@@ -0,0 +1,55 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the updater's progress row (UpdateProgressPreference) -->
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical"
++    android:background="?android:attr/selectableItemBackground"
++    android:paddingStart="?android:attr/listPreferredItemPaddingStart"
++    android:paddingEnd="?android:attr/listPreferredItemPaddingEnd"
++    android:paddingTop="16dp"
++    android:paddingBottom="16dp">
++
++    <TextView
++        android:id="@+id/update_progress_title"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:textAppearance="?android:attr/textAppearanceListItem" />
++
++    <TextView
++        android:id="@+id/update_progress_status"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="2dp"
++        android:textAppearance="?android:attr/textAppearanceSmall"
++        android:textColor="?android:attr/textColorSecondary" />
++
++    <ProgressBar
++        android:id="@+id/update_progress_bar"
++        style="?android:attr/progressBarStyleHorizontal"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="10dp"
++        android:max="100" />
++
++    <TextView
++        android:id="@+id/update_progress_log"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="12dp"
++        android:padding="10dp"
++        android:background="@drawable/update_log_background"
++        android:fontFamily="monospace"
++        android:textSize="11sp"
++        android:lineSpacingMultiplier="1.15"
++        android:textColor="?android:attr/textColorSecondary"
++        android:textIsSelectable="false" />
++
++    <TextView
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="6dp"
++        android:text="@string/update_log_open"
++        android:textAppearance="?android:attr/textAppearanceSmall"
++        android:textColor="?android:attr/colorAccent" />
++</LinearLayout>
+diff --git a/res/values/update_log.xml b/res/values/update_log.xml
+new file mode 100644
+index 0000000..130ae7c
+--- /dev/null
++++ b/res/values/update_log.xml
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PlaitOS: the updater's progress row and log -->
++<resources>
++    <string name="update_progress_idle">No update in progress</string>
++    <string name="update_progress_copy">Copying update file</string>
++    <string name="update_progress_failed">Update failed</string>
++    <string name="update_progress_install_detail">Writing the new system to the inactive slot</string>
++    <string name="update_progress_finalize_detail">Compiling apps for the new system. This can take a while</string>
++    <string name="update_progress_reboot_detail">Restart to finish</string>
++    <string name="update_log_empty">Nothing logged yet</string>
++    <string name="update_log_open">Show full log</string>
++    <string name="update_log_title">Update log</string>
++    <string name="update_log_copy">Copy</string>
++    <string name="update_log_clear">Clear</string>
++    <string name="update_log_copied">Log copied</string>
++</resources>
+diff --git a/res/xml/settings.xml b/res/xml/settings.xml
+index 3c22d02..a2a7228 100644
+--- a/res/xml/settings.xml
++++ b/res/xml/settings.xml
+@@ -1,5 +1,10 @@
+ <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+ 
++    <!-- PlaitOS: phase, progress bar and the update log -->
++    <app.seamlessupdate.client.UpdateProgressPreference app:key="update_progress"
++            app:persistent="false"
++            app:iconSpaceReserved="false" />
++
+     <Preference app:key="check_for_updates"
+             app:title="@string/check_for_updates_title"
+             app:summary="@string/check_for_updates_summary"
+diff --git a/src/app/seamlessupdate/client/BootReceiver.java b/src/app/seamlessupdate/client/BootReceiver.java
+index dec907c..24f723c 100644
+--- a/src/app/seamlessupdate/client/BootReceiver.java
++++ b/src/app/seamlessupdate/client/BootReceiver.java
+@@ -13,6 +13,14 @@ public class BootReceiver extends BroadcastReceiver {
+         if (context.getSystemService(UserManager.class).isSystemUser()) {
+             final SharedPreferences preferences = Settings.getPreferences(context);
+             LocalUpdateResult.finishBoot(preferences);
++            // PlaitOS: a restart ends whatever the progress row showed; the log keeps the story
++            final int phase = UpdateLog.phase(context);
++            if (phase != UpdateLog.PHASE_IDLE && phase != UpdateLog.PHASE_FAILED) {
++                UpdateLog.log(context, "restarted on build " + android.os.Build.VERSION.INCREMENTAL
++                        + " (slot " + android.os.SystemProperties.get("ro.boot.slot_suffix") + "): "
++                        + LocalUpdateResult.summary(context).toString().replace('\n', ' '));
++                UpdateLog.progress(context, UpdateLog.PHASE_IDLE, -1);
++            }
+             preferences.edit().putBoolean(Settings.KEY_WAITING_FOR_REBOOT, false).apply();
+             PeriodicJob.schedule(context);
+ 
+diff --git a/src/app/seamlessupdate/client/Service.java b/src/app/seamlessupdate/client/Service.java
+index 73b650b..a5a023a 100644
+--- a/src/app/seamlessupdate/client/Service.java
++++ b/src/app/seamlessupdate/client/Service.java
+@@ -88,27 +88,51 @@ public class Service extends IntentService {
+             final String[] headerKeyValuePairs, final boolean incremental,
+             final String localTarget) throws IOException {
+         notificationHandler.showInstallNotification(0);
++        UpdateLog.progress(this, UpdateLog.PHASE_INSTALL, 0);
++        UpdateLog.log(this, (incremental ? "incremental" : "full") + " update, payload at offset "
++                + payloadOffset + "; handing it to update_engine");
+ 
+         final CountDownLatch monitor = new CountDownLatch(1);
+         final UpdateEngine engine = new UpdateEngine();
+         final var callback = new UpdateEngineCallback() {
+             Integer errorCode = null;
++            int lastStatus = -1;
++            int lastLoggedPercent = -1;
+ 
+             @Override
+             public void onStatusUpdate(int status, float percent) {
+                 Log.d(TAG, "onStatusUpdate: " + status + ", " + percent * 100 + "%");
++                final int whole = Math.round(percent * 100);
++                // PlaitOS: log each status change and every 10% within one
++                if (status != lastStatus) {
++                    UpdateLog.log(Service.this, "update_engine: " + UpdateLog.statusName(status));
++                    lastStatus = status;
++                    lastLoggedPercent = -1;
++                }
++                if (whole / 10 != lastLoggedPercent / 10 && (status == UpdateStatusConstants.DOWNLOADING
++                        || status == UpdateStatusConstants.VERIFYING
++                        || status == UpdateStatusConstants.FINALIZING)) {
++                    UpdateLog.log(Service.this, "  " + UpdateLog.statusName(status) + " " + whole + "%");
++                    lastLoggedPercent = whole;
++                }
+                 if (status == UpdateStatusConstants.DOWNLOADING) {
+-                    notificationHandler.showInstallNotification(Math.round(percent * 100));
++                    notificationHandler.showInstallNotification(whole);
++                    UpdateLog.progress(Service.this, UpdateLog.PHASE_INSTALL, whole,
++                            getString(R.string.update_progress_install_detail));
+                 } else if (status == UpdateStatusConstants.VERIFYING) {
+-                    notificationHandler.showValidateNotification(Math.round(percent * 100));
++                    notificationHandler.showValidateNotification(whole);
++                    UpdateLog.progress(Service.this, UpdateLog.PHASE_VALIDATE, whole);
+                 } else if (status == UpdateStatusConstants.FINALIZING) {
+-                    notificationHandler.showFinalizeNotification(Math.round(percent * 100));
++                    notificationHandler.showFinalizeNotification(whole);
++                    UpdateLog.progress(Service.this, UpdateLog.PHASE_FINALIZE, whole,
++                            getString(R.string.update_progress_finalize_detail));
+                 }
+             }
+ 
+             @Override
+             public void onPayloadApplicationComplete(final int errorCode) {
+                 Log.d(TAG, "onPayloadApplicationComplete: " + errorCode);
++                UpdateLog.log(Service.this, "update_engine finished: " + UpdateLog.errorName(errorCode));
+                 this.errorCode = errorCode;
+                 if (localTarget != null) {
+                     LocalUpdateResult.complete(Service.this, localTarget, errorCode);
+@@ -127,7 +151,9 @@ public class Service extends IntentService {
+                 monitor.countDown();
+             }
+         };
+-        engine.bind(callback);
++        if (!engine.bind(callback)) {
++            UpdateLog.log(this, "could not connect to update_engine");
++        }
+         if (streaming) {
+             final SharedPreferences preferences = Settings.getPreferences(this);
+             final String downloadFile = preferences.getString(PREFERENCE_DOWNLOAD_FILE, null);
+@@ -161,10 +187,14 @@ public class Service extends IntentService {
+             final String targetIncremental) throws IOException, GeneralSecurityException {
+         try {
+             notificationHandler.showVerifyNotification(0);
++            UpdateLog.progress(this, UpdateLog.PHASE_VERIFY, 0);
++            UpdateLog.log(this, "checking the signature (" + UpdateLog.size(UPDATE_PATH.length()) + ")");
+             RecoverySystem.verifyPackage(UPDATE_PATH, (int progress) -> {
+                 Log.d(TAG, "verifyPackage: " + progress + "%");
+                 notificationHandler.showVerifyNotification(progress);
++                UpdateLog.progress(this, UpdateLog.PHASE_VERIFY, progress);
+             }, null);
++            UpdateLog.log(this, "ok    signature verifies with this phone's release key");
+         } catch (final GeneralSecurityException e) {
+             UPDATE_PATH.delete();
+             throw e;
+@@ -205,6 +235,8 @@ public class Service extends IntentService {
+                     }
+                 }
+             }
++            UpdateLog.log(this, "update: " + (sourceIncremental != null
++                    ? "incremental " + sourceIncremental + " -> " + incremental : "full, to " + incremental));
+             if (targetBuildDate == LOCAL_FILE) {
+                 // Older is refused; the same date is allowed, since every PlaitOS build carries one fixed build date
+                 if (timestamp < SystemProperties.getLong("ro.build.date.utc", 0)) {
+@@ -245,6 +277,10 @@ public class Service extends IntentService {
+             if (payloadOffset == null) {
+                 throw new GeneralSecurityException("payload offset missing");
+             }
++            UpdateLog.log(this, "ok    build date, device " + device + ", A/B, no serial number lock");
++            if (sourceIncremental != null) {
++                UpdateLog.log(this, "ok    made for the installed build " + INCREMENTAL);
++            }
+ 
+             Files.deleteIfExists(CARE_MAP_PATH.toPath());
+             final ZipEntry careMapEntry = zipFile.getEntry("care_map.pb");
+@@ -289,6 +325,10 @@ public class Service extends IntentService {
+         Settings.getPreferences(this).edit().remove(PREFERENCE_DOWNLOAD_FILE).commit();
+ 
+         notificationHandler.showDownloadNotification(0, Math.max(size, 1));
++        UpdateLog.begin(this, "install from file");
++        UpdateLog.log(this, "installed build " + INCREMENTAL + "; copying the file ("
++                + (size > 0 ? UpdateLog.size(size) : "size unknown") + ")");
++        UpdateLog.progress(this, UpdateLog.PHASE_COPY, 0);
+         try (final InputStream input = getContentResolver().openInputStream(uri);
+                 final OutputStream output = new FileOutputStream(UPDATE_PATH)) {
+             if (input == null) {
+@@ -304,6 +344,8 @@ public class Service extends IntentService {
+                 final long now = System.nanoTime();
+                 if (now - last > 1000 * 1000 * 1000) {
+                     notificationHandler.showDownloadNotification(copied, Math.max(size, copied));
++                    UpdateLog.progress(this, UpdateLog.PHASE_COPY,
++                            (int) (100 * copied / Math.max(size, copied)));
+                     last = now;
+                 }
+             }
+@@ -312,6 +354,7 @@ public class Service extends IntentService {
+             throw e;
+         }
+         Log.d(TAG, "update file copied");
++        UpdateLog.log(this, "copied");
+         onDownloadFinished(false, LOCAL_FILE, null);
+     }
+ 
+@@ -323,6 +366,9 @@ public class Service extends IntentService {
+             IdleReboot.schedule(this);
+         }
+         notificationHandler.showRebootNotification();
++        UpdateLog.progress(this, UpdateLog.PHASE_DONE, 100,
++                getString(R.string.update_progress_reboot_detail));
++        UpdateLog.log(this, "installed; waiting for a restart to switch to the new system");
+     }
+ 
+     @Override
+@@ -371,6 +417,8 @@ public class Service extends IntentService {
+             final String channel = SystemProperties.get("sys.update.channel", Settings.getChannel(this));
+ 
+             Log.d(TAG, "fetching metadata for " + DEVICE + "-" + channel);
++            UpdateLog.begin(this, "check for updates (" + channel + ")");
++            UpdateLog.progress(this, UpdateLog.PHASE_CHECK, -1);
+             connection = fetchData(network, DEVICE + "-" + channel);
+             final String[] metadata;
+             try (final BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+@@ -382,6 +430,8 @@ public class Service extends IntentService {
+             final long sourceBuildDate = SystemProperties.getLong("ro.build.date.utc", 0);
+             if (targetBuildDate <= sourceBuildDate) {
+                 notificationHandler.showUpdatedNotification(channel);
++                UpdateLog.log(this, "up to date");
++                UpdateLog.progress(this, UpdateLog.PHASE_IDLE, -1);
+                 Log.d(TAG, "targetBuildDate: " + targetBuildDate + " not higher than sourceBuildDate: " + sourceBuildDate);
+                 mUpdating = false;
+                 return;
+@@ -491,6 +541,8 @@ public class Service extends IntentService {
+                     if (now - last > 1000 * 1000 * 1000) {
+                         Log.d(TAG, "downloaded " + downloaded + " from " + contentLength + " bytes");
+                         notificationHandler.showDownloadNotification(downloaded, contentLength);
++                        UpdateLog.progress(this, UpdateLog.PHASE_DOWNLOAD,
++                                contentLength > 0 ? (int) (100 * downloaded / contentLength) : -1);
+                         last = now;
+                     }
+                 }
+@@ -503,6 +555,8 @@ public class Service extends IntentService {
+                 LocalUpdateResult.reject(this);
+             }
+             Log.e(TAG, "failed to download and install update", e);
++            UpdateLog.log(this, "FAILED: " + e.getMessage());
++            UpdateLog.progress(this, UpdateLog.PHASE_FAILED, -1, e.getMessage());
+             notificationHandler.showFailureNotification(e.getMessage());
+             mUpdating = false;
+             if (serviceIsUserInitiated) {
+diff --git a/src/app/seamlessupdate/client/Settings.java b/src/app/seamlessupdate/client/Settings.java
+index c1ae014..43df76f 100644
+--- a/src/app/seamlessupdate/client/Settings.java
++++ b/src/app/seamlessupdate/client/Settings.java
+@@ -36,6 +36,7 @@ public class Settings extends CollapsingToolbarBaseActivity {
+     private static final String KEY_CHECK_FOR_UPDATES = "check_for_updates";
+     private static final String KEY_INSTALL_FROM_FILE = "install_from_file";
+     private static final String KEY_LOCAL_UPDATE_RESULT = "last_local_update";
++    private static final String KEY_UPDATE_PROGRESS = "update_progress";
+     private static final int REQUEST_INSTALL_FROM_FILE = 1;
+     static final String KEY_WAITING_FOR_REBOOT = "waiting_for_reboot";
+ 
+@@ -169,6 +170,11 @@ public class Settings extends CollapsingToolbarBaseActivity {
+                 return true;
+             });
+ 
++            requirePreference(KEY_UPDATE_PROGRESS).setOnPreferenceClickListener(pref -> {
++                showLog();
++                return true;
++            });
++
+             requirePreference(KEY_NETWORK_TYPE).setOnPreferenceChangeListener((pref, newValue) -> {
+                 final int value = Integer.parseInt((String) newValue);
+                 getPreferences(requireContext()).edit().putInt(KEY_NETWORK_TYPE, value).apply();
+@@ -233,6 +239,13 @@ public class Settings extends CollapsingToolbarBaseActivity {
+                 case LocalUpdateResult.STATE:
+                     updateLocalUpdateResult();
+                     break;
++                case UpdateLog.PHASE:
++                case UpdateLog.PERCENT:
++                case UpdateLog.DETAIL:
++                case UpdateLog.REVISION:
++                    // PlaitOS: redraw the progress row
++                    ((UpdateProgressPreference) requirePreference(KEY_UPDATE_PROGRESS)).refresh();
++                    break;
+                 case KEY_CHANNEL:
+                 case KEY_BATTERY_NOT_LOW:
+                 case KEY_REQUIRES_CHARGING:
+@@ -248,6 +261,35 @@ public class Settings extends CollapsingToolbarBaseActivity {
+             }
+         }
+ 
++        /** PlaitOS: the whole update log, with Copy and Clear. */
++        private void showLog() {
++            final Context context = requireContext();
++            final var text = new android.widget.TextView(context);
++            final java.util.List<String> lines = UpdateLog.lines(context);
++            text.setText(lines.isEmpty() ? getString(R.string.update_log_empty) : String.join("\n", lines));
++            text.setTypeface(android.graphics.Typeface.MONOSPACE);
++            text.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11);
++            text.setTextIsSelectable(true);
++            final int pad = Math.round(20 * getResources().getDisplayMetrics().density);
++            text.setPadding(pad, pad / 2, pad, pad / 2);
++            final var scroll = new android.widget.ScrollView(context);
++            scroll.addView(text);
++            scroll.post(() -> scroll.fullScroll(android.view.View.FOCUS_DOWN));
++            new AlertDialog.Builder(context)
++                .setTitle(R.string.update_log_title)
++                .setView(scroll)
++                .setPositiveButton(R.string.update_log_copy, (dialog, which) -> {
++                    final var clipboard = context.getSystemService(android.content.ClipboardManager.class);
++                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(
++                            getString(R.string.update_log_title), String.join("\n", UpdateLog.lines(context))));
++                    android.widget.Toast.makeText(context, R.string.update_log_copied,
++                            android.widget.Toast.LENGTH_SHORT).show();
++                })
++                .setNeutralButton(R.string.update_log_clear, (dialog, which) -> UpdateLog.clear(context))
++                .setNegativeButton(android.R.string.cancel, (dialog, which) -> {})
++                .show();
++        }
++
+         private void updateLocalUpdateResult() {
+             requirePreference(KEY_LOCAL_UPDATE_RESULT).setSummary(LocalUpdateResult.summary(requireContext()));
+         }
+@@ -256,6 +298,7 @@ public class Settings extends CollapsingToolbarBaseActivity {
+         public void onResume() {
+             super.onResume();
+             updateLocalUpdateResult();
++            ((UpdateProgressPreference) requirePreference(KEY_UPDATE_PROGRESS)).refresh();
+             getPreferenceManager().getSharedPreferences().registerOnSharedPreferenceChangeListener(this);
+             final ListPreference networkType = (ListPreference) findPreference(KEY_NETWORK_TYPE);
+             networkType.setValue(Integer.toString(getNetworkType(requireContext())));
+diff --git a/src/app/seamlessupdate/client/UpdateLog.java b/src/app/seamlessupdate/client/UpdateLog.java
+new file mode 100644
+index 0000000..435f851
+--- /dev/null
++++ b/src/app/seamlessupdate/client/UpdateLog.java
+@@ -0,0 +1,153 @@
++package app.seamlessupdate.client;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.os.UpdateEngine;
++import android.util.Log;
++
++import java.io.File;
++import java.io.FileWriter;
++import java.io.IOException;
++import java.lang.reflect.Field;
++import java.lang.reflect.Modifier;
++import java.nio.charset.StandardCharsets;
++import java.nio.file.Files;
++import java.text.SimpleDateFormat;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.Date;
++import java.util.List;
++import java.util.Locale;
++
++/**
++ * PlaitOS: what the updater is doing, for the progress row on its page. Every step is written to a
++ * small log in device-protected storage (so it survives the reboot that finishes an update) and
++ * to logcat (tag UpdaterLog); the current phase and percentage are kept in the preferences, which
++ * the page listens to.
++ */
++final class UpdateLog {
++    static final String PHASE = "update_progress_phase";
++    static final String PERCENT = "update_progress_percent";
++    static final String DETAIL = "update_progress_detail";
++    /** Bumped on every new line, so the page knows to redraw. */
++    static final String REVISION = "update_log_revision";
++
++    static final int PHASE_IDLE = 0;
++    static final int PHASE_COPY = 1;
++    static final int PHASE_VERIFY = 2;
++    static final int PHASE_INSTALL = 3;
++    static final int PHASE_VALIDATE = 4;
++    static final int PHASE_FINALIZE = 5;
++    static final int PHASE_DONE = 6;
++    static final int PHASE_FAILED = 7;
++    static final int PHASE_DOWNLOAD = 8;
++    static final int PHASE_CHECK = 9;
++
++    private static final String TAG = "UpdaterLog";
++    private static final String FILE = "update.log";
++    private static final int MAX_BYTES = 96 * 1024;
++    private static final int KEEP_LINES = 400;
++
++    private UpdateLog() {}
++
++    private static File file(Context context) {
++        return new File(context.createDeviceProtectedStorageContext().getFilesDir(), FILE);
++    }
++
++    static synchronized void log(Context context, String message) {
++        Log.i(TAG, message);
++        final String line = new SimpleDateFormat("MM-dd HH:mm:ss", Locale.ROOT).format(new Date())
++                + "  " + message.replace('\n', ' ');
++        final File f = file(context);
++        try {
++            if (f.length() > MAX_BYTES) {
++                final List<String> lines = Files.readAllLines(f.toPath(), StandardCharsets.UTF_8);
++                Files.write(f.toPath(), lines.subList(Math.max(0, lines.size() - KEEP_LINES), lines.size()),
++                        StandardCharsets.UTF_8);
++            }
++            try (final FileWriter writer = new FileWriter(f, StandardCharsets.UTF_8, true)) {
++                writer.write(line);
++                writer.write('\n');
++            }
++        } catch (IOException e) {
++            Log.w(TAG, "unable to write the update log", e);
++        }
++        Settings.getPreferences(context).edit().putLong(REVISION, System.nanoTime()).apply();
++    }
++
++    /** Starts a new update's section in the log. */
++    static void begin(Context context, String what) {
++        log(context, "──────── " + what);
++    }
++
++    static synchronized List<String> lines(Context context) {
++        try {
++            return Files.readAllLines(file(context).toPath(), StandardCharsets.UTF_8);
++        } catch (IOException e) {
++            return Collections.emptyList();
++        }
++    }
++
++    static List<String> lastLines(Context context, int count) {
++        final List<String> all = lines(context);
++        return new ArrayList<>(all.subList(Math.max(0, all.size() - count), all.size()));
++    }
++
++    static synchronized void clear(Context context) {
++        file(context).delete();
++        Settings.getPreferences(context).edit().putLong(REVISION, System.nanoTime()).apply();
++    }
++
++    /** The current phase; percent < 0 means no percentage (an indeterminate bar). */
++    static void progress(Context context, int phase, int percent, String detail) {
++        final SharedPreferences prefs = Settings.getPreferences(context);
++        if (prefs.getInt(PHASE, PHASE_IDLE) == phase && prefs.getInt(PERCENT, -1) == percent
++                && java.util.Objects.equals(prefs.getString(DETAIL, null), detail)) {
++            return;
++        }
++        prefs.edit().putInt(PHASE, phase).putInt(PERCENT, percent).putString(DETAIL, detail).apply();
++    }
++
++    static void progress(Context context, int phase, int percent) {
++        progress(context, phase, percent, null);
++    }
++
++    static int phase(Context context) {
++        return Settings.getPreferences(context).getInt(PHASE, PHASE_IDLE);
++    }
++
++    static int percent(Context context) {
++        return Settings.getPreferences(context).getInt(PERCENT, -1);
++    }
++
++    static String detail(Context context) {
++        return Settings.getPreferences(context).getString(DETAIL, null);
++    }
++
++    /** update_engine's name for an error code, e.g. "DOWNLOAD_TRANSFER_ERROR (9)". */
++    static String errorName(int code) {
++        return constantName(UpdateEngine.ErrorCodeConstants.class, code);
++    }
++
++    /** update_engine's name for a status, e.g. "FINALIZING". */
++    static String statusName(int status) {
++        return constantName(UpdateEngine.UpdateStatusConstants.class, status);
++    }
++
++    private static String constantName(Class<?> constants, int value) {
++        for (Field field : constants.getFields()) {
++            if (Modifier.isStatic(field.getModifiers()) && field.getType() == int.class) {
++                try {
++                    if (field.getInt(null) == value) return field.getName() + " (" + value + ")";
++                } catch (IllegalAccessException ignored) {
++                }
++            }
++        }
++        return String.valueOf(value);
++    }
++
++    static String size(long bytes) {
++        if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
++        return String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
++    }
++}
+diff --git a/src/app/seamlessupdate/client/UpdateProgressPreference.java b/src/app/seamlessupdate/client/UpdateProgressPreference.java
+new file mode 100644
+index 0000000..95cc76d
+--- /dev/null
++++ b/src/app/seamlessupdate/client/UpdateProgressPreference.java
+@@ -0,0 +1,86 @@
++package app.seamlessupdate.client;
++
++import android.content.Context;
++import android.util.AttributeSet;
++import android.view.View;
++import android.widget.ProgressBar;
++import android.widget.TextView;
++
++import androidx.preference.Preference;
++import androidx.preference.PreferenceViewHolder;
++
++import java.util.List;
++
++/**
++ * PlaitOS: the progress row at the top of the updater page: the phase, a progress bar and the
++ * last few lines of the update log. Tapping it opens the whole log (see Settings).
++ */
++public class UpdateProgressPreference extends Preference {
++    private static final int SHOWN_LINES = 6;
++
++    public UpdateProgressPreference(Context context, AttributeSet attrs) {
++        super(context, attrs);
++        setLayoutResource(R.layout.update_progress_preference);
++    }
++
++    /** Redraws the row (phase, percentage or log changed). */
++    void refresh() {
++        notifyChanged();
++    }
++
++    @Override
++    public void onBindViewHolder(PreferenceViewHolder holder) {
++        super.onBindViewHolder(holder);
++        final Context context = getContext();
++        final int phase = UpdateLog.phase(context);
++        final int percent = UpdateLog.percent(context);
++        final String detail = UpdateLog.detail(context);
++
++        final TextView title = (TextView) holder.findViewById(R.id.update_progress_title);
++        final TextView status = (TextView) holder.findViewById(R.id.update_progress_status);
++        final ProgressBar bar = (ProgressBar) holder.findViewById(R.id.update_progress_bar);
++        final TextView log = (TextView) holder.findViewById(R.id.update_progress_log);
++
++        title.setText(phaseTitle(phase));
++        final boolean running = phase != UpdateLog.PHASE_IDLE && phase != UpdateLog.PHASE_DONE
++                && phase != UpdateLog.PHASE_FAILED;
++        bar.setVisibility(running || phase == UpdateLog.PHASE_DONE ? View.VISIBLE : View.GONE);
++        if (phase == UpdateLog.PHASE_DONE) {
++            bar.setIndeterminate(false);
++            bar.setProgress(100);
++        } else if (percent < 0) {
++            bar.setIndeterminate(true);
++        } else {
++            bar.setIndeterminate(false);
++            bar.setProgress(percent);
++        }
++
++        final StringBuilder statusText = new StringBuilder();
++        if (running && percent >= 0) statusText.append(percent).append('%');
++        if (detail != null && !detail.isEmpty()) {
++            if (statusText.length() > 0) statusText.append(" · ");
++            statusText.append(detail);
++        }
++        status.setText(statusText);
++        status.setVisibility(statusText.length() > 0 ? View.VISIBLE : View.GONE);
++
++        final List<String> lines = UpdateLog.lastLines(context, SHOWN_LINES);
++        log.setText(lines.isEmpty() ? context.getString(R.string.update_log_empty)
++                : String.join("\n", lines));
++    }
++
++    private int phaseTitle(int phase) {
++        return switch (phase) {
++            case UpdateLog.PHASE_CHECK -> R.string.notification_check_title;
++            case UpdateLog.PHASE_DOWNLOAD -> R.string.notification_download_title;
++            case UpdateLog.PHASE_COPY -> R.string.update_progress_copy;
++            case UpdateLog.PHASE_VERIFY -> R.string.notification_verify_title;
++            case UpdateLog.PHASE_INSTALL -> R.string.notification_install_title;
++            case UpdateLog.PHASE_VALIDATE -> R.string.notification_validate_title;
++            case UpdateLog.PHASE_FINALIZE -> R.string.notification_finalize_title;
++            case UpdateLog.PHASE_DONE -> R.string.notification_reboot_title;
++            case UpdateLog.PHASE_FAILED -> R.string.update_progress_failed;
++            default -> R.string.update_progress_idle;
++        };
++    }
++}
+-- 
+2.56.1
+

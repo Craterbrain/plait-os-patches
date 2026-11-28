@@ -1,0 +1,166 @@
+From f49c4e5c7da41f9cd316478d2085fcb1a5a8b8ed Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 19:30:13 -0600
+Subject: [PATCH] PlaitOS: swipe between photos in the Gallery viewer
+
+---
+ AndroidManifest.xml                           |  4 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 89 ++++++++++++++++++-
+ 2 files changed, 89 insertions(+), 4 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 728c0a3..fd6d551 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40037"
+-        android:versionName="1.1.40037"
++<manifest android:versionCode="40038"
++        android:versionName="1.1.40038"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index a9d83f9..3e5ada1 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -24,6 +24,8 @@ import android.text.format.DateUtils;
+ import android.util.LruCache;
+ import android.util.Size;
+ import android.view.Gravity;
++import android.view.MotionEvent;
++import android.view.accessibility.AccessibilityNodeInfo;
+ import android.view.View;
+ import android.view.ViewGroup;
+ import android.widget.BaseAdapter;
+@@ -69,6 +71,8 @@ public final class PlaitGalleryActivity extends Activity {
+     private String category;
+     private String query = "";
+     private Media selected;
++    private final List<Media> viewerPhotos = new ArrayList<>();
++    private int viewerPosition;
+     private LinearLayout root;
+     private ListView grid;
+     private final List<Row> rows = new ArrayList<>();
+@@ -372,6 +376,8 @@ public final class PlaitGalleryActivity extends Activity {
+ 
+     private void showLibrary() {
+         selected = null;
++        viewerPhotos.clear();
++        viewerPosition = -1;
+         root = column();
+         root.addView(header(title(), true));
+         EditText search = new EditText(this);
+@@ -654,11 +660,89 @@ public final class PlaitGalleryActivity extends Activity {
+                 .setPositiveButton(android.R.string.ok, null).show();
+     }
+ 
+-    private void showPhoto(Media item) {
++    private void openViewer(Media item) {
+         if (item.video) {
+             open(item, false);
+             return;
+         }
++        viewerPhotos.clear();
++        for (Row row : rows) {
++            if (row.cells == null) continue;
++            for (Tile tile : row.cells) {
++                if (tile.category == null && !tile.media.video) viewerPhotos.add(tile.media);
++            }
++        }
++        viewerPosition = viewerPhotos.indexOf(item);
++        showPhoto(item);
++    }
++
++    private boolean stepPhoto(int offset) {
++        if (viewerPosition < 0) return false;
++        for (int next = viewerPosition + offset; next >= 0 && next < viewerPhotos.size();
++                next += offset) {
++            Media snapshot = viewerPhotos.get(next);
++            for (Media item : media) {
++                if (item.uri.equals(snapshot.uri)) {
++                    viewerPosition = next;
++                    showPhoto(item);
++                    return true;
++                }
++            }
++        }
++        return false;
++    }
++
++    private void attachPhotoPaging(ImageView image) {
++        image.setOnTouchListener(new View.OnTouchListener() {
++            private float startX;
++            private float startY;
++            private boolean multiplePointers;
++
++            @Override public boolean onTouch(View view, MotionEvent event) {
++                switch (event.getActionMasked()) {
++                    case MotionEvent.ACTION_DOWN:
++                        startX = event.getX();
++                        startY = event.getY();
++                        multiplePointers = false;
++                        return true;
++                    case MotionEvent.ACTION_POINTER_DOWN:
++                        multiplePointers = true;
++                        return true;
++                    case MotionEvent.ACTION_UP:
++                        float dx = event.getX() - startX;
++                        float dy = event.getY() - startY;
++                        if (!multiplePointers && Math.abs(dx) >= dp(48)
++                                && Math.abs(dx) > 1.4f * Math.abs(dy)) {
++                            int direction = dx < 0 ? 1 : -1;
++                            stepPhoto(view.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL
++                                    ? -direction : direction);
++                        }
++                        return true;
++                    default:
++                        return true;
++                }
++            }
++        });
++        image.setAccessibilityDelegate(new View.AccessibilityDelegate() {
++            @Override public void onInitializeAccessibilityNodeInfo(View host,
++                    AccessibilityNodeInfo info) {
++                super.onInitializeAccessibilityNodeInfo(host, info);
++                info.setScrollable(viewerPhotos.size() > 1);
++                if (viewerPosition > 0) info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
++                if (viewerPosition + 1 < viewerPhotos.size()) {
++                    info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
++                }
++            }
++
++            @Override public boolean performAccessibilityAction(View host, int action, Bundle args) {
++                if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) return stepPhoto(1);
++                if (action == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) return stepPhoto(-1);
++                return super.performAccessibilityAction(host, action, args);
++            }
++        });
++    }
++
++    private void showPhoto(Media item) {
+         selected = item;
+         LinearLayout photo = column();
+         LinearLayout title = header(item.name, false);
+@@ -672,6 +756,7 @@ public final class PlaitGalleryActivity extends Activity {
+         ImageView image = new ImageView(this);
+         image.setContentDescription(item.name);
+         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
++        attachPhotoPaging(image);
+         loadImage(image, item.uri, 1200, false);
+         photo.addView(image, new LinearLayout.LayoutParams(-1, 0, 1));
+         LinearLayout actions = new LinearLayout(this);
+@@ -858,7 +943,7 @@ public final class PlaitGalleryActivity extends Activity {
+                     category = tile.category;
+                     showLibrary();
+                 } else {
+-                    showPhoto(tile.media);
++                    openViewer(tile.media);
+                 }
+             });
+             return cell;
+-- 
+2.56.1
+

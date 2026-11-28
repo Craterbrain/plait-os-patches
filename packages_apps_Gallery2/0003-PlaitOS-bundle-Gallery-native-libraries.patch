@@ -1,0 +1,41 @@
+From a0c926915e57e81f859b58ce686a2cd5223430bb Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 17:29:26 -0600
+Subject: [PATCH] PlaitOS: bundle Gallery native libraries for APK updates
+
+---
+ Android.bp          | 3 +++
+ AndroidManifest.xml | 4 ++--
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/Android.bp b/Android.bp
+index 8c7c124..faa7fac 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -34,6 +34,9 @@ android_app {
+ 
+     target_sdk_version: "29",
+ 
++    // Keep the editor usable when Gallery is updated independently of the ROM.
++    use_embedded_native_libs: true,
++
+     jni_libs: [
+         "libjni_eglfence",
+         "libjni_filtershow_filters",
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index b799a74..392d9a4 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40032"
+-        android:versionName="1.1.40032"
++<manifest android:versionCode="40033"
++        android:versionName="1.1.40033"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+-- 
+2.56.1
+

@@ -15,6 +15,7 @@ and plain symbols:
   when the row is bound.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
 ---
  .../android/settings/plait/PlaitIconStyler.kt | 28 +++++++++++++------
  ...ighlightableTopLevelPreferenceAdapter.java |  2 ++

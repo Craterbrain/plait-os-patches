@@ -1,0 +1,42 @@
+From 3f4d0c95b391b43f184eef34b20eca4875e9982d Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:29:30 -0600
+Subject: [PATCH] PlaitOS: give Gallery flicks a small head start
+
+---
+ AndroidManifest.xml                                     | 4 ++--
+ src/com/android/gallery3d/app/PlaitGalleryActivity.java | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 28e55a7..d01bccb 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40045"
+-        android:versionName="1.1.40045"
++<manifest android:versionCode="40046"
++        android:versionName="1.1.40046"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index a41b380..321be9a 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -1067,8 +1067,8 @@ public final class PlaitGalleryActivity extends Activity {
+             if (horizontal * distance > 0
+                     && Math.abs(horizontal) >= gestures.getScaledMinimumFlingVelocity()
+                     && Math.abs(horizontal) > Math.abs(velocity.getYVelocity())) {
+-                // Use a short projection to let a flick cross the page threshold.
+-                travel += Math.abs(horizontal) * .12f;
++                // Give a qualifying flick a small lead before projecting its release velocity.
++                travel += getWidth() * .04f + Math.abs(horizontal) * .12f;
+             }
+             return travel;
+         }
+-- 
+2.56.1
+

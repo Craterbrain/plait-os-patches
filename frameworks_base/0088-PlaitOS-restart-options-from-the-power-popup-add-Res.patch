@@ -5,6 +5,7 @@ Subject: [PATCH 88/91] PlaitOS: restart options from the power popup, add
  Restart System UI
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3UdaCB3bu67ZPQkVe
 ---
  packages/SystemUI/res/values/plait_config.xml |  3 +-
  .../SystemUI/res/values/plait_strings.xml     |  2 ++

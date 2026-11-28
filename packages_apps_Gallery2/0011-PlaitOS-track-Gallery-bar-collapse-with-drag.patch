@@ -1,0 +1,142 @@
+From 88e15e24f6e784a5140c8400e64966cfa379f189 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:15:32 -0600
+Subject: [PATCH] PlaitOS: track Gallery bar collapse with drag distance
+
+---
+ AndroidManifest.xml                           |  4 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 75 ++++++++++++-------
+ 2 files changed, 49 insertions(+), 30 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index eb06247..4aefc93 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40041"
+-        android:versionName="1.1.40041"
++<manifest android:versionCode="40042"
++        android:versionName="1.1.40042"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index 228531b..8fcebe9 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -519,7 +519,7 @@ public final class PlaitGalleryActivity extends Activity {
+         private float startY;
+         private float startX;
+         private float collapse;
+-        private boolean hidden;
++        private boolean tracking;
+         private ValueAnimator animator;
+ 
+         LibraryBarScroll(ListView list, EditText search, View titleBar, View searchBar,
+@@ -534,47 +534,66 @@ public final class PlaitGalleryActivity extends Activity {
+         void track(MotionEvent event) {
+             switch (event.getActionMasked()) {
+                 case MotionEvent.ACTION_DOWN:
++                    if (animator != null) animator.cancel();
+                     startX = event.getRawX();
+                     startY = event.getRawY();
++                    tracking = false;
+                     break;
+                 case MotionEvent.ACTION_MOVE:
+-                    float dy = event.getRawY() - startY;
++                    float dy = startY - event.getRawY();
+                     float dx = event.getRawX() - startX;
+-                    if (Math.abs(dy) >= dp(16) && Math.abs(dy) > Math.abs(dx)) {
+-                        if (dy > 0) animateBars(false);
+-                        else if (!search.hasFocus() && list.canScrollVertically(1)) animateBars(true);
+-                        startY = event.getRawY();
+-                        startX = event.getRawX();
++                    if (!tracking && (Math.abs(dy) < dp(8)
++                            || Math.abs(dy) <= Math.abs(dx))) break;
++                    if (search.hasFocus() || !measureBars()) break;
++                    tracking = true;
++                    if (dy < 0 || collapse > 0 || list.canScrollVertically(1)) {
++                        moveBars(Math.max(0f, Math.min(searchHeight + titleHeight, collapse + dy)));
+                     }
++                    startY = event.getRawY();
++                    startX = event.getRawX();
++                    break;
++                case MotionEvent.ACTION_UP:
++                case MotionEvent.ACTION_CANCEL:
++                    if (titleHeight > 0 && collapse > 0 && collapse < searchHeight + titleHeight) {
++                        settleBars();
++                    }
++                    tracking = false;
+                     break;
+                 default:
+                     break;
+             }
+         }
+ 
+-        private void animateBars(boolean hide) {
+-            if (hidden == hide) return;
+-            if (titleHeight == 0) {
+-                titleHeight = titleBar.getHeight();
+-                searchHeight = searchBar.getHeight();
+-                bottomHeight = bottomBar.getHeight();
+-                if (titleHeight == 0 || searchHeight == 0 || bottomHeight == 0) return;
+-            }
+-            hidden = hide;
+-            if (animator != null) animator.cancel();
+-            animator = ValueAnimator.ofFloat(collapse, hide ? 1f : 0f);
+-            animator.setDuration(240);
+-            animator.addUpdateListener(frame -> {
+-                collapse = (float) frame.getAnimatedValue();
+-                setBarHeight(bottomBar, bottomHeight, collapse / .45f);
+-                setBarHeight(searchBar, searchHeight, collapse / .54f);
+-                setBarHeight(titleBar, titleHeight, (collapse - .54f) / .46f);
+-            });
++        private boolean measureBars() {
++            if (titleHeight > 0) return true;
++            int title = titleBar.getHeight();
++            int search = searchBar.getHeight();
++            int bottom = bottomBar.getHeight();
++            if (title == 0 || search == 0 || bottom == 0) return false;
++            titleHeight = title;
++            searchHeight = search;
++            bottomHeight = bottom;
++            return true;
++        }
++
++        private void moveBars(float distance) {
++            collapse = distance;
++            setBarHeight(bottomBar, bottomHeight, distance);
++            setBarHeight(searchBar, searchHeight, distance);
++            setBarHeight(titleBar, titleHeight, distance - searchHeight);
++        }
++
++        private void settleBars() {
++            float end = searchHeight + titleHeight;
++            float target = collapse >= end / 2 ? end : 0f;
++            animator = ValueAnimator.ofFloat(collapse, target);
++            animator.setDuration(120);
++            animator.addUpdateListener(frame -> moveBars((float) frame.getAnimatedValue()));
+             animator.start();
+         }
+ 
+-        private void setBarHeight(View bar, int expanded, float fraction) {
+-            int height = Math.round(expanded * (1 - Math.max(0f, Math.min(1f, fraction))));
++        private void setBarHeight(View bar, int expanded, float distance) {
++            int height = Math.round(expanded - Math.max(0f, Math.min(expanded, distance)));
+             bar.setVisibility(height == 0 ? View.GONE : View.VISIBLE);
+             ViewGroup.LayoutParams params = bar.getLayoutParams();
+             if (params.height != height) {
+@@ -869,7 +888,7 @@ public final class PlaitGalleryActivity extends Activity {
+                     int next = page;
+                     // Keep ViewPager's drag and settle animations, with our release threshold.
+                     if (singlePointer && getWidth() > 0
+-                            && Math.abs(distance) >= getWidth() * (2f / 3f)) {
++                            && Math.abs(distance) >= getWidth() * .5f) {
+                         next += distance < 0 ? 1 : -1;
+                     }
+                     MotionEvent cancel = MotionEvent.obtain(event);
+-- 
+2.56.1
+

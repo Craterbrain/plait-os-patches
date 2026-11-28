@@ -1,0 +1,81 @@
+From 9231b4af34a65e0c2baae2bc4c5993ffa5b3af8f Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 11:10:29 -0600
+Subject: [PATCH] PlaitOS: Pair Clock selection colors for readable contrast
+
+---
+ AndroidManifest.xml                           | 2 +-
+ res/color/clock_dial_number.xml               | 4 ++++
+ res/drawable-v21/bg_day_button_animatable.xml | 2 +-
+ res/drawable-v21/bg_day_button_white.xml      | 2 +-
+ res/values/styles.xml                         | 2 +-
+ 5 files changed, 8 insertions(+), 4 deletions(-)
+ create mode 100644 res/color/clock_dial_number.xml
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 6c4ea79..7aa9891 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -18,7 +18,7 @@
+ <manifest
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     package="com.android.deskclock"
+-    android:versionCode="38">
++    android:versionCode="39">
+ 
+     <original-package android:name="com.android.alarmclock" />
+     <original-package android:name="com.android.deskclock" />
+diff --git a/res/color/clock_dial_number.xml b/res/color/clock_dial_number.xml
+new file mode 100644
+index 0000000..80cd7e0
+--- /dev/null
++++ b/res/color/clock_dial_number.xml
+@@ -0,0 +1,4 @@
++<selector xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:state_activated="true" android:color="@color/clock_on_accent" />
++    <item android:color="@color/clock_text" />
++</selector>
+diff --git a/res/drawable-v21/bg_day_button_animatable.xml b/res/drawable-v21/bg_day_button_animatable.xml
+index 5f34ac8..9bfafc1 100644
+--- a/res/drawable-v21/bg_day_button_animatable.xml
++++ b/res/drawable-v21/bg_day_button_animatable.xml
+@@ -30,7 +30,7 @@
+         android:translateY="12">
+         <path
+             android:name="path"
+-            android:fillColor="#FFFFFFFF"
++            android:fillColor="@color/clock_tonal"
+             android:pathData="M 0.0,8.0 c -4.41999816895,0.0 -8.0,-3.58200073242 -8.0,-8.0 c 0.0,-4.41799926758 3.58000183105,-8.0 8.0,-8.0 c 4.41999816895,0.0 8.0,3.58200073242 8.0,8.0 c 0.0,4.41799926758 -3.58000183105,8.0 -8.0,8.0 Z"/>
+     </group>
+ </vector>
+\ No newline at end of file
+diff --git a/res/drawable-v21/bg_day_button_white.xml b/res/drawable-v21/bg_day_button_white.xml
+index 1ebfd57..07c7232 100644
+--- a/res/drawable-v21/bg_day_button_white.xml
++++ b/res/drawable-v21/bg_day_button_white.xml
+@@ -28,7 +28,7 @@
+         android:translateY="12">
+         <path
+             android:name="path"
+-            android:fillColor="#FFFFFFFF"
++            android:fillColor="@color/clock_tonal"
+             android:pathData="M 0.0,8.0 c -4.41999816895,0.0 -8.0,-3.58200073242 -8.0,-8.0 c 0.0,-4.41799926758 3.58000183105,-8.0 8.0,-8.0 c 4.41999816895,0.0 8.0,3.58200073242 8.0,8.0 c 0.0,4.41799926758 -3.58000183105,8.0 -8.0,8.0 Z"/>
+     </group>
+ </vector>
+\ No newline at end of file
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index c61cb53..0c9392f 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -130,7 +130,7 @@
+         <item name="android:headerBackground">@android:color/transparent</item>
+         <item name="android:numbersBackgroundColor">@color/clock_raised</item>
+         <item name="android:numbersSelectorColor">?attr/colorAccent</item>
+-        <item name="android:numbersTextColor">?android:attr/textColorPrimary</item>
++        <item name="android:numbersTextColor">@color/clock_dial_number</item>
+     </style>
+ 
+     <style name="TextAppearance.ClockTitle" parent="TextAppearance.AppCompat.Title">
+-- 
+2.56.1
+

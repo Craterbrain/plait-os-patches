@@ -1,0 +1,142 @@
+From ba6f1052c53404a7c8c64c1012bf5567d5b76dd7 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:27:41 -0600
+Subject: [PATCH] PlaitOS: use release velocity when paging Gallery photos
+
+---
+ AndroidManifest.xml                           |  4 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 86 +++++++++++++------
+ 2 files changed, 60 insertions(+), 30 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 6d53773..28e55a7 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40044"
+-        android:versionName="1.1.40044"
++<manifest android:versionCode="40045"
++        android:versionName="1.1.40045"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index be40c09..a41b380 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -28,6 +28,8 @@ import android.util.LruCache;
+ import android.util.Size;
+ import android.view.Gravity;
+ import android.view.MotionEvent;
++import android.view.VelocityTracker;
++import android.view.ViewConfiguration;
+ import android.view.View;
+ import android.view.ViewGroup;
+ import android.widget.BaseAdapter;
+@@ -1014,45 +1016,73 @@ public final class PlaitGalleryActivity extends Activity {
+     }
+ 
+     private final class PhotoPager extends ViewPager {
++        private final ViewConfiguration gestures = ViewConfiguration.get(PlaitGalleryActivity.this);
+         private float touchStartX;
+         private boolean singlePointer;
++        private VelocityTracker velocity;
+ 
+         PhotoPager() {
+             super(PlaitGalleryActivity.this);
+         }
+ 
+         @Override public boolean dispatchTouchEvent(MotionEvent event) {
+-            switch (event.getActionMasked()) {
+-                case MotionEvent.ACTION_DOWN:
+-                    touchStartX = event.getX();
+-                    singlePointer = true;
+-                    break;
+-                case MotionEvent.ACTION_POINTER_DOWN:
+-                    singlePointer = false;
+-                    break;
+-                case MotionEvent.ACTION_UP:
+-                    float distance = event.getX() - touchStartX;
+-                    int page = getCurrentItem();
+-                    int next = page;
+-                    // Keep ViewPager's drag and settle animations, with our release threshold.
+-                    if (singlePointer && getWidth() > 0
+-                            && Math.abs(distance) >= getWidth() * .35f) {
+-                        next += distance < 0 ? 1 : -1;
+-                    }
+-                    MotionEvent cancel = MotionEvent.obtain(event);
+-                    cancel.setAction(MotionEvent.ACTION_CANCEL);
+-                    try {
+-                        super.dispatchTouchEvent(cancel);
+-                    } finally {
+-                        cancel.recycle();
+-                    }
+-                    if (next != page) setCurrentItem(next, true);
+-                    return true;
+-                default:
+-                    break;
++            int action = event.getActionMasked();
++            if (action == MotionEvent.ACTION_DOWN) {
++                releaseTracker();
++                velocity = VelocityTracker.obtain();
++                touchStartX = event.getX();
++                singlePointer = true;
++            } else if (action == MotionEvent.ACTION_POINTER_DOWN) {
++                singlePointer = false;
++            }
++            if (velocity != null) velocity.addMovement(event);
++            if (action == MotionEvent.ACTION_UP) {
++                float distance = event.getX() - touchStartX;
++                float projected = projectedTravel(distance);
++                releaseTracker();
++                int page = getCurrentItem();
++                int next = page;
++                if (singlePointer && getWidth() > 0 && projected >= getWidth() * .35f) {
++                    next += distance < 0 ? 1 : -1;
++                }
++                MotionEvent cancel = MotionEvent.obtain(event);
++                cancel.setAction(MotionEvent.ACTION_CANCEL);
++                try {
++                    super.dispatchTouchEvent(cancel);
++                } finally {
++                    cancel.recycle();
++                }
++                if (next != page) setCurrentItem(next, true);
++                return true;
+             }
++            if (action == MotionEvent.ACTION_CANCEL) releaseTracker();
+             return super.dispatchTouchEvent(event);
+         }
++
++        private float projectedTravel(float distance) {
++            float travel = Math.abs(distance);
++            if (velocity == null || !singlePointer || travel < dp(24)) return travel;
++            velocity.computeCurrentVelocity(1000, gestures.getScaledMaximumFlingVelocity());
++            float horizontal = velocity.getXVelocity();
++            if (horizontal * distance > 0
++                    && Math.abs(horizontal) >= gestures.getScaledMinimumFlingVelocity()
++                    && Math.abs(horizontal) > Math.abs(velocity.getYVelocity())) {
++                // Use a short projection to let a flick cross the page threshold.
++                travel += Math.abs(horizontal) * .12f;
++            }
++            return travel;
++        }
++
++        private void releaseTracker() {
++            if (velocity == null) return;
++            velocity.recycle();
++            velocity = null;
++        }
++
++        @Override protected void onDetachedFromWindow() {
++            releaseTracker();
++            super.onDetachedFromWindow();
++        }
+     }
+ 
+     private void updateViewerHeader(LinearLayout slot) {
+-- 
+2.56.1
+

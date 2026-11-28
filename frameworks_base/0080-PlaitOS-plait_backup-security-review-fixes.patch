@@ -8,6 +8,7 @@ local file (restricted settings apply); never installs over a system app that
 is uninstalled for the user; restoring MODE_DEFAULT counts as loosening.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../server/plait/PlaitBackupService.java      | 41 ++++++++++++++++---
  1 file changed, 35 insertions(+), 6 deletions(-)

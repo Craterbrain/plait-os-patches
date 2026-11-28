@@ -7,6 +7,7 @@ Window, transition and animator duration scales start at 0.5 on a new phone
 (Settings > Developer options shows .5x); the animator scale gets a default of its own.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  packages/SettingsProvider/res/values/defaults.xml           | 6 ++++--
  .../src/com/android/providers/settings/DatabaseHelper.java  | 3 +++

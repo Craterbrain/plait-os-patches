@@ -4,6 +4,7 @@ Date: Tue, 17 Nov 2026 23:25:00 -0600
 Subject: [PATCH] PlaitOS: name PlaitOS in the call recording notice
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  java/com/android/incallui/res/values/strings_ext.xml | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)

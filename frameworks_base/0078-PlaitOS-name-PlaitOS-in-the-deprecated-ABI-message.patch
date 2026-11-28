@@ -4,6 +4,7 @@ Date: Mon, 16 Nov 2026 08:46:03 -0600
 Subject: [PATCH 78/78] PlaitOS: name PlaitOS in the deprecated-ABI message
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  core/res/res/values/strings.xml | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)

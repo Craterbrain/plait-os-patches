@@ -1,0 +1,78 @@
+From 6952224659f070e0af3abaf81ad7492494704530 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 10:28:09 -0600
+Subject: [PATCH] PlaitOS: LocalSend's button as a tonal tile
+
+Its adaptive icon's monochrome layer (LocalSend's own themed-icon glyph) in
+onPrimaryContainer on the primaryContainer tile, sized like the design guide's icons; an
+app without a monochrome layer keeps its own icon.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ src/com/android/documentsui/PlaitCompose.kt | 40 +++++++++++++++++----
+ 1 file changed, 34 insertions(+), 6 deletions(-)
+
+diff --git a/src/com/android/documentsui/PlaitCompose.kt b/src/com/android/documentsui/PlaitCompose.kt
+index a9ea5d7..085e606 100644
+--- a/src/com/android/documentsui/PlaitCompose.kt
++++ b/src/com/android/documentsui/PlaitCompose.kt
+@@ -27,6 +27,8 @@ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.foundation.layout.requiredSize
++import androidx.compose.ui.draw.clip
+ import androidx.compose.ui.graphics.toArgb
+ import androidx.compose.ui.platform.ComposeView
+ import androidx.compose.ui.platform.ViewCompositionStrategy
+@@ -198,14 +200,40 @@ internal fun ProviderIcon(drawable: Drawable, modifier: Modifier = Modifier) {
+     }
+ }
+ 
+-/** An app's own icon, untinted, at a tonal tile's size (LocalSend's button in the selection bar). */
++/**
++ * An app's icon as a tonal tile (LocalSend's button in the selection bar): the app's own
++ * themed-icon glyph (its adaptive icon's monochrome layer) in onPrimaryContainer on the
++ * primaryContainer tile, like TonalTile. The glyph sits in the middle two-thirds of the layer,
++ * so the layer is drawn larger than the tile to match the design guide's icon size. An app
++ * without a monochrome layer keeps its own icon, untinted.
++ */
+ @Composable
+ internal fun AppIcon(drawable: Drawable, modifier: Modifier = Modifier) {
+-    AndroidView(
+-        factory = { ImageView(it).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } },
+-        update = { it.setImageDrawable(drawable.constantState?.newDrawable() ?: drawable) },
+-        modifier = modifier.size(40.dp),
+-    )
++    val mono = (drawable as? android.graphics.drawable.AdaptiveIconDrawable)
++        ?.let { if (android.os.Build.VERSION.SDK_INT >= 33) it.monochrome else null }
++    if (mono == null) {
++        AndroidView(
++            factory = { ImageView(it).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } },
++            update = { it.setImageDrawable(drawable.constantState?.newDrawable() ?: drawable) },
++            modifier = modifier.size(40.dp),
++        )
++        return
++    }
++    val glyph = MaterialTheme.colorScheme.onPrimaryContainer.toArgb()
++    Box(
++        modifier.size(40.dp).clip(RoundedCornerShape(12.dp))
++            .background(MaterialTheme.colorScheme.primaryContainer),
++        contentAlignment = Alignment.Center,
++    ) {
++        AndroidView(
++            factory = { ImageView(it).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } },
++            update = {
++                it.setImageDrawable(mono.constantState?.newDrawable()?.mutate() ?: mono)
++                it.imageTintList = android.content.res.ColorStateList.valueOf(glyph)
++            },
++            modifier = Modifier.requiredSize(50.dp),
++        )
++    }
+ }
+ 
+ /** The drawable to show and whether to tint it (see [ProviderIcon]). */
+-- 
+2.56.1
+

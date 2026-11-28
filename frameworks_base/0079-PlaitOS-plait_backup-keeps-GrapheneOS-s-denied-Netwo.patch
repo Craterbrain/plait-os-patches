@@ -9,6 +9,7 @@ silently undid the user's "denied". The backup now records those as "!permission
 revokes them; archives made elsewhere have no such lines, so nothing is revoked for them.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../server/plait/PlaitBackupService.java      | 31 +++++++++++++++++++
  1 file changed, 31 insertions(+)

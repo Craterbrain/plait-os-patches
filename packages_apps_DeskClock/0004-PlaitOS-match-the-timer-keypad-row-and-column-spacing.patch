@@ -1,0 +1,92 @@
+From 5ab5d04dc18a4661f7c348058e84f44758e83c15 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 11:25:47 -0600
+Subject: [PATCH] PlaitOS: Match the timer keypad row and column spacing
+
+---
+ AndroidManifest.xml                           |  2 +-
+ res/layout/timer_setup_digits.xml             |  4 +--
+ res/layout/timer_setup_view.xml               |  2 +-
+ .../deskclock/timer/TimerKeypadGrid.java      | 25 +++++++++++++++++++
+ 4 files changed, 29 insertions(+), 4 deletions(-)
+ create mode 100644 src/com/android/deskclock/timer/TimerKeypadGrid.java
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 7aa9891..878196c 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -18,7 +18,7 @@
+ <manifest
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     package="com.android.deskclock"
+-    android:versionCode="39">
++    android:versionCode="40">
+ 
+     <original-package android:name="com.android.alarmclock" />
+     <original-package android:name="com.android.deskclock" />
+diff --git a/res/layout/timer_setup_digits.xml b/res/layout/timer_setup_digits.xml
+index 01cb6e1..a114fba 100644
+--- a/res/layout/timer_setup_digits.xml
++++ b/res/layout/timer_setup_digits.xml
+@@ -15,7 +15,7 @@
+   limitations under the License.
+   -->
+ 
+-<androidx.gridlayout.widget.GridLayout
++<com.android.deskclock.timer.TimerKeypadGrid
+     xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:app="http://schemas.android.com/apk/res-auto"
+     android:layout_width="match_parent"
+@@ -140,4 +140,4 @@
+             android:layout_weight="1" />
+     </LinearLayout>
+ 
+-</androidx.gridlayout.widget.GridLayout>
++</com.android.deskclock.timer.TimerKeypadGrid>
+diff --git a/res/layout/timer_setup_view.xml b/res/layout/timer_setup_view.xml
+index 901a86a..89738af 100644
+--- a/res/layout/timer_setup_view.xml
++++ b/res/layout/timer_setup_view.xml
+@@ -36,7 +36,7 @@
+         <include
+             layout="@layout/timer_setup_digits"
+             android:layout_width="match_parent"
+-            android:layout_height="224dp"
++            android:layout_height="wrap_content"
+             android:layout_marginHorizontal="16dp" />
+ 
+     </LinearLayout>
+diff --git a/src/com/android/deskclock/timer/TimerKeypadGrid.java b/src/com/android/deskclock/timer/TimerKeypadGrid.java
+new file mode 100644
+index 0000000..ce585d1
+--- /dev/null
++++ b/src/com/android/deskclock/timer/TimerKeypadGrid.java
+@@ -0,0 +1,25 @@
++package com.android.deskclock.timer;
++
++import android.content.Context;
++import android.util.AttributeSet;
++
++import androidx.gridlayout.widget.GridLayout;
++
++/** Keeps the portrait timer keypad's rows and columns on the same pitch. */
++public final class TimerKeypadGrid extends GridLayout {
++    public TimerKeypadGrid(Context context, AttributeSet attrs) {
++        super(context, attrs);
++    }
++
++    @Override
++    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
++        // Landscape supplies an exact height and retains its side-by-side layout.
++        if (MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.EXACTLY) {
++            final int width = Math.round(MeasureSpec.getSize(widthMeasureSpec) * 0.85f);
++            final int height = Math.round(width * 4f / 3f);
++            widthMeasureSpec = MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY);
++            heightMeasureSpec = MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY);
++        }
++        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
++    }
++}
+-- 
+2.56.1
+

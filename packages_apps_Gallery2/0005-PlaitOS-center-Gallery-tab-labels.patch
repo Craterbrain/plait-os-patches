@@ -1,0 +1,42 @@
+From 062ee99f58aca64bd23d1e10c7be0187428befb3 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 18:59:03 -0600
+Subject: [PATCH] PlaitOS: center Gallery tab labels under their icons
+
+---
+ AndroidManifest.xml                                     | 4 ++--
+ src/com/android/gallery3d/app/PlaitGalleryActivity.java | 3 ++-
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index d3821e4..8fdaed2 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40035"
+-        android:versionName="1.1.40035"
++<manifest android:versionCode="40036"
++        android:versionName="1.1.40036"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index fa1f3e9..12883fb 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -384,8 +384,9 @@ public final class PlaitGalleryActivity extends Activity {
+             TextView label = label(getString(labels[index]), 12, tab == index);
+             label.setTextColor(foreground);
+             if (tab == index) label.setTextColor(primary);
++            label.setGravity(Gravity.CENTER);
+             label.setPadding(0, dp(2), 0, 0);
+-            button.addView(label);
++            button.addView(label, new LinearLayout.LayoutParams(-2, -2));
+             button.setOnClickListener(view -> {
+                 tab = destination;
+                 category = null;
+-- 
+2.56.1
+

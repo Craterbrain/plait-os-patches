@@ -12,6 +12,7 @@ system_server). The charging limit and the headset receiver no longer throw into
 handler thread.
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3UdaCB3bu67ZPQkVe
 ---
  .../android/internal/plait/IPlaitBackup.aidl  | 10 ++
  .../server/plait/PlaitBackupService.java      | 99 +++++++++++++++++++

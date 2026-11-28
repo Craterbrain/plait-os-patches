@@ -8,6 +8,7 @@ With credential-encrypted storage still locked, an app's CE data dir
 can't be found by name, so a backup would quietly leave it out.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WNZzm3ssZ7eH5QDg4P9AiP
 ---
  .../java/com/android/server/plait/PlaitBackupService.java     | 4 ++++
  1 file changed, 4 insertions(+)

@@ -1,0 +1,105 @@
+From a9bfb749aeb01bae70299cdecfe724c784759bb6 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 20:32:55 -0600
+Subject: [PATCH] PlaitOS: retain Gallery thumbnail rows during bar collapse
+
+---
+ AndroidManifest.xml                           |  4 +-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 38 ++++++++++++++++++-
+ 2 files changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index d01bccb..3377fe4 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40046"
+-        android:versionName="1.1.40046"
++<manifest android:versionCode="40047"
++        android:versionName="1.1.40047"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index 321be9a..d2ee0e8 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -451,6 +451,7 @@ public final class PlaitGalleryActivity extends Activity {
+         grid = libraryList;
+         grid.setDivider(null);
+         grid.setDividerHeight(0);
++        grid.setScrollingCacheEnabled(false);
+         grid.setPadding(dp(12), 0, dp(12), dp(4));
+         grid.setClipToPadding(false);
+         grid.setAdapter(new TileAdapter());
+@@ -1205,8 +1206,12 @@ public final class PlaitGalleryActivity extends Activity {
+         thumbnails.execute(() -> {
+             if (thumbnail && view.getTag() != binding) return;
+             try {
+-                Bitmap bitmap = getContentResolver().loadThumbnail(uri, new Size(size, size), null);
+-                if (thumbnail) cache.put(uri, bitmap);
++                Bitmap cached = thumbnail ? cache.get(uri) : null;
++                if (cached == null) {
++                    cached = getContentResolver().loadThumbnail(uri, new Size(size, size), null);
++                    if (thumbnail) cache.put(uri, cached);
++                }
++                Bitmap bitmap = cached;
+                 runOnUiThread(() -> {
+                     if (isDestroyed() || view.getTag() != binding) return;
+                     view.setImageBitmap(bitmap);
+@@ -1222,21 +1227,50 @@ public final class PlaitGalleryActivity extends Activity {
+         });
+     }
+ 
++    private static final class RowBinding {
++        final Row row;
++        final int selectionMask;
++
++        RowBinding(Row row, int selectionMask) {
++            this.row = row;
++            this.selectionMask = selectionMask;
++        }
++    }
++
+     private final class TileAdapter extends BaseAdapter {
+         @Override public int getCount() { return rows.size(); }
+         @Override public Row getItem(int position) { return rows.get(position); }
+         @Override public long getItemId(int position) { return position; }
+         @Override public boolean isEnabled(int position) { return false; }
++        @Override public int getViewTypeCount() { return 2; }
++        @Override public int getItemViewType(int position) {
++            return getItem(position).heading == null ? 0 : 1;
++        }
+ 
+         @Override public View getView(int position, View convertView, ViewGroup parent) {
+             Row row = getItem(position);
+             if (row.heading != null) {
++                if (convertView instanceof TextView) {
++                    ((TextView) convertView).setText(row.heading);
++                    return convertView;
++                }
+                 TextView title = label(row.heading, 18, true);
+                 title.setAccessibilityHeading(true);
+                 title.setPadding(dp(4), dp(12), dp(4), dp(8));
+                 return title;
+             }
++            int mask = 0;
++            for (int i = 0; i < row.cells.size(); i++) {
++                Tile tile = row.cells.get(i);
++                if (tile.category == null && checkedMedia.contains(tile.media.uri)) mask |= 1 << i;
++            }
++            if (convertView != null && convertView.getTag() instanceof RowBinding) {
++                RowBinding bound = (RowBinding) convertView.getTag();
++                // A bar height change can rebind the same visible row several times per drag.
++                if (bound.row == row && bound.selectionMask == mask) return convertView;
++            }
+             LinearLayout line = new LinearLayout(PlaitGalleryActivity.this);
++            line.setTag(new RowBinding(row, mask));
+             for (int index = 0; index < row.columns; index++) {
+                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
+                 params.setMargins(dp(2), dp(2), dp(2), dp(2));
+-- 
+2.56.1
+

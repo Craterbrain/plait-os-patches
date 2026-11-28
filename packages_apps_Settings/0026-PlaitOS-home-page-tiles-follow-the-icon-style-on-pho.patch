@@ -1,0 +1,34 @@
+From 1a48782d3651f9928d28a3805f16b1eb3073dfe5 Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 14:36:49 -0600
+Subject: [PATCH] PlaitOS: home page tiles follow the icon style on phones
+
+The phone home page uses RoundCornerPreferenceAdapter (the highlightable
+adapter is only for the split layout), and catalyst sets the tiles' icons
+again on every bind, so styling them when the page loads did nothing. Style
+the bound icon in that adapter too.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ .../android/settings/core/RoundCornerPreferenceAdapter.java   | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/com/android/settings/core/RoundCornerPreferenceAdapter.java b/src/com/android/settings/core/RoundCornerPreferenceAdapter.java
+index 6c46d29..bb54815 100644
+--- a/src/com/android/settings/core/RoundCornerPreferenceAdapter.java
++++ b/src/com/android/settings/core/RoundCornerPreferenceAdapter.java
+@@ -70,6 +70,10 @@ public class RoundCornerPreferenceAdapter extends PreferenceGroupAdapter {
+     @Override
+     public void onBindViewHolder(@NonNull PreferenceViewHolder holder, int position) {
+         super.onBindViewHolder(holder, position);
++        // PlaitOS: the phone home page uses this adapter (the highlightable one is only for the
++        // split layout), and catalyst sets its tiles' icons again on every bind, so they are
++        // styled here, at bind time, like every other page
++        com.android.settings.plait.PlaitIconStyler.styleBoundIcon(holder, getItem(position));
+         updateBackground(holder, position);
+     }
+ 
+-- 
+2.56.1
+

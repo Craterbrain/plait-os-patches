@@ -1,0 +1,999 @@
+From 4725a2e7cc3bf4d36de5c843fcb98632257e583a Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 10:58:38 -0600
+Subject: [PATCH] PlaitOS: Give Clock a Monet theme and bottom tabs
+
+---
+ AndroidManifest.xml                           |   3 +-
+ res/color/tab_tint_color.xml                  |   6 +-
+ res/drawable/clock_alarm_card.xml             |   4 +
+ res/drawable/clock_analog_dial.xml            |   2 +-
+ res/drawable/clock_analog_hour.xml            |   2 +-
+ res/drawable/clock_analog_minute.xml          |   2 +-
+ res/drawable/clock_tab_background.xml         |   9 +
+ res/drawable/ic_caret_down_static.xml         |   4 +-
+ res/drawable/ic_caret_up_static.xml           |   4 +-
+ res/drawable/ic_clock_settings.xml            |  13 ++
+ res/drawable/ic_delete_small.xml              |   2 +-
+ res/drawable/ic_label.xml                     |   2 +-
+ res/drawable/ic_ringtone.xml                  |   2 +-
+ res/drawable/ic_ringtone_not_found.xml        |   2 +-
+ res/drawable/ic_ringtone_silent.xml           |   2 +-
+ res/drawable/toggle_circle.xml                |   8 +-
+ res/layout/alarm_time_collapsed.xml           |   3 +-
+ res/layout/city_list_header.xml               |   2 +-
+ res/layout/city_list_item.xml                 |   2 +-
+ res/layout/desk_clock.xml                     | 163 +++++++++---------
+ res/layout/ringtone_item_sound.xml            |   2 +-
+ res/layout/tab_item.xml                       |  39 ++++-
+ res/layout/timer_setup_digits.xml             |  28 ++-
+ res/values-night/clock_monet.xml              |  15 ++
+ res/values/clock_monet.xml                    |  15 ++
+ res/values/colors.xml                         |   4 -
+ res/values/styles.xml                         |  16 +-
+ res/values/themes.xml                         |  15 +-
+ src/com/android/deskclock/DeskClock.java      |  74 ++++----
+ .../dataadapter/ExpandedAlarmViewHolder.java  |   8 +-
+ .../stopwatch/StopwatchCircleView.java        |   3 +-
+ .../deskclock/timer/TimerCircleView.java      |   3 +-
+ .../deskclock/timer/TimerSetupView.java       |   7 +
+ 33 files changed, 294 insertions(+), 172 deletions(-)
+ create mode 100644 res/drawable/clock_alarm_card.xml
+ create mode 100644 res/drawable/clock_tab_background.xml
+ create mode 100644 res/drawable/ic_clock_settings.xml
+ create mode 100644 res/values-night/clock_monet.xml
+ create mode 100644 res/values/clock_monet.xml
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 67c1745..6c4ea79 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -17,7 +17,8 @@
+ 
+ <manifest
+     xmlns:android="http://schemas.android.com/apk/res/android"
+-    package="com.android.deskclock">
++    package="com.android.deskclock"
++    android:versionCode="38">
+ 
+     <original-package android:name="com.android.alarmclock" />
+     <original-package android:name="com.android.deskclock" />
+diff --git a/res/color/tab_tint_color.xml b/res/color/tab_tint_color.xml
+index 912a9fe..d059fa1 100644
+--- a/res/color/tab_tint_color.xml
++++ b/res/color/tab_tint_color.xml
+@@ -15,7 +15,7 @@
+ -->
+ 
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+-    <item android:state_focused="true" android:color="@color/white" />
+-    <item android:state_selected="true" android:color="@color/white" />
+-    <item android:color="@color/white_63p" />
++    <item android:state_focused="true" android:color="@color/clock_on_container" />
++    <item android:state_selected="true" android:color="@color/clock_on_container" />
++    <item android:color="@color/clock_secondary_text" />
+ </selector>
+\ No newline at end of file
+diff --git a/res/drawable/clock_alarm_card.xml b/res/drawable/clock_alarm_card.xml
+new file mode 100644
+index 0000000..0da00ca
+--- /dev/null
++++ b/res/drawable/clock_alarm_card.xml
+@@ -0,0 +1,4 @@
++<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
++    <solid android:color="@color/clock_container" />
++    <corners android:radius="16dp" />
++</shape>
+diff --git a/res/drawable/clock_analog_dial.xml b/res/drawable/clock_analog_dial.xml
+index 3145ab6..3c4a2be 100644
+--- a/res/drawable/clock_analog_dial.xml
++++ b/res/drawable/clock_analog_dial.xml
+@@ -20,6 +20,6 @@
+         android:viewportHeight="1176.0"
+         android:viewportWidth="1176.0">
+     <path
+-        android:fillColor="#FFFFFFFF"
++        android:fillColor="@color/clock_text"
+         android:pathData="M588,104.9c65.2,0 128.5,12.8 188,38c57.5,24.3 109.2,59.2 153.6,103.5c44.4,44.4 79.2,96 103.5,153.6c25.2,59.5 38,122.8 38,188s-12.8,128.5 -38,188c-24.3,57.5 -59.2,109.2 -103.5,153.6c-44.4,44.4 -96,79.2 -153.6,103.5c-59.5,25.2 -122.8,38 -188,38s-128.5,-12.8 -188,-38c-57.5,-24.3 -109.2,-59.2 -153.6,-103.5c-44.4,-44.4 -79.2,-96 -103.5,-153.6c-25.2,-59.5 -38,-122.8 -38,-188s12.8,-128.5 38,-188c24.3,-57.5 59.2,-109.2 103.5,-153.6s96,-79.2 153.6,-103.5C459.5,117.7 522.8,104.9 588,104.9M588,78.9C306.8,78.9 78.9,306.8 78.9,588s227.9,509.1 509.1,509.1s509.1,-227.9 509.1,-509.1S869.2,78.9 588,78.9L588,78.9z" />
+ </vector>
+\ No newline at end of file
+diff --git a/res/drawable/clock_analog_hour.xml b/res/drawable/clock_analog_hour.xml
+index f71d84f..1c33c3a 100644
+--- a/res/drawable/clock_analog_hour.xml
++++ b/res/drawable/clock_analog_hour.xml
+@@ -20,6 +20,6 @@
+         android:viewportHeight="1176.0"
+         android:viewportWidth="1176.0">
+     <path
+-        android:fillColor="#FFFFFFFF"
++        android:fillColor="@color/clock_text"
+         android:pathData="M588,648.2L588,648.2c-4.4,0 -8,-3.6 -8,-8v-256c0,-4.4 3.6,-8 8,-8l0,0c4.4,0 8,3.6 8,8v256C596,644.6 592.4,648.2 588,648.2z" />
+ </vector>
+\ No newline at end of file
+diff --git a/res/drawable/clock_analog_minute.xml b/res/drawable/clock_analog_minute.xml
+index 8f63be3..536026b 100644
+--- a/res/drawable/clock_analog_minute.xml
++++ b/res/drawable/clock_analog_minute.xml
+@@ -20,6 +20,6 @@
+         android:viewportHeight="1176.0"
+         android:viewportWidth="1176.0">
+     <path
+-        android:fillColor="#FFFFFFFF"
++        android:fillColor="@color/clock_text"
+         android:pathData="M588,647.9L588,647.9c-4.4,0 -8,-3.6 -8,-8v-448c0,-4.4 3.6,-8 8,-8l0,0c4.4,0 8,3.6 8,8v448C596,644.3 592.4,647.9 588,647.9z" />
+ </vector>
+diff --git a/res/drawable/clock_tab_background.xml b/res/drawable/clock_tab_background.xml
+new file mode 100644
+index 0000000..bc42ec0
+--- /dev/null
++++ b/res/drawable/clock_tab_background.xml
+@@ -0,0 +1,9 @@
++<selector xmlns:android="http://schemas.android.com/apk/res/android">
++    <item android:state_selected="true">
++        <shape android:shape="rectangle">
++            <solid android:color="@color/clock_tonal" />
++            <corners android:radius="20dp" />
++        </shape>
++    </item>
++    <item android:drawable="@android:color/transparent" />
++</selector>
+diff --git a/res/drawable/ic_caret_down_static.xml b/res/drawable/ic_caret_down_static.xml
+index c61c85c..1de8fac 100644
+--- a/res/drawable/ic_caret_down_static.xml
++++ b/res/drawable/ic_caret_down_static.xml
+@@ -37,7 +37,7 @@
+                     android:translateY="-1">
+                     <path
+                         android:name="caret_l_rect"
+-                        android:fillColor="#FFFFFFFF"
++                        android:fillColor="@color/clock_text"
+                         android:pathData="M -1.0,-4.0 l 2.0,0.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l 0.0,8.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l -2.0,0.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l 0.0,-8.0 c 0.0,0.0 0.0,0.0 0.0,0.0 Z"/>
+                 </group>
+             </group>
+@@ -53,7 +53,7 @@
+                     android:translateY="1">
+                     <path
+                         android:name="caret_r_rect"
+-                        android:fillColor="#FFFFFFFF"
++                        android:fillColor="@color/clock_text"
+                         android:pathData="M -1.0,-4.0 l 2.0,0.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l 0.0,8.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l -2.0,0.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l 0.0,-8.0 c 0.0,0.0 0.0,0.0 0.0,0.0 Z"/>
+                 </group>
+             </group>
+diff --git a/res/drawable/ic_caret_up_static.xml b/res/drawable/ic_caret_up_static.xml
+index 8eaa80e..b4f50e0 100644
+--- a/res/drawable/ic_caret_up_static.xml
++++ b/res/drawable/ic_caret_up_static.xml
+@@ -37,7 +37,7 @@
+                     android:translateY="-1">
+                     <path
+                         android:name="caret02_l_rect"
+-                        android:fillColor="#FFFFFFFF"
++                        android:fillColor="@color/clock_text"
+                         android:pathData="M -1.0,-4.0 l 2.0,0.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l 0.0,8.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l -2.0,0.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l 0.0,-8.0 c 0.0,0.0 0.0,0.0 0.0,0.0 Z"/>
+                 </group>
+             </group>
+@@ -53,7 +53,7 @@
+                     android:translateY="1">
+                     <path
+                         android:name="caret02_r_rect"
+-                        android:fillColor="#FFFFFFFF"
++                        android:fillColor="@color/clock_text"
+                         android:pathData="M -1.0,-4.0 l 2.0,0.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l 0.0,8.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l -2.0,0.0 c 0.0,0.0 0.0,0.0 0.0,0.0 l 0.0,-8.0 c 0.0,0.0 0.0,0.0 0.0,0.0 Z"/>
+                 </group>
+             </group>
+diff --git a/res/drawable/ic_clock_settings.xml b/res/drawable/ic_clock_settings.xml
+new file mode 100644
+index 0000000..4015c6d
+--- /dev/null
++++ b/res/drawable/ic_clock_settings.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/ic_delete_small.xml b/res/drawable/ic_delete_small.xml
+index f08114a..680dfd4 100644
+--- a/res/drawable/ic_delete_small.xml
++++ b/res/drawable/ic_delete_small.xml
+@@ -20,6 +20,6 @@
+         android:viewportHeight="24.0"
+         android:viewportWidth="24.0">
+     <path
+-        android:fillColor="#FFFFFFFF"
++        android:fillColor="@color/clock_text"
+         android:pathData="M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12zM19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z" />
+ </vector>
+\ No newline at end of file
+diff --git a/res/drawable/ic_label.xml b/res/drawable/ic_label.xml
+index ec330fd..212435d 100644
+--- a/res/drawable/ic_label.xml
++++ b/res/drawable/ic_label.xml
+@@ -21,6 +21,6 @@
+     android:viewportHeight="24.0"
+     android:viewportWidth="24.0">
+     <path
+-        android:fillColor="#FFFFFF"
++        android:fillColor="@color/clock_text"
+         android:pathData="M17.63,5.84C17.27,5.33 16.67,5 16,5L5,5.01C3.9,5.01 3,5.9 3,7v10c0,1.1 0.9,1.99 2,1.99L16,19c0.67,0 1.27,-0.33 1.63,-0.84L22,12l-4.37,-6.16z"/>
+ </vector>
+diff --git a/res/drawable/ic_ringtone.xml b/res/drawable/ic_ringtone.xml
+index 5fb4e4b..cae15fe 100644
+--- a/res/drawable/ic_ringtone.xml
++++ b/res/drawable/ic_ringtone.xml
+@@ -20,6 +20,6 @@
+         android:viewportWidth="24.0"
+         android:viewportHeight="24.0">
+     <path
+-        android:fillColor="#FFFFFFFF"
++        android:fillColor="@color/clock_text"
+         android:pathData="M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.89,2 2,2zM18,16v-5c0,-3.07 -1.64,-5.64 -4.5,-6.32L13.5,4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.63,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2z"/>
+ </vector>
+\ No newline at end of file
+diff --git a/res/drawable/ic_ringtone_not_found.xml b/res/drawable/ic_ringtone_not_found.xml
+index 74a4241..9bdf83a 100644
+--- a/res/drawable/ic_ringtone_not_found.xml
++++ b/res/drawable/ic_ringtone_not_found.xml
+@@ -20,6 +20,6 @@
+     android:viewportHeight="24.0"
+     android:viewportWidth="24.0">
+     <path
+-        android:fillColor="#FFF"
++        android:fillColor="@color/clock_text"
+         android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM13,17h-2v-2h2v2zM13,13h-2L11,7h2v6z" />
+ </vector>
+diff --git a/res/drawable/ic_ringtone_silent.xml b/res/drawable/ic_ringtone_silent.xml
+index 4e6d0ab..701985b 100644
+--- a/res/drawable/ic_ringtone_silent.xml
++++ b/res/drawable/ic_ringtone_silent.xml
+@@ -20,6 +20,6 @@
+     android:viewportHeight="24.0"
+     android:viewportWidth="24.0">
+     <path
+-        android:fillColor="#FFFFFFFF"
++        android:fillColor="@color/clock_text"
+         android:pathData="M20,18.69L7.84,6.14 5.27,3.49 4,4.76l2.8,2.8v0.01c-0.52,0.99 -0.8,2.16 -0.8,3.42v5l-2,2v1h13.73l2,2L21,19.72l-1,-1.03zM12,22c1.11,0 2,-0.89 2,-2h-4c0,1.11 0.89,2 2,2zM18,14.68L18,11c0,-3.08 -1.64,-5.64 -4.5,-6.32L13.5,4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68c-0.15,0.03 -0.29,0.08 -0.42,0.12 -0.1,0.03 -0.2,0.07 -0.3,0.11h-0.01c-0.01,0 -0.01,0 -0.02,0.01 -0.23,0.09 -0.46,0.2 -0.68,0.31 0,0 -0.01,0 -0.01,0.01L18,14.68z" />
+ </vector>
+\ No newline at end of file
+diff --git a/res/drawable/toggle_circle.xml b/res/drawable/toggle_circle.xml
+index 574ae8c..1a62103 100644
+--- a/res/drawable/toggle_circle.xml
++++ b/res/drawable/toggle_circle.xml
+@@ -17,9 +17,11 @@
+ 
+ <selector xmlns:android="http://schemas.android.com/apk/res/android">
+     <item android:state_checked="true">
+-        <bitmap
+-            android:src="@drawable/bg_day_selected"
+-            android:gravity="center" />
++        <inset android:inset="7dp">
++            <shape android:shape="oval">
++                <solid android:color="@color/clock_tonal" />
++            </shape>
++        </inset>
+     </item>
+     <item android:drawable="@android:color/transparent" />
+ </selector>
+diff --git a/res/layout/alarm_time_collapsed.xml b/res/layout/alarm_time_collapsed.xml
+index fa8f112..6804593 100644
+--- a/res/layout/alarm_time_collapsed.xml
++++ b/res/layout/alarm_time_collapsed.xml
+@@ -20,7 +20,8 @@
+     xmlns:app="http://schemas.android.com/apk/res-auto"
+     android:layout_width="match_parent"
+     android:layout_height="wrap_content"
+-    android:background="?attr/selectableItemBackground"
++    android:background="@drawable/clock_alarm_card"
++    android:foreground="?attr/selectableItemBackground"
+     android:paddingEnd="16dp"
+     android:paddingStart="16dp"
+     app:columnCount="5"
+diff --git a/res/layout/city_list_header.xml b/res/layout/city_list_header.xml
+index 2db78ef..40f0761 100644
+--- a/res/layout/city_list_header.xml
++++ b/res/layout/city_list_header.xml
+@@ -25,5 +25,5 @@
+     android:paddingStart="20dp"
+     android:text="@string/selected_cities_label"
+     android:textAlignment="viewStart"
+-    android:textColor="@color/white"
++    android:textColor="@color/clock_text"
+     android:textSize="20sp" />
+diff --git a/res/layout/city_list_item.xml b/res/layout/city_list_item.xml
+index 520ab32..867708c 100644
+--- a/res/layout/city_list_item.xml
++++ b/res/layout/city_list_item.xml
+@@ -29,7 +29,7 @@
+         android:gravity="center"
+         android:textStyle="bold"
+         android:textSize="@dimen/label_text_size"
+-        android:textColor="@color/white" />
++        android:textColor="@color/clock_text" />
+     <CheckBox
+         android:id="@+id/city_onoff"
+         android:layout_height="wrap_content"
+diff --git a/res/layout/desk_clock.xml b/res/layout/desk_clock.xml
+index d25e4f6..747d32a 100644
+--- a/res/layout/desk_clock.xml
++++ b/res/layout/desk_clock.xml
+@@ -15,56 +15,44 @@
+   limitations under the License.
+   -->
+ 
+-<androidx.coordinatorlayout.widget.CoordinatorLayout
+-    xmlns:android="http://schemas.android.com/apk/res/android"
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:app="http://schemas.android.com/apk/res-auto"
+-    xmlns:tools="http://schemas.android.com/tools"
+-    android:id="@+id/content"
+     android:layout_width="match_parent"
+     android:layout_height="match_parent"
+     android:fitsSystemWindows="true"
+-    app:statusBarBackground="@null">
++    android:orientation="vertical">
+ 
+-    <com.google.android.material.appbar.AppBarLayout
++    <LinearLayout
+         android:layout_width="match_parent"
+         android:layout_height="wrap_content"
+-        android:background="@null"
+-        app:elevation="0dp">
++        android:minHeight="56dp"
++        android:gravity="center_vertical"
++        android:paddingEnd="8dp">
+ 
+         <androidx.appcompat.widget.Toolbar
+             android:id="@+id/toolbar"
+-            android:layout_width="match_parent"
++            android:layout_width="0dp"
+             android:layout_height="wrap_content"
+-            app:contentInsetStart="0dp"
+-            tools:ignore="RtlSymmetry">
+-
+-            <com.google.android.material.tabs.TabLayout
+-                android:id="@+id/tabs"
+-                android:layout_width="match_parent"
+-                android:layout_height="match_parent"
+-                app:tabGravity="fill"
+-                app:tabIndicatorColor="@android:color/transparent"
+-                app:tabMaxWidth="0dp"
+-                app:tabMode="fixed"
+-                app:tabPaddingEnd="0dp"
+-                app:tabPaddingStart="0dp" />
+-
+-        </androidx.appcompat.widget.Toolbar>
+-
+-        <View
+-            android:id="@+id/tab_hairline"
+-            android:layout_width="match_parent"
+-            android:layout_height="@dimen/hairline_height"
+-            android:layout_gravity="bottom"
+-            android:background="@color/hairline"
+-            android:importantForAccessibility="no" />
+-
+-    </com.google.android.material.appbar.AppBarLayout>
++            android:minHeight="56dp"
++            android:layout_weight="1"
++            app:contentInsetStart="20dp"
++            app:titleTextColor="@color/clock_text"
++            app:titleTextAppearance="@style/TextAppearance.ClockTitle" />
++
++        <ImageButton
++            android:id="@+id/clock_settings"
++            android:layout_width="48dp"
++            android:layout_height="48dp"
++            android:contentDescription="@string/menu_item_settings"
++            android:src="@drawable/ic_clock_settings"
++            android:tint="@color/clock_secondary_text" />
++    </LinearLayout>
+ 
+-    <FrameLayout
++    <androidx.coordinatorlayout.widget.CoordinatorLayout
++        android:id="@+id/content"
+         android:layout_width="match_parent"
+-        android:layout_height="match_parent"
+-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
++        android:layout_height="0dp"
++        android:layout_weight="1">
+ 
+         <androidx.viewpager.widget.ViewPager
+             android:id="@+id/desk_clock_pager"
+@@ -75,57 +63,72 @@
+ 
+         <include layout="@layout/drop_shadow" />
+ 
+-    </FrameLayout>
++        <LinearLayout
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:layout_gravity="bottom"
++            android:baselineAligned="false"
++            android:orientation="horizontal"
++            app:layout_behavior="com.android.deskclock.widget.toast.SnackbarSlidingBehavior">
+ 
+-    <LinearLayout
+-        android:layout_width="match_parent"
+-        android:layout_height="wrap_content"
+-        android:layout_gravity="bottom"
+-        android:baselineAligned="false"
+-        android:orientation="horizontal"
+-        app:layout_behavior="com.android.deskclock.widget.toast.SnackbarSlidingBehavior">
++            <FrameLayout
++                android:layout_width="0dp"
++                android:layout_height="match_parent"
++                android:layout_gravity="start|center_vertical"
++                android:layout_weight="1">
+ 
+-        <FrameLayout
+-            android:layout_width="0dp"
+-            android:layout_height="match_parent"
+-            android:layout_gravity="start|center_vertical"
+-            android:layout_weight="1">
++                <Button
++                    android:id="@+id/left_button"
++                    style="?attr/borderlessButtonStyle"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:layout_gravity="center"
++                    android:scaleType="centerInside" />
+ 
+-            <Button
+-                android:id="@+id/left_button"
+-                style="?attr/borderlessButtonStyle"
++            </FrameLayout>
++
++            <com.google.android.material.floatingactionbutton.FloatingActionButton
++                android:id="@+id/fab"
+                 android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:layout_gravity="center"
+-                android:scaleType="centerInside" />
+-
+-        </FrameLayout>
+-
+-        <com.google.android.material.floatingactionbutton.FloatingActionButton
+-            android:id="@+id/fab"
+-            android:layout_width="wrap_content"
+-            android:layout_height="wrap_content"
+-            android:layout_gravity="center"
+-            android:layout_margin="@dimen/fab_margin"
+-            app:borderWidth="0dp"
+-            app:elevation="@dimen/fab_elevation" />
++                android:layout_margin="@dimen/fab_margin"
++                app:borderWidth="0dp"
++                app:backgroundTint="@color/clock_accent"
++                app:tint="@color/clock_on_accent"
++                app:shapeAppearanceOverlay="@style/ShapeAppearance.ClockAction"
++                app:elevation="@dimen/fab_elevation" />
++
++            <FrameLayout
++                android:layout_width="0dp"
++                android:layout_height="match_parent"
++                android:layout_gravity="end|center_vertical"
++                android:layout_weight="1">
+ 
+-        <FrameLayout
+-            android:layout_width="0dp"
+-            android:layout_height="match_parent"
+-            android:layout_gravity="end|center_vertical"
+-            android:layout_weight="1">
++                <Button
++                    android:id="@+id/right_button"
++                    style="?attr/borderlessButtonStyle"
++                    android:layout_width="wrap_content"
++                    android:layout_height="wrap_content"
++                    android:layout_gravity="center"
++                    android:scaleType="centerInside" />
+ 
+-            <Button
+-                android:id="@+id/right_button"
+-                style="?attr/borderlessButtonStyle"
+-                android:layout_width="wrap_content"
+-                android:layout_height="wrap_content"
+-                android:layout_gravity="center"
+-                android:scaleType="centerInside" />
++            </FrameLayout>
+ 
+-        </FrameLayout>
++        </LinearLayout>
+ 
+-    </LinearLayout>
++    </androidx.coordinatorlayout.widget.CoordinatorLayout>
+ 
+-</androidx.coordinatorlayout.widget.CoordinatorLayout>
++    <com.google.android.material.tabs.TabLayout
++        android:id="@+id/tabs"
++        android:layout_width="match_parent"
++        android:layout_height="64dp"
++        android:background="@color/clock_container"
++        app:tabGravity="fill"
++        app:tabIndicatorColor="@android:color/transparent"
++        app:tabMaxWidth="0dp"
++        app:tabMode="fixed"
++        app:tabPaddingEnd="0dp"
++        app:tabPaddingStart="0dp" />
++
++</LinearLayout>
+diff --git a/res/layout/ringtone_item_sound.xml b/res/layout/ringtone_item_sound.xml
+index 12bd765..fbdbbe0 100644
+--- a/res/layout/ringtone_item_sound.xml
++++ b/res/layout/ringtone_item_sound.xml
+@@ -63,7 +63,7 @@
+                     android:layout_height="wrap_content"
+                     android:paddingEnd="16dp"
+                     android:paddingStart="16dp"
+-                    android:textColor="@color/white"
++                    android:textColor="@color/clock_text"
+                     android:textSize="@dimen/alarm_text_font_size" />
+ 
+             </LinearLayout>
+diff --git a/res/layout/tab_item.xml b/res/layout/tab_item.xml
+index 4d8b17c..c26c381 100644
+--- a/res/layout/tab_item.xml
++++ b/res/layout/tab_item.xml
+@@ -14,13 +14,38 @@
+      limitations under the License.
+ -->
+ 
+-<TextView
+-    xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:id="@android:id/text1"
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+     android:layout_width="wrap_content"
+     android:layout_height="wrap_content"
+-    android:drawablePadding="10dp"
+     android:gravity="center"
+-    android:includeFontPadding="false"
+-    android:singleLine="true"
+-    android:textAppearance="@style/TextAppearance.Tab" />
++    android:orientation="vertical">
++
++    <FrameLayout
++        android:layout_width="54dp"
++        android:layout_height="32dp"
++        android:background="@drawable/clock_tab_background"
++        android:duplicateParentState="true">
++
++        <ImageView
++            android:id="@+id/clock_tab_icon"
++            android:layout_width="24dp"
++            android:layout_height="24dp"
++            android:layout_gravity="center"
++            android:duplicateParentState="true"
++            android:importantForAccessibility="no"
++            android:tint="@color/tab_tint_color" />
++    </FrameLayout>
++
++    <TextView
++        android:id="@android:id/text1"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="4dp"
++        android:duplicateParentState="true"
++        android:gravity="center"
++        android:includeFontPadding="false"
++        android:singleLine="true"
++        android:textAllCaps="false"
++        android:textAppearance="@style/TextAppearance.Tab"
++        android:textColor="@color/tab_tint_color" />
++</LinearLayout>
+diff --git a/res/layout/timer_setup_digits.xml b/res/layout/timer_setup_digits.xml
+index 99fd9d2..01cb6e1 100644
+--- a/res/layout/timer_setup_digits.xml
++++ b/res/layout/timer_setup_digits.xml
+@@ -114,14 +114,30 @@
+         app:layout_column="2"
+         app:layout_columnWeight="1" />
+ 
+-    <Button
+-        android:id="@+id/timer_setup_digit_0"
+-        style="@style/Widget.Button.TimerSetupDigit"
++    <LinearLayout
+         android:layout_width="0dp"
+         android:layout_height="0dp"
++        android:gravity="center"
++        android:weightSum="3"
++        app:layout_column="0"
++        app:layout_columnSpan="3"
++        app:layout_gravity="fill"
+         app:layout_row="3"
+-        app:layout_rowWeight="1"
+-        app:layout_column="1"
+-        app:layout_columnWeight="1" />
++        app:layout_rowWeight="1">
++
++        <Button
++            android:id="@+id/timer_setup_digit_0"
++            style="@style/Widget.Button.TimerSetupDigit"
++            android:layout_width="0dp"
++            android:layout_height="match_parent"
++            android:layout_weight="1" />
++
++        <Button
++            android:id="@+id/timer_setup_double_zero"
++            style="@style/Widget.Button.TimerSetupDigit"
++            android:layout_width="0dp"
++            android:layout_height="match_parent"
++            android:layout_weight="1" />
++    </LinearLayout>
+ 
+ </androidx.gridlayout.widget.GridLayout>
+diff --git a/res/values-night/clock_monet.xml b/res/values-night/clock_monet.xml
+new file mode 100644
+index 0000000..38714ab
+--- /dev/null
++++ b/res/values-night/clock_monet.xml
+@@ -0,0 +1,15 @@
++<resources>
++    <color name="default_background">@android:color/system_surface_dark</color>
++    <color name="clock_container">@android:color/system_surface_container_dark</color>
++    <color name="clock_raised">@android:color/system_surface_container_high_dark</color>
++    <color name="clock_text">@android:color/system_on_surface_dark</color>
++    <color name="clock_secondary_text">@android:color/system_on_surface_variant_dark</color>
++    <color name="clock_accent">@android:color/system_primary_dark</color>
++    <color name="clock_on_accent">@android:color/system_on_primary_dark</color>
++    <color name="clock_tonal">@android:color/system_primary_container_dark</color>
++    <color name="clock_on_container">@android:color/system_on_primary_container_dark</color>
++    <color name="hairline">@android:color/system_outline_variant_dark</color>
++    <color name="clock_gray">@android:color/system_on_surface_variant_dark</color>
++    <color name="no_alarms">@android:color/system_on_surface_variant_dark</color>
++    <bool name="clock_light_system_bars">false</bool>
++</resources>
+diff --git a/res/values/clock_monet.xml b/res/values/clock_monet.xml
+new file mode 100644
+index 0000000..042744f
+--- /dev/null
++++ b/res/values/clock_monet.xml
+@@ -0,0 +1,15 @@
++<resources>
++    <color name="default_background">@android:color/system_surface_light</color>
++    <color name="clock_container">@android:color/system_surface_container_light</color>
++    <color name="clock_raised">@android:color/system_surface_container_high_light</color>
++    <color name="clock_text">@android:color/system_on_surface_light</color>
++    <color name="clock_secondary_text">@android:color/system_on_surface_variant_light</color>
++    <color name="clock_accent">@android:color/system_primary_light</color>
++    <color name="clock_on_accent">@android:color/system_on_primary_light</color>
++    <color name="clock_tonal">@android:color/system_primary_container_light</color>
++    <color name="clock_on_container">@android:color/system_on_primary_container_light</color>
++    <color name="hairline">@android:color/system_outline_variant_light</color>
++    <color name="clock_gray">@android:color/system_on_surface_variant_light</color>
++    <color name="no_alarms">@android:color/system_on_surface_variant_light</color>
++    <bool name="clock_light_system_bars">true</bool>
++</resources>
+diff --git a/res/values/colors.xml b/res/values/colors.xml
+index 19db824..d00ad13 100644
+--- a/res/values/colors.xml
++++ b/res/values/colors.xml
+@@ -24,15 +24,11 @@
+     <color name="white">#FFFFFFFF</color>
+     <color name="white_08p">#14FFFFFF</color>
+     <color name="white_63p">#A0FFFFFF</color>
+-    <color name="no_alarms">#4CFFFFFF</color>
+ 
+     <color name="transparent">#00000000</color>
+ 
+-    <color name="hairline">#28FFFFFF</color>
+ 
+-    <color name="clock_gray">#B3FFFFFF</color>
+ 
+-    <color name="default_background">#1A237E</color>
+ 
+     <!-- shadowColor for widget text -->
+     <color name="widget_shadow_color">#67000000</color>
+diff --git a/res/values/styles.xml b/res/values/styles.xml
+index d4de3c9..c61cb53 100644
+--- a/res/values/styles.xml
++++ b/res/values/styles.xml
+@@ -19,7 +19,7 @@
+ 
+     <style name="no_alarms">
+         <item name="android:textSize">@dimen/no_alarm_font_size</item>
+-        <item name="android:textColor">@color/white_63p</item>
++        <item name="android:textColor">@color/clock_secondary_text</item>
+     </style>
+ 
+     <style name="widget_medium_thin">
+@@ -89,7 +89,7 @@
+     <style name="PrimaryLabelTextAppearance" parent="PrimaryLabelTextParentAppearance" />
+ 
+     <style name="SecondaryLabelTextParentAppearance">
+-        <item name="android:textColor">@color/white_63p</item>
++        <item name="android:textColor">@color/clock_secondary_text</item>
+         <item name="android:textSize">@dimen/label_text_size</item>
+     </style>
+ 
+@@ -128,9 +128,19 @@
+     <style name="Widget.TimePicker" parent="android:Widget.Material.TimePicker"
+         tools:targetApi="21">
+         <item name="android:headerBackground">@android:color/transparent</item>
+-        <item name="android:numbersBackgroundColor">@android:color/transparent</item>
++        <item name="android:numbersBackgroundColor">@color/clock_raised</item>
+         <item name="android:numbersSelectorColor">?attr/colorAccent</item>
+         <item name="android:numbersTextColor">?android:attr/textColorPrimary</item>
+     </style>
+ 
++    <style name="TextAppearance.ClockTitle" parent="TextAppearance.AppCompat.Title">
++        <item name="android:fontFamily">sans-serif-medium</item>
++        <item name="android:textSize">28sp</item>
++    </style>
++
++    <style name="ShapeAppearance.ClockAction" parent="">
++        <item name="cornerFamily">rounded</item>
++        <item name="cornerSize">18dp</item>
++    </style>
++
+ </resources>
+diff --git a/res/values/themes.xml b/res/values/themes.xml
+index c1681ee..a360375 100644
+--- a/res/values/themes.xml
++++ b/res/values/themes.xml
+@@ -17,7 +17,7 @@
+ 
+ <resources xmlns:tools="http://schemas.android.com/tools">
+ 
+-    <style name="Theme.DeskClock" parent="Theme.AppCompat.NoActionBar">
++    <style name="Theme.DeskClock" parent="Theme.AppCompat.DayNight.NoActionBar">
+         <item name="android:colorBackgroundFloating" tools:targetApi="23">
+             ?attr/colorBackgroundFloating
+         </item>
+@@ -26,13 +26,18 @@
+         <item name="android:timePickerStyle" tools:targetApi="21">@style/Widget.TimePicker</item>
+         <item name="android:windowBackground">@color/default_background</item>
+         <item name="android:windowContentOverlay">@null</item>
++        <item name="android:colorAccent">@color/clock_accent</item>
++        <item name="android:textColorPrimary">@color/clock_text</item>
++        <item name="android:textColorSecondary">@color/clock_secondary_text</item>
++        <item name="android:windowLightStatusBar">@bool/clock_light_system_bars</item>
++        <item name="android:windowLightNavigationBar">@bool/clock_light_system_bars</item>
+ 
+         <!-- Attributes from androidx.appcompat.appcompat -->
+-        <item name="colorAccent">#DA4336</item>
+-        <item name="colorBackgroundFloating">#303030</item>
+-        <item name="colorControlActivated">@android:color/white</item>
++        <item name="colorAccent">@color/clock_accent</item>
++        <item name="colorBackgroundFloating">@color/clock_container</item>
++        <item name="colorControlActivated">@color/clock_accent</item>
+         <item name="colorControlNormal">?android:attr/textColorPrimary</item>
+-        <item name="colorPrimaryDark">#66000000</item>
++        <item name="colorPrimaryDark">@color/default_background</item>
+         <item name="imageButtonStyle">@style/Widget.ImageButton</item>
+         <item name="popupTheme">@style/ThemeOverlay.Popup</item>
+     </style>
+diff --git a/src/com/android/deskclock/DeskClock.java b/src/com/android/deskclock/DeskClock.java
+index 8d02384..c1c08ab 100644
+--- a/src/com/android/deskclock/DeskClock.java
++++ b/src/com/android/deskclock/DeskClock.java
+@@ -21,7 +21,11 @@ import android.animation.AnimatorListenerAdapter;
+ import android.animation.AnimatorSet;
+ import android.animation.ValueAnimator;
+ import android.content.Intent;
+-import android.graphics.drawable.Drawable;
++import android.content.pm.PackageManager;
++import android.text.SpannableString;
++import android.text.Spanned;
++import android.text.style.ForegroundColorSpan;
++import android.text.style.RelativeSizeSpan;
+ import android.os.Bundle;
+ import android.view.KeyEvent;
+ import android.view.Menu;
+@@ -30,7 +34,6 @@ import android.view.View;
+ import android.view.View.OnClickListener;
+ import android.widget.Button;
+ import android.widget.ImageView;
+-import android.widget.TextView;
+ import androidx.annotation.StringRes;
+ import androidx.appcompat.app.ActionBar;
+ import androidx.appcompat.widget.Toolbar;
+@@ -42,6 +45,7 @@ import com.android.deskclock.actionbarmenu.MenuItemControllerFactory;
+ import com.android.deskclock.actionbarmenu.NightModeMenuItemController;
+ import com.android.deskclock.actionbarmenu.OptionsMenuManager;
+ import com.android.deskclock.actionbarmenu.SettingsMenuItemController;
++import com.android.deskclock.settings.SettingsActivity;
+ import com.android.deskclock.data.DataModel;
+ import com.android.deskclock.data.DataModel.SilentSetting;
+ import com.android.deskclock.data.OnSilentSettingsListener;
+@@ -149,12 +153,14 @@ public class DeskClock extends BaseActivity
+ 
+         final ActionBar actionBar = getSupportActionBar();
+         if (actionBar != null) {
+-            actionBar.setDisplayShowTitleEnabled(false);
++            actionBar.setTitle(clockTitle());
+         }
+ 
+         // Configure the menu item controllers add behavior to the toolbar.
+-        mOptionsMenuManager.addMenuItemController(
+-                new NightModeMenuItemController(this), new SettingsMenuItemController(this));
++        findViewById(R.id.clock_settings).setOnClickListener(view -> startActivityForResult(
++                new Intent(this, SettingsActivity.class),
++                SettingsMenuItemController.REQUEST_CHANGE_SETTINGS));
++        mOptionsMenuManager.addMenuItemController(new NightModeMenuItemController(this));
+         mOptionsMenuManager.addMenuItemController(
+                 MenuItemControllerFactory.getInstance().buildMenuItemControllers(this));
+ 
+@@ -165,37 +171,15 @@ public class DeskClock extends BaseActivity
+         // Create the tabs that make up the user interface.
+         mTabLayout = (TabLayout) findViewById(R.id.tabs);
+         final int tabCount = UiDataModel.getUiDataModel().getTabCount();
+-        final boolean showTabLabel = getResources().getBoolean(R.bool.showTabLabel);
+-        final boolean showTabHorizontally = getResources().getBoolean(R.bool.showTabHorizontally);
+         for (int i = 0; i < tabCount; i++) {
+-            final UiDataModel.Tab tabModel = UiDataModel.getUiDataModel().getTab(i);
+-            final @StringRes int labelResId = tabModel.getLabelResId();
+-
++            final UiDataModel.Tab model = UiDataModel.getUiDataModel().getTab(i);
+             final TabLayout.Tab tab = mTabLayout.newTab()
+-                    .setTag(tabModel)
+-                    .setIcon(tabModel.getIconResId())
+-                    .setContentDescription(labelResId);
+-
+-            if (showTabLabel) {
+-                tab.setText(labelResId);
+-                tab.setCustomView(R.layout.tab_item);
+-
+-                @SuppressWarnings("ConstantConditions")
+-                final TextView text = (TextView) tab.getCustomView()
+-                        .findViewById(android.R.id.text1);
+-                text.setTextColor(mTabLayout.getTabTextColors());
+-
+-                // Bind the icon to the TextView.
+-                final Drawable icon = tab.getIcon();
+-                if (showTabHorizontally) {
+-                    // Remove the icon so it doesn't affect the minimum TabLayout height.
+-                    tab.setIcon(null);
+-                    text.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null);
+-                } else {
+-                    text.setCompoundDrawablesRelativeWithIntrinsicBounds(null, icon, null, null);
+-                }
+-            }
+-
++                    .setTag(model)
++                    .setText(model.getLabelResId())
++                    .setContentDescription(model.getLabelResId())
++                    .setCustomView(R.layout.tab_item);
++            final View item = tab.getCustomView();
++            ((ImageView) item.findViewById(R.id.clock_tab_icon)).setImageResource(model.getIconResId());
+             mTabLayout.addTab(tab);
+         }
+ 
+@@ -320,7 +304,7 @@ public class DeskClock extends BaseActivity
+ 
+         final View dropShadow = findViewById(R.id.drop_shadow);
+         mDropShadowController = new DropShadowController(dropShadow, UiDataModel.getUiDataModel(),
+-                mSnackbarAnchor.findViewById(R.id.tab_hairline));
++                null);
+ 
+         // ViewPager does not save state; this honors the selected tab in the user interface.
+         updateCurrentTab();
+@@ -370,6 +354,26 @@ public class DeskClock extends BaseActivity
+         super.onDestroy();
+     }
+ 
++    private CharSequence clockTitle() {
++        final String name = getString(R.string.app_label);
++        final String version;
++        try {
++            version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
++        } catch (PackageManager.NameNotFoundException e) {
++            return name;
++        }
++        if (version == null || version.isEmpty()) {
++            return name;
++        }
++        final SpannableString title = new SpannableString(name + "  " + version);
++        final int start = name.length() + 2;
++        title.setSpan(new RelativeSizeSpan(0.48f), start, title.length(),
++                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        title.setSpan(new ForegroundColorSpan(getColor(R.color.clock_secondary_text)),
++                start, title.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        return title;
++    }
++
+     @Override
+     public boolean onCreateOptionsMenu(Menu menu) {
+         mOptionsMenuManager.onCreateOptionsMenu(menu);
+diff --git a/src/com/android/deskclock/alarms/dataadapter/ExpandedAlarmViewHolder.java b/src/com/android/deskclock/alarms/dataadapter/ExpandedAlarmViewHolder.java
+index 59a26e0..8362138 100644
+--- a/src/com/android/deskclock/alarms/dataadapter/ExpandedAlarmViewHolder.java
++++ b/src/com/android/deskclock/alarms/dataadapter/ExpandedAlarmViewHolder.java
+@@ -22,7 +22,6 @@ import android.animation.AnimatorSet;
+ import android.animation.ObjectAnimator;
+ import android.animation.PropertyValuesHolder;
+ import android.content.Context;
+-import android.graphics.Color;
+ import android.graphics.Rect;
+ import android.graphics.drawable.Drawable;
+ import android.graphics.drawable.LayerDrawable;
+@@ -86,7 +85,7 @@ public final class ExpandedAlarmViewHolder extends AlarmItemViewHolder {
+ 
+         final Context context = itemView.getContext();
+         itemView.setBackground(new LayerDrawable(new Drawable[] {
+-                ContextCompat.getDrawable(context, R.drawable.alarm_background_expanded),
++                ContextCompat.getDrawable(context, R.drawable.clock_alarm_card),
+                 ThemeUtils.resolveDrawable(context, R.attr.selectableItemBackground)
+         }));
+ 
+@@ -221,11 +220,10 @@ public final class ExpandedAlarmViewHolder extends AlarmItemViewHolder {
+             final CompoundButton dayButton = dayButtons[i];
+             if (alarm.daysOfWeek.isBitOn(weekdays.get(i))) {
+                 dayButton.setChecked(true);
+-                dayButton.setTextColor(ThemeUtils.resolveColor(context,
+-                        android.R.attr.windowBackground));
++                dayButton.setTextColor(context.getColor(R.color.clock_on_container));
+             } else {
+                 dayButton.setChecked(false);
+-                dayButton.setTextColor(Color.WHITE);
++                dayButton.setTextColor(context.getColor(R.color.clock_secondary_text));
+             }
+         }
+         if (alarm.daysOfWeek.isRepeating()) {
+diff --git a/src/com/android/deskclock/stopwatch/StopwatchCircleView.java b/src/com/android/deskclock/stopwatch/StopwatchCircleView.java
+index 31ae20d..d2b1029 100644
+--- a/src/com/android/deskclock/stopwatch/StopwatchCircleView.java
++++ b/src/com/android/deskclock/stopwatch/StopwatchCircleView.java
+@@ -19,7 +19,6 @@ package com.android.deskclock.stopwatch;
+ import android.content.Context;
+ import android.content.res.Resources;
+ import android.graphics.Canvas;
+-import android.graphics.Color;
+ import android.graphics.Paint;
+ import android.graphics.RectF;
+ import android.util.AttributeSet;
+@@ -81,7 +80,7 @@ public final class StopwatchCircleView extends View {
+         mMarkerStrokeSize = resources.getDimension(R.dimen.circletimer_marker_size);
+         mRadiusOffset = Utils.calculateRadiusOffset(mStrokeSize, dotDiameter, mMarkerStrokeSize);
+ 
+-        mRemainderColor = Color.WHITE;
++        mRemainderColor = context.getColor(R.color.hairline);
+         mCompletedColor = ThemeUtils.resolveColor(context, R.attr.colorAccent);
+ 
+         mPaint.setAntiAlias(true);
+diff --git a/src/com/android/deskclock/timer/TimerCircleView.java b/src/com/android/deskclock/timer/TimerCircleView.java
+index f605f91..456601e 100644
+--- a/src/com/android/deskclock/timer/TimerCircleView.java
++++ b/src/com/android/deskclock/timer/TimerCircleView.java
+@@ -19,7 +19,6 @@ package com.android.deskclock.timer;
+ import android.content.Context;
+ import android.content.res.Resources;
+ import android.graphics.Canvas;
+-import android.graphics.Color;
+ import android.graphics.Paint;
+ import android.graphics.RectF;
+ import android.util.AttributeSet;
+@@ -71,7 +70,7 @@ public final class TimerCircleView extends View {
+         mStrokeSize = resources.getDimension(R.dimen.circletimer_circle_size);
+         mRadiusOffset = Utils.calculateRadiusOffset(mStrokeSize, dotDiameter, 0);
+ 
+-        mRemainderColor = Color.WHITE;
++        mRemainderColor = context.getColor(R.color.hairline);
+         mCompletedColor = ThemeUtils.resolveColor(context, R.attr.colorAccent);
+ 
+         mPaint.setAntiAlias(true);
+diff --git a/src/com/android/deskclock/timer/TimerSetupView.java b/src/com/android/deskclock/timer/TimerSetupView.java
+index 557a7d6..361d161 100644
+--- a/src/com/android/deskclock/timer/TimerSetupView.java
++++ b/src/com/android/deskclock/timer/TimerSetupView.java
+@@ -125,6 +125,13 @@ public class TimerSetupView extends LinearLayout implements View.OnClickListener
+             digitView.setOnClickListener(this);
+         }
+ 
++        final TextView doubleZero = findViewById(R.id.timer_setup_double_zero);
++        doubleZero.setText(uidm.getFormattedNumber(0, 2));
++        doubleZero.setOnClickListener(view -> {
++            append(0);
++            append(0);
++        });
++
+         mDeleteView.setOnClickListener(this);
+         mDeleteView.setOnLongClickListener(this);
+ 
+-- 
+2.56.1
+

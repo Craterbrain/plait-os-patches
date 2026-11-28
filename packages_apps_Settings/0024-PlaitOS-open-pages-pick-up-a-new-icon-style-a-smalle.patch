@@ -13,6 +13,7 @@ Subject: [PATCH] PlaitOS: open pages pick up a new icon style; a smaller Wi-Fi
   cramped on a tile: Wi-Fi network rows put an 18 dp wedge on the same tile.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
 ---
  .../settings/SettingsPreferenceFragment.java  | 12 ++++++
  .../android/settings/plait/PlaitIconStyler.kt | 37 +++++++++++++++----

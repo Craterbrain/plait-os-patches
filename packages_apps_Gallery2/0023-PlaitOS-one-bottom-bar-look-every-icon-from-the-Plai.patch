@@ -1,0 +1,2274 @@
+From 38634855493e22b493bd304338a34cdb4ae9984d Mon Sep 17 00:00:00 2001
+From: Craterbrain <58347640+Craterbrain@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 22:16:20 -0600
+Subject: [PATCH] PlaitOS: one bottom bar look, every icon from the Plait
+ design guide
+
+- PlaitBars: every bottom bar (library tabs, photo viewer, editor tabs,
+  editor tool bar) on surfaceContainerLow, 80 dp, no divider. Sections
+  are the design guide's nav items (icon in a 64 x 32 accent pill, 12 sp
+  label); actions are 40 dp tonal tiles, the one main action (apply)
+  solid primary. The system navigation bar continues the bar's colour
+- Icons: only the design guide's (plait-design icons.txt -> ps_*.xml,
+  copied by plait-os scripts/gallery-icons.py): the Gallery's own icon
+  vectors, the editor's bitmap undo/redo, menu marker, add, compare and
+  overflow icons, and the video player's play/pause/replay are replaced;
+  the old icon files are removed
+- Tools grid tiles are TonalTiles (primaryContainer, 12 dp corners)
+- versionCode 40059
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017VXjYUWzBqMCeUoJD2Suc4
+---
+ AndroidManifest.xml                           |   4 +-
+ res/drawable/plait_editor_tile_bg.xml         |   6 +-
+ res/drawable/plait_gallery_albums.xml         |   6 -
+ res/drawable/plait_gallery_explore.xml        |   7 -
+ res/drawable/plait_gallery_markup.xml         |   5 -
+ res/drawable/plait_gallery_photos.xml         |   6 -
+ res/drawable/plait_gallery_settings.xml       |   6 -
+ res/drawable/plait_tool_auto_awesome.xml      |  12 --
+ res/drawable/plait_tool_blur_on.xml           |  14 --
+ res/drawable/plait_tool_colorize.xml          |  14 --
+ res/drawable/plait_tool_contrast.xml          |  14 --
+ res/drawable/plait_tool_crop.xml              |  14 --
+ res/drawable/plait_tool_exposure.xml          |  14 --
+ res/drawable/plait_tool_highlight.xml         |  14 --
+ res/drawable/plait_tool_list.xml              |  14 --
+ res/drawable/plait_tool_palette.xml           |  14 --
+ res/drawable/plait_tool_shadow.xml            |  14 --
+ res/drawable/plait_tool_tune.xml              |  14 --
+ res/drawable/plait_tool_water_drop.xml        |  14 --
+ .../{plait_editor_filter.xml => ps_add.xml}   |   2 +-
+ res/drawable/ps_album_add.xml                 |  13 ++
+ res/drawable/ps_auto_color.xml                |  11 ++
+ .../{plait_gallery_back.xml => ps_back.xml}   |   0
+ ..._filter_b_and_w.xml => ps_black_white.xml} |   7 +-
+ .../{plait_tool_public.xml => ps_browser.xml} |   7 +-
+ .../{plait_editor_check.xml => ps_check.xml}  |   0
+ .../{plait_gallery_close.xml => ps_close.xml} |   0
+ ...{plait_tool_compare.xml => ps_compare.xml} |   7 +-
+ .../{plait_editor_crop.xml => ps_crop.xml}    |   0
+ ...e_90_degrees_cw.xml => ps_crop_rotate.xml} |   7 +-
+ ...lait_tool_show_chart.xml => ps_curves.xml} |   7 +-
+ ...{plait_gallery_trash.xml => ps_delete.xml} |   0
+ res/drawable/ps_edges.xml                     |  13 ++
+ .../{plait_gallery_edit.xml => ps_edit.xml}   |   0
+ res/drawable/ps_effects.xml                   |  11 ++
+ res/drawable/ps_expand_more.xml               |  13 ++
+ ...plait_tool_ios_share.xml => ps_export.xml} |   7 +-
+ ...it_gallery_album_add.xml => ps_folder.xml} |   2 +-
+ res/drawable/ps_frames.xml                    |  13 ++
+ ...lait_tool_crop_square.xml => ps_image.xml} |   9 +-
+ .../{plait_gallery_info.xml => ps_info.xml}   |   0
+ res/drawable/ps_list.xml                      |  14 ++
+ res/drawable/ps_looks.xml                     |  11 ++
+ .../{plait_tool_draw.xml => ps_markup.xml}    |   7 +-
+ .../{plait_tool_flip.xml => ps_mirror.xml}    |   7 +-
+ res/drawable/ps_more_vert.xml                 |  13 ++
+ ...tool_invert_colors.xml => ps_negative.xml} |   7 +-
+ res/drawable/ps_pause.xml                     |  13 ++
+ res/drawable/ps_play.xml                      |  13 ++
+ ...ait_tool_gradient.xml => ps_posterize.xml} |   7 +-
+ res/drawable/ps_redo.xml                      |  14 ++
+ res/drawable/ps_replay.xml                    |  13 ++
+ ...plait_tool_straighten.xml => ps_ruler.xml} |   7 +-
+ res/drawable/ps_search.xml                    |  13 ++
+ res/drawable/ps_settings.xml                  |  13 ++
+ .../{plait_gallery_share.xml => ps_share.xml} |   0
+ .../{plait_gallery_star.xml => ps_star.xml}   |   0
+ ...llery_star_filled.xml => ps_star_fill.xml} |   0
+ .../{plait_editor_tune.xml => ps_tune.xml}    |   0
+ res/drawable/ps_undo.xml                      |  14 ++
+ .../filtershow_category_panel_new.xml         |   3 +-
+ .../filtershow_color_border_ui.xml            |   3 +-
+ res/layout-land/filtershow_draw_ui.xml        |   5 +-
+ res/layout-land/filtershow_editor_panel.xml   |   7 +-
+ res/layout-land/filtershow_grad_ui.xml        |   3 +-
+ res/layout-land/filtershow_main_panel.xml     |  18 +--
+ res/layout/filtershow_actionbar.xml           |   2 +-
+ res/layout/filtershow_category_panel.xml      |  12 +-
+ res/layout/filtershow_category_panel_new.xml  |   3 +-
+ .../filtershow_control_action_slider.xml      |   3 +-
+ .../filtershow_control_color_chooser.xml      |   3 +-
+ res/layout/filtershow_editor_panel.xml        |  10 +-
+ res/layout/filtershow_main_panel.xml          |  16 +-
+ res/layout/filtershow_state_panel_new.xml     |   3 +-
+ res/menu/filtershow_activity_menu.xml         |   6 +-
+ res/values-night/plait_editor_colors.xml      |   5 +
+ res/values/plait_editor_colors.xml            |   5 +
+ .../app/CommonControllerOverlay.java          |  21 ++-
+ .../gallery3d/app/PlaitGalleryActivity.java   | 111 +++++---------
+ .../filtershow/FilterShowActivity.java        |   3 +
+ .../filtershow/category/CategoryView.java     |  11 +-
+ .../filtershow/category/MainPanel.java        |  40 ++---
+ .../filtershow/category/PlaitToolTiles.java   |  32 ++--
+ .../filtershow/category/PlaitToolsPanel.java  |  26 ++--
+ .../gallery3d/filtershow/editors/Editor.java  |   4 +-
+ .../filtershow/editors/EditorPanel.java       |  17 +--
+ src/com/android/gallery3d/util/PlaitBars.java | 142 ++++++++++++++++++
+ 87 files changed, 571 insertions(+), 444 deletions(-)
+ delete mode 100644 res/drawable/plait_gallery_albums.xml
+ delete mode 100644 res/drawable/plait_gallery_explore.xml
+ delete mode 100644 res/drawable/plait_gallery_markup.xml
+ delete mode 100644 res/drawable/plait_gallery_photos.xml
+ delete mode 100644 res/drawable/plait_gallery_settings.xml
+ delete mode 100644 res/drawable/plait_tool_auto_awesome.xml
+ delete mode 100644 res/drawable/plait_tool_blur_on.xml
+ delete mode 100644 res/drawable/plait_tool_colorize.xml
+ delete mode 100644 res/drawable/plait_tool_contrast.xml
+ delete mode 100644 res/drawable/plait_tool_crop.xml
+ delete mode 100644 res/drawable/plait_tool_exposure.xml
+ delete mode 100644 res/drawable/plait_tool_highlight.xml
+ delete mode 100644 res/drawable/plait_tool_list.xml
+ delete mode 100644 res/drawable/plait_tool_palette.xml
+ delete mode 100644 res/drawable/plait_tool_shadow.xml
+ delete mode 100644 res/drawable/plait_tool_tune.xml
+ delete mode 100644 res/drawable/plait_tool_water_drop.xml
+ rename res/drawable/{plait_editor_filter.xml => ps_add.xml} (54%)
+ create mode 100644 res/drawable/ps_album_add.xml
+ create mode 100644 res/drawable/ps_auto_color.xml
+ rename res/drawable/{plait_gallery_back.xml => ps_back.xml} (100%)
+ rename res/drawable/{plait_tool_filter_b_and_w.xml => ps_black_white.xml} (64%)
+ rename res/drawable/{plait_tool_public.xml => ps_browser.xml} (74%)
+ rename res/drawable/{plait_editor_check.xml => ps_check.xml} (100%)
+ rename res/drawable/{plait_gallery_close.xml => ps_close.xml} (100%)
+ rename res/drawable/{plait_tool_compare.xml => ps_compare.xml} (69%)
+ rename res/drawable/{plait_editor_crop.xml => ps_crop.xml} (100%)
+ rename res/drawable/{plait_tool_rotate_90_degrees_cw.xml => ps_crop_rotate.xml} (77%)
+ rename res/drawable/{plait_tool_show_chart.xml => ps_curves.xml} (64%)
+ rename res/drawable/{plait_gallery_trash.xml => ps_delete.xml} (100%)
+ create mode 100644 res/drawable/ps_edges.xml
+ rename res/drawable/{plait_gallery_edit.xml => ps_edit.xml} (100%)
+ create mode 100644 res/drawable/ps_effects.xml
+ create mode 100644 res/drawable/ps_expand_more.xml
+ rename res/drawable/{plait_tool_ios_share.xml => ps_export.xml} (73%)
+ rename res/drawable/{plait_gallery_album_add.xml => ps_folder.xml} (70%)
+ create mode 100644 res/drawable/ps_frames.xml
+ rename res/drawable/{plait_tool_crop_square.xml => ps_image.xml} (53%)
+ rename res/drawable/{plait_gallery_info.xml => ps_info.xml} (100%)
+ create mode 100644 res/drawable/ps_list.xml
+ create mode 100644 res/drawable/ps_looks.xml
+ rename res/drawable/{plait_tool_draw.xml => ps_markup.xml} (79%)
+ rename res/drawable/{plait_tool_flip.xml => ps_mirror.xml} (83%)
+ create mode 100644 res/drawable/ps_more_vert.xml
+ rename res/drawable/{plait_tool_invert_colors.xml => ps_negative.xml} (66%)
+ create mode 100644 res/drawable/ps_pause.xml
+ create mode 100644 res/drawable/ps_play.xml
+ rename res/drawable/{plait_tool_gradient.xml => ps_posterize.xml} (73%)
+ create mode 100644 res/drawable/ps_redo.xml
+ create mode 100644 res/drawable/ps_replay.xml
+ rename res/drawable/{plait_tool_straighten.xml => ps_ruler.xml} (71%)
+ create mode 100644 res/drawable/ps_search.xml
+ create mode 100644 res/drawable/ps_settings.xml
+ rename res/drawable/{plait_gallery_share.xml => ps_share.xml} (100%)
+ rename res/drawable/{plait_gallery_star.xml => ps_star.xml} (100%)
+ rename res/drawable/{plait_gallery_star_filled.xml => ps_star_fill.xml} (100%)
+ rename res/drawable/{plait_editor_tune.xml => ps_tune.xml} (100%)
+ create mode 100644 res/drawable/ps_undo.xml
+ create mode 100644 src/com/android/gallery3d/util/PlaitBars.java
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index cceae4b..8a80fcd 100644
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<manifest android:versionCode="40057"
+-        android:versionName="1.1.40057"
++<manifest android:versionCode="40059"
++        android:versionName="1.1.40059"
+         xmlns:android="http://schemas.android.com/apk/res/android"
+         package="com.android.gallery3d">
+ 
+diff --git a/res/drawable/plait_editor_tile_bg.xml b/res/drawable/plait_editor_tile_bg.xml
+index 8cab2d9..4fa065b 100644
+--- a/res/drawable/plait_editor_tile_bg.xml
++++ b/res/drawable/plait_editor_tile_bg.xml
+@@ -1,10 +1,10 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- PlaitOS: a tool tile in the Tools grid (tonal, 14 dp corners, ripple) -->
++<!-- PlaitOS: a tool tile in the Tools grid (TonalTile: primaryContainer, 12 dp corners, ripple) -->
+ <ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="?android:attr/colorControlHighlight">
+     <item>
+         <shape android:shape="rectangle">
+-            <corners android:radius="14dp" />
+-            <solid android:color="@color/plait_editor_tile" />
++            <corners android:radius="12dp" />
++            <solid android:color="@color/plait_editor_tone" />
+         </shape>
+     </item>
+ </ripple>
+diff --git a/res/drawable/plait_gallery_albums.xml b/res/drawable/plait_gallery_albums.xml
+deleted file mode 100644
+index 7d27eb2..0000000
+--- a/res/drawable/plait_gallery_albums.xml
++++ /dev/null
+@@ -1,6 +0,0 @@
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="22dp" android:height="22dp"
+-    android:viewportWidth="24" android:viewportHeight="24">
+-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+-        android:pathData="M2,5h8l2,2h10v13H2zM4,9v9h16V9z"/>
+-</vector>
+diff --git a/res/drawable/plait_gallery_explore.xml b/res/drawable/plait_gallery_explore.xml
+deleted file mode 100644
+index 657f040..0000000
+--- a/res/drawable/plait_gallery_explore.xml
++++ /dev/null
+@@ -1,7 +0,0 @@
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="22dp" android:height="22dp"
+-    android:viewportWidth="24" android:viewportHeight="24">
+-    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
+-        android:strokeWidth="2" android:strokeLineCap="round"
+-        android:pathData="M15.5,10a5.5,5.5 0,1 1,-11 0a5.5,5.5 0,1 1,11 0M14,14l5,5"/>
+-</vector>
+diff --git a/res/drawable/plait_gallery_markup.xml b/res/drawable/plait_gallery_markup.xml
+deleted file mode 100644
+index 3e518af..0000000
+--- a/res/drawable/plait_gallery_markup.xml
++++ /dev/null
+@@ -1,5 +0,0 @@
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+-    <path android:fillColor="#FFFFFFFF"
+-        android:pathData="M3,17.25V21h3.75L17.81,9.94 14.06,6.19zM20.71,7.04a1,1 0,0 0,0 -1.41L18.37,3.29a1,1 0,0 0,-1.41 0L15.13,5.12l3.75,3.75z"/>
+-</vector>
+diff --git a/res/drawable/plait_gallery_photos.xml b/res/drawable/plait_gallery_photos.xml
+deleted file mode 100644
+index 98af84d..0000000
+--- a/res/drawable/plait_gallery_photos.xml
++++ /dev/null
+@@ -1,6 +0,0 @@
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="22dp" android:height="22dp"
+-    android:viewportWidth="24" android:viewportHeight="24">
+-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+-        android:pathData="M3,4h18v16H3zM5,6v12h14V6zM6,16l4,-5 3,4 2,-2 3,3zM15,10a1.5,1.5 0,1 0,0 -3a1.5,1.5 0,0 0,0 3z"/>
+-</vector>
+diff --git a/res/drawable/plait_gallery_settings.xml b/res/drawable/plait_gallery_settings.xml
+deleted file mode 100644
+index 9eff93b..0000000
+--- a/res/drawable/plait_gallery_settings.xml
++++ /dev/null
+@@ -1,6 +0,0 @@
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp" android:height="24dp"
+-    android:viewportWidth="24" android:viewportHeight="24">
+-    <path android:fillColor="?android:attr/textColorPrimary"
+-        android:pathData="M19.43,12.98c0.04,-0.32 0.07,-0.65 0.07,-0.98s-0.03,-0.66 -0.08,-0.98l2.11,-1.65 -2,-3.46 -2.49,1a7.4,7.4 0,0 0,-1.69,-0.98L15,3h-4l-0.38,2.93a7.4,7.4 0,0 0,-1.69,0.98l-2.49,-1 -2,3.46 2.11,1.65a6.6,6.6 0,0 0,0 1.96l-2.11,1.65 2,3.46 2.49,-1a7.4,7.4 0,0 0,1.69,0.98L11,21h4l0.37,-2.93a7.4,7.4 0,0 0,1.69,-0.98l2.49,1 2,-3.46zM13,15.5a3.5,3.5 0,1 1,0 -7,3.5 3.5,0 0,1 0,7z"/>
+-</vector>
+diff --git a/res/drawable/plait_tool_auto_awesome.xml b/res/drawable/plait_tool_auto_awesome.xml
+deleted file mode 100644
+index 94bd61d..0000000
+--- a/res/drawable/plait_tool_auto_awesome.xml
++++ /dev/null
+@@ -1,12 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="24"
+-    android:viewportHeight="24"
+-    android:tint="?android:attr/colorControlNormal">
+-    <path
+-        android:fillColor="@android:color/white"
+-        android:pathData="M19 8.3q-.125 0-.262-.075Q18.6 8.15 18.55 8l-.8-1.75-1.75-.8q-.15-.05-.225-.188Q15.7 5.125 15.7 5t.075-.263Q15.85 4.6 16 4.55l1.75-.8.8-1.75q.05-.15.188-.225.137-.075.262-.075t.263.075q.137.075.187.225l.8 1.75 1.75.8q.15.05.225.187.075.138.075.263t-.075.262Q22.15 5.4 22 5.45l-1.75.8-.8 1.75q-.05.15-.187.225-.138.075-.263.075Zm0 14q-.125 0-.262-.075-.138-.075-.188-.225l-.8-1.75-1.75-.8q-.15-.05-.225-.188-.075-.137-.075-.262t.075-.262q.075-.138.225-.188l1.75-.8.8-1.75q.05-.15.188-.225.137-.075.262-.075t.263.075q.137.075.187.225l.8 1.75 1.75.8q.15.05.225.188.075.137.075.262t-.075.262q-.075.138-.225.188l-1.75.8-.8 1.75q-.05.15-.187.225-.138.075-.263.075ZM9 18.575q-.275 0-.525-.15T8.1 18l-1.6-3.5L3 12.9q-.275-.125-.425-.375-.15-.25-.15-.525t.15-.525q.15-.25.425-.375l3.5-1.6L8.1 6q.125-.275.375-.425.25-.15.525-.15t.525.15q.25.15.375.425l1.6 3.5 3.5 1.6q.275.125.425.375.15.25.15.525t-.15.525q-.15.25-.425.375l-3.5 1.6L9.9 18q-.125.275-.375.425-.25.15-.525.15Zm0-3.425L10 13l2.15-1L10 11 9 8.85 8 11l-2.15 1L8 13ZM9 12Z" />
+-</vector>
+diff --git a/res/drawable/plait_tool_blur_on.xml b/res/drawable/plait_tool_blur_on.xml
+deleted file mode 100644
+index e86d69a..0000000
+--- a/res/drawable/plait_tool_blur_on.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M120-380q-8 0-14-6t-6-14q0-8 6-14t14-6q8 0 14 6t6 14q0 8-6 14t-14 6Zm0-160q-8 0-14-6t-6-14q0-8 6-14t14-6q8 0 14 6t6 14q0 8-6 14t-14 6Zm120 340q-17 0-28.5-11.5T200-240q0-17 11.5-28.5T240-280q17 0 28.5 11.5T280-240q0 17-11.5 28.5T240-200Zm0-160q-17 0-28.5-11.5T200-400q0-17 11.5-28.5T240-440q17 0 28.5 11.5T280-400q0 17-11.5 28.5T240-360Zm0-160q-17 0-28.5-11.5T200-560q0-17 11.5-28.5T240-600q17 0 28.5 11.5T280-560q0 17-11.5 28.5T240-520Zm0-160q-17 0-28.5-11.5T200-720q0-17 11.5-28.5T240-760q17 0 28.5 11.5T280-720q0 17-11.5 28.5T240-680Zm160 340q-25 0-42.5-17.5T340-400q0-25 17.5-42.5T400-460q25 0 42.5 17.5T460-400q0 25-17.5 42.5T400-340Zm0-160q-25 0-42.5-17.5T340-560q0-25 17.5-42.5T400-620q25 0 42.5 17.5T460-560q0 25-17.5 42.5T400-500Zm0 300q-17 0-28.5-11.5T360-240q0-17 11.5-28.5T400-280q17 0 28.5 11.5T440-240q0 17-11.5 28.5T400-200Zm0-480q-17 0-28.5-11.5T360-720q0-17 11.5-28.5T400-760q17 0 28.5 11.5T440-720q0 17-11.5 28.5T400-680Zm0 580q-8 0-14-6t-6-14q0-8 6-14t14-6q8 0 14 6t6 14q0 8-6 14t-14 6Zm0-720q-8 0-14-6t-6-14q0-8 6-14t14-6q8 0 14 6t6 14q0 8-6 14t-14 6Zm160 480q-25 0-42.5-17.5T500-400q0-25 17.5-42.5T560-460q25 0 42.5 17.5T620-400q0 25-17.5 42.5T560-340Zm0-160q-25 0-42.5-17.5T500-560q0-25 17.5-42.5T560-620q25 0 42.5 17.5T620-560q0 25-17.5 42.5T560-500Zm0 300q-17 0-28.5-11.5T520-240q0-17 11.5-28.5T560-280q17 0 28.5 11.5T600-240q0 17-11.5 28.5T560-200Zm0-480q-17 0-28.5-11.5T520-720q0-17 11.5-28.5T560-760q17 0 28.5 11.5T600-720q0 17-11.5 28.5T560-680Zm0 580q-8 0-14-6t-6-14q0-8 6-14t14-6q8 0 14 6t6 14q0 8-6 14t-14 6Zm0-720q-8 0-14-6t-6-14q0-8 6-14t14-6q8 0 14 6t6 14q0 8-6 14t-14 6Zm160 620q-17 0-28.5-11.5T680-240q0-17 11.5-28.5T720-280q17 0 28.5 11.5T760-240q0 17-11.5 28.5T720-200Zm0-160q-17 0-28.5-11.5T680-400q0-17 11.5-28.5T720-440q17 0 28.5 11.5T760-400q0 17-11.5 28.5T720-360Zm0-160q-17 0-28.5-11.5T680-560q0-17 11.5-28.5T720-600q17 0 28.5 11.5T760-560q0 17-11.5 28.5T720-520Zm0-160q-17 0-28.5-11.5T680-720q0-17 11.5-28.5T720-760q17 0 28.5 11.5T760-720q0 17-11.5 28.5T720-680Zm120 300q-8 0-14-6t-6-14q0-8 6-14t14-6q8 0 14 6t6 14q0 8-6 14t-14 6Zm0-160q-8 0-14-6t-6-14q0-8 6-14t14-6q8 0 14 6t6 14q0 8-6 14t-14 6Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_colorize.xml b/res/drawable/plait_tool_colorize.xml
+deleted file mode 100644
+index 2c0494f..0000000
+--- a/res/drawable/plait_tool_colorize.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M120-160v-117q0-16 6-30.5t17-25.5l335-335-58-56 58-56 76 76 124-124q5-5 12.5-8t15.5-3q8 0 15 3t13 8l94 94q5 6 8 13t3 15q0 8-3 15.5t-8 12.5L705-555l76 78-57 57-56-58-335 335q-11 11-25.5 17t-30.5 6H160q-17 0-28.5-11.5T120-160Zm80-40h78l332-334-76-76-334 332v78Zm447-410 96-96-37-37-96 96 37 37Zm0 0-37-37 37 37Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_contrast.xml b/res/drawable/plait_tool_contrast.xml
+deleted file mode 100644
+index 9de208a..0000000
+--- a/res/drawable/plait_tool_contrast.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm40-83q119-15 199.5-104.5T800-480q0-123-80.5-212.5T520-797v634Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_crop.xml b/res/drawable/plait_tool_crop.xml
+deleted file mode 100644
+index 26c59b0..0000000
+--- a/res/drawable/plait_tool_crop.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M680-80v-120H280q-33 0-56.5-23.5T200-280v-400H80q-17 0-28.5-11.5T40-720q0-17 11.5-28.5T80-760h120v-120q0-17 11.5-28.5T240-920q17 0 28.5 11.5T280-880v600h600q17 0 28.5 11.5T920-240q0 17-11.5 28.5T880-200H760v120q0 17-11.5 28.5T720-40q-17 0-28.5-11.5T680-80Zm0-280v-320H360v-80h320q33 0 56.5 23.5T760-680v320h-80Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_exposure.xml b/res/drawable/plait_tool_exposure.xml
+deleted file mode 100644
+index 60424cb..0000000
+--- a/res/drawable/plait_tool_exposure.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560L200-200Zm380-120h-50q-13 0-21.5-8.5T500-350q0-13 8.5-21.5T530-380h50v-50q0-13 8.5-21.5T610-460q13 0 21.5 8.5T640-430v50h50q13 0 21.5 8.5T720-350q0 13-8.5 21.5T690-320h-50v50q0 13-8.5 21.5T610-240q-13 0-21.5-8.5T580-270v-50ZM410-620q13 0 21.5-8.5T440-650q0-13-8.5-21.5T410-680H270q-13 0-21.5 8.5T240-650q0 13 8.5 21.5T270-620h140Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_highlight.xml b/res/drawable/plait_tool_highlight.xml
+deleted file mode 100644
+index 45747f7..0000000
+--- a/res/drawable/plait_tool_highlight.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="m198-667-30-29q-12-11-11.5-27.5T168-752q12-12 28.5-12.5T225-753l29 29q11 11 11.5 27.5T254-668q-11 11-27.5 11.5T198-667Zm242-133v-40q0-17 11.5-28.5T480-880q17 0 28.5 11.5T520-840v40q0 17-11.5 28.5T480-760q-17 0-28.5-11.5T440-800Zm268 75 28-28q11-11 27.5-11t28.5 12q11 11 11 28t-11 28l-28 28q-11 11-27.5 11.5T708-667q-12-12-12-29t12-29ZM360-160v-120l-97-97q-11-11-17-25.5t-6-30.5v-87q0-33 23.5-56.5T320-600h320q33 0 56.5 23.5T720-520v87q0 16-6 30.5T697-377l-97 97v120q0 33-23.5 56.5T520-80h-80q-33 0-56.5-23.5T360-160Zm80 0h80v-153l120-120v-87H320v87l120 120v153Zm40-180Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_list.xml b/res/drawable/plait_tool_list.xml
+deleted file mode 100644
+index a724476..0000000
+--- a/res/drawable/plait_tool_list.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M320-600q-17 0-28.5-11.5T280-640q0-17 11.5-28.5T320-680h480q17 0 28.5 11.5T840-640q0 17-11.5 28.5T800-600H320Zm0 160q-17 0-28.5-11.5T280-480q0-17 11.5-28.5T320-520h480q17 0 28.5 11.5T840-480q0 17-11.5 28.5T800-440H320Zm0 160q-17 0-28.5-11.5T280-320q0-17 11.5-28.5T320-360h480q17 0 28.5 11.5T840-320q0 17-11.5 28.5T800-280H320ZM160-600q-17 0-28.5-11.5T120-640q0-17 11.5-28.5T160-680q17 0 28.5 11.5T200-640q0 17-11.5 28.5T160-600Zm0 160q-17 0-28.5-11.5T120-480q0-17 11.5-28.5T160-520q17 0 28.5 11.5T200-480q0 17-11.5 28.5T160-440Zm0 160q-17 0-28.5-11.5T120-320q0-17 11.5-28.5T160-360q17 0 28.5 11.5T200-320q0 17-11.5 28.5T160-280Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_palette.xml b/res/drawable/plait_tool_palette.xml
+deleted file mode 100644
+index e744560..0000000
+--- a/res/drawable/plait_tool_palette.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 32.5-156t88-127Q256-817 330-848.5T488-880q80 0 151 27.5t124.5 76q53.5 48.5 85 115T880-518q0 115-70 176.5T640-280h-74q-9 0-12.5 5t-3.5 11q0 12 15 34.5t15 51.5q0 50-27.5 74T480-80Zm0-400Zm-220 40q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Zm120-160q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Zm200 0q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Zm120 160q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17ZM480-160q9 0 14.5-5t5.5-13q0-14-15-33t-15-57q0-42 29-67t71-25h70q66 0 113-38.5T800-518q0-121-92.5-201.5T488-800q-136 0-232 93t-96 227q0 133 93.5 226.5T480-160Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_shadow.xml b/res/drawable/plait_tool_shadow.xml
+deleted file mode 100644
+index aa47d7c..0000000
+--- a/res/drawable/plait_tool_shadow.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h80v-80q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240h-80v80q0 33-23.5 56.5T640-80H160Zm160-240h480v-480H320v480Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_tune.xml b/res/drawable/plait_tool_tune.xml
+deleted file mode 100644
+index 628a4d2..0000000
+--- a/res/drawable/plait_tool_tune.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M480-120q-17 0-28.5-11.5T440-160v-160q0-17 11.5-28.5T480-360q17 0 28.5 11.5T520-320v40h280q17 0 28.5 11.5T840-240q0 17-11.5 28.5T800-200H520v40q0 17-11.5 28.5T480-120Zm-320-80q-17 0-28.5-11.5T120-240q0-17 11.5-28.5T160-280h160q17 0 28.5 11.5T360-240q0 17-11.5 28.5T320-200H160Zm160-160q-17 0-28.5-11.5T280-400v-40H160q-17 0-28.5-11.5T120-480q0-17 11.5-28.5T160-520h120v-40q0-17 11.5-28.5T320-600q17 0 28.5 11.5T360-560v160q0 17-11.5 28.5T320-360Zm160-80q-17 0-28.5-11.5T440-480q0-17 11.5-28.5T480-520h320q17 0 28.5 11.5T840-480q0 17-11.5 28.5T800-440H480Zm160-160q-17 0-28.5-11.5T600-640v-160q0-17 11.5-28.5T640-840q17 0 28.5 11.5T680-800v40h120q17 0 28.5 11.5T840-720q0 17-11.5 28.5T800-680H680v40q0 17-11.5 28.5T640-600Zm-480-80q-17 0-28.5-11.5T120-720q0-17 11.5-28.5T160-760h320q17 0 28.5 11.5T520-720q0 17-11.5 28.5T480-680H160Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_tool_water_drop.xml b/res/drawable/plait_tool_water_drop.xml
+deleted file mode 100644
+index 9255ac8..0000000
+--- a/res/drawable/plait_tool_water_drop.xml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
+-<vector xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:width="24dp"
+-    android:height="24dp"
+-    android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
+-    <group android:translateY="960">
+-        <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M480-80q-137 0-228.5-94T160-408q0-62 28-124t70-119q42-57 91-107t91-87q8-8 18.5-11.5T480-860q11 0 21.5 3.5T520-845q42 37 91 87t91 107q42 57 70 119t28 124q0 140-91.5 234T480-80Zm0-80q104 0 172-70.5T720-408q0-73-60.5-165T480-774Q361-665 300.5-573T240-408q0 107 68 177.5T480-160Zm0-320Zm11 280q12-1 20.5-9.5T520-230q0-14-9-22.5t-23-7.5q-41 3-87-22.5T343-375q-2-11-10.5-18t-19.5-7q-14 0-23 10.5t-6 24.5q17 91 80 130t127 35Z" />
+-    </group>
+-</vector>
+diff --git a/res/drawable/plait_editor_filter.xml b/res/drawable/ps_add.xml
+similarity index 54%
+rename from res/drawable/plait_editor_filter.xml
+rename to res/drawable/ps_add.xml
+index 853bdfa..69c09c5 100644
+--- a/res/drawable/plait_editor_filter.xml
++++ b/res/drawable/ps_add.xml
+@@ -8,6 +8,6 @@
+     <group android:translateY="960">
+         <path
+             android:fillColor="#FF000000"
+-            android:pathData="M440-240q-17 0-28.5-11.5T400-280q0-17 11.5-28.5T440-320h80q17 0 28.5 11.5T560-280q0 17-11.5 28.5T520-240h-80ZM280-440q-17 0-28.5-11.5T240-480q0-17 11.5-28.5T280-520h400q17 0 28.5 11.5T720-480q0 17-11.5 28.5T680-440H280ZM160-640q-17 0-28.5-11.5T120-680q0-17 11.5-28.5T160-720h640q17 0 28.5 11.5T840-680q0 17-11.5 28.5T800-640H160Z" />
++            android:pathData="M440-440H240q-17 0-28.5-11.5T200-480q0-17 11.5-28.5T240-520h200v-200q0-17 11.5-28.5T480-760q17 0 28.5 11.5T520-720v200h200q17 0 28.5 11.5T760-480q0 17-11.5 28.5T720-440H520v200q0 17-11.5 28.5T480-200q-17 0-28.5-11.5T440-240v-200Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/ps_album_add.xml b/res/drawable/ps_album_add.xml
+new file mode 100644
+index 0000000..b97dd92
+--- /dev/null
++++ b/res/drawable/ps_album_add.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M560-400q17 0 28.5-11.5T600-440v-80h80q17 0 28.5-11.5T720-560q0-17-11.5-28.5T680-600h-80v-80q0-17-11.5-28.5T560-720q-17 0-28.5 11.5T520-680v80h-80q-17 0-28.5 11.5T400-560q0 17 11.5 28.5T440-520h80v80q0 17 11.5 28.5T560-400ZM320-240q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320Zm0-80h480v-480H320v480ZM160-80q-33 0-56.5-23.5T80-160v-520q0-17 11.5-28.5T120-720q17 0 28.5 11.5T160-680v520h520q17 0 28.5 11.5T720-120q0 17-11.5 28.5T680-80H160Zm160-720v480-480Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/ps_auto_color.xml b/res/drawable/ps_auto_color.xml
+new file mode 100644
+index 0000000..7af6175
+--- /dev/null
++++ b/res/drawable/ps_auto_color.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M19 8.3q-.125 0-.262-.075Q18.6 8.15 18.55 8l-.8-1.75-1.75-.8q-.15-.05-.225-.188Q15.7 5.125 15.7 5t.075-.263Q15.85 4.6 16 4.55l1.75-.8.8-1.75q.05-.15.188-.225.137-.075.262-.075t.263.075q.137.075.187.225l.8 1.75 1.75.8q.15.05.225.187.075.138.075.263t-.075.262Q22.15 5.4 22 5.45l-1.75.8-.8 1.75q-.05.15-.187.225-.138.075-.263.075Zm0 14q-.125 0-.262-.075-.138-.075-.188-.225l-.8-1.75-1.75-.8q-.15-.05-.225-.188-.075-.137-.075-.262t.075-.262q.075-.138.225-.188l1.75-.8.8-1.75q.05-.15.188-.225.137-.075.262-.075t.263.075q.137.075.187.225l.8 1.75 1.75.8q.15.05.225.188.075.137.075.262t-.075.262q-.075.138-.225.188l-1.75.8-.8 1.75q-.05.15-.187.225-.138.075-.263.075ZM9 18.575q-.275 0-.525-.15T8.1 18l-1.6-3.5L3 12.9q-.275-.125-.425-.375-.15-.25-.15-.525t.15-.525q.15-.25.425-.375l3.5-1.6L8.1 6q.125-.275.375-.425.25-.15.525-.15t.525.15q.25.15.375.425l1.6 3.5 3.5 1.6q.275.125.425.375.15.25.15.525t-.15.525q-.15.25-.425.375l-3.5 1.6L9.9 18q-.125.275-.375.425-.25.15-.525.15Zm0-3.425L10 13l2.15-1L10 11 9 8.85 8 11l-2.15 1L8 13ZM9 12Z" />
++</vector>
+diff --git a/res/drawable/plait_gallery_back.xml b/res/drawable/ps_back.xml
+similarity index 100%
+rename from res/drawable/plait_gallery_back.xml
+rename to res/drawable/ps_back.xml
+diff --git a/res/drawable/plait_tool_filter_b_and_w.xml b/res/drawable/ps_black_white.xml
+similarity index 64%
+rename from res/drawable/plait_tool_filter_b_and_w.xml
+rename to res/drawable/ps_black_white.xml
+index fb78cea..24a0653 100644
+--- a/res/drawable/plait_tool_filter_b_and_w.xml
++++ b/res/drawable/ps_black_white.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M760-120H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120Zm-560-80h280v-320l280 320v-560H480v240L200-200Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/plait_tool_public.xml b/res/drawable/ps_browser.xml
+similarity index 74%
+rename from res/drawable/plait_tool_public.xml
+rename to res/drawable/ps_browser.xml
+index 1b72ed4..5d8d7a8 100644
+--- a/res/drawable/plait_tool_public.xml
++++ b/res/drawable/ps_browser.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm-40-82v-78q-33 0-56.5-23.5T360-320v-40L168-552q-3 18-5.5 36t-2.5 36q0 121 79.5 212T440-162Zm276-102q20-22 36-47.5t26.5-53q10.5-27.5 16-56.5t5.5-59q0-98-54.5-179T600-776v16q0 33-23.5 56.5T520-680h-80v80q0 17-11.5 28.5T400-560h-80v80h240q17 0 28.5 11.5T600-440v120h40q26 0 47 15.5t29 40.5Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/plait_editor_check.xml b/res/drawable/ps_check.xml
+similarity index 100%
+rename from res/drawable/plait_editor_check.xml
+rename to res/drawable/ps_check.xml
+diff --git a/res/drawable/plait_gallery_close.xml b/res/drawable/ps_close.xml
+similarity index 100%
+rename from res/drawable/plait_gallery_close.xml
+rename to res/drawable/ps_close.xml
+diff --git a/res/drawable/plait_tool_compare.xml b/res/drawable/ps_compare.xml
+similarity index 69%
+rename from res/drawable/plait_tool_compare.xml
+rename to res/drawable/ps_compare.xml
+index fbdd2c7..93f5ae3 100644
+--- a/res/drawable/plait_tool_compare.xml
++++ b/res/drawable/ps_compare.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M400-120H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h200v-40q0-17 11.5-28.5T440-920q17 0 28.5 11.5T480-880v800q0 17-11.5 28.5T440-40q-17 0-28.5-11.5T400-80v-40ZM200-240h200v-240L200-240Zm360 120v-360l200 240v-520H560v-80h200q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H560Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/plait_editor_crop.xml b/res/drawable/ps_crop.xml
+similarity index 100%
+rename from res/drawable/plait_editor_crop.xml
+rename to res/drawable/ps_crop.xml
+diff --git a/res/drawable/plait_tool_rotate_90_degrees_cw.xml b/res/drawable/ps_crop_rotate.xml
+similarity index 77%
+rename from res/drawable/plait_tool_rotate_90_degrees_cw.xml
+rename to res/drawable/ps_crop_rotate.xml
+index 2fd74d0..3676d92 100644
+--- a/res/drawable/plait_tool_rotate_90_degrees_cw.xml
++++ b/res/drawable/ps_crop_rotate.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M440-80q-150 0-255-105T80-440q0-150 105.5-255T441-800h7l-36-36q-11-11-11-28t11-28q11-11 28-11t28 11l104 104q5 5 8 12.5t3 15.5q0 8-3 15.5t-8 12.5L468-628q-11 11-28 11t-28-11q-11-11-11-28t11-28l36-36h-7q-117 0-199 81.5T160-440q0 117 81.5 198.5T440-160q29 0 56.5-5.5T550-182q15-7 30-.5t21 21.5q6 15 1 30.5T582-109q-34 14-69.5 21.5T440-80Zm212-148L468-412q-6-6-8.5-13t-2.5-15q0-8 2.5-15t8.5-13l184-184q6-6 13-8.5t15-2.5q8 0 15 2.5t13 8.5l184 184q6 6 8.5 13t2.5 15q0 8-2.5 15t-8.5 13L708-228q-6 6-13 8.5t-15 2.5q-8 0-15-2.5t-13-8.5Zm28-86 126-126-126-126-126 126 126 126Zm0-126Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/plait_tool_show_chart.xml b/res/drawable/ps_curves.xml
+similarity index 64%
+rename from res/drawable/plait_tool_show_chart.xml
+rename to res/drawable/ps_curves.xml
+index f3d1499..f77ed39 100644
+--- a/res/drawable/plait_tool_show_chart.xml
++++ b/res/drawable/ps_curves.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M110-250q-13-13-13-30t13-30l213-213q23-23 57-23t57 23l103 103 256-289q11-13 28.5-13t29.5 12q11 11 11.5 26.5T855-656L596-364q-23 26-57 27.5T480-360L380-460 170-250q-13 13-30 13t-30-13Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/plait_gallery_trash.xml b/res/drawable/ps_delete.xml
+similarity index 100%
+rename from res/drawable/plait_gallery_trash.xml
+rename to res/drawable/ps_delete.xml
+diff --git a/res/drawable/ps_edges.xml b/res/drawable/ps_edges.xml
+new file mode 100644
+index 0000000..75e13df
+--- /dev/null
++++ b/res/drawable/ps_edges.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M176-120q-19-4-35.5-20.5T120-176l664-664q21 5 36 20.5t21 35.5L176-120Zm-56-252v-112l356-356h112L120-372Zm0-308v-80q0-33 23.5-56.5T200-840h80L120-680Zm560 560 160-160v80q0 33-23.5 56.5T760-120h-80Zm-308 0 468-468v112L484-120H372Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/plait_gallery_edit.xml b/res/drawable/ps_edit.xml
+similarity index 100%
+rename from res/drawable/plait_gallery_edit.xml
+rename to res/drawable/ps_edit.xml
+diff --git a/res/drawable/ps_effects.xml b/res/drawable/ps_effects.xml
+new file mode 100644
+index 0000000..14680e9
+--- /dev/null
++++ b/res/drawable/ps_effects.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="m20 7-.95-2.05L17 4l2.05-.95L20 1l.95 2.05L23 4l-2.05.95ZM8.5 7l-.95-2.05L5.5 4l2.05-.95L8.5 1l.95 2.05L11.5 4l-2.05.95ZM20 18.5l-.95-2.05L17 15.5l2.05-.95.95-2.05.95 2.05 2.05.95-2.05.95ZM5.1 21.7l-2.8-2.8q-.3-.3-.3-.725t.3-.725L13.45 6.3q.3-.3.725-.3t.725.3l2.8 2.8q.3.3.3.725t-.3.725L6.55 21.7q-.3.3-.725.3t-.725-.3Zm.75-2.1L13 12.4 11.6 11l-7.2 7.15Z" />
++</vector>
+diff --git a/res/drawable/ps_expand_more.xml b/res/drawable/ps_expand_more.xml
+new file mode 100644
+index 0000000..07ff853
+--- /dev/null
++++ b/res/drawable/ps_expand_more.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M480-362q-8 0-15-2.5t-13-8.5L268-557q-11-11-11-28t11-28q11-11 28-11t28 11l156 156 156-156q11-11 28-11t28 11q11 11 11 28t-11 28L508-373q-6 6-13 8.5t-15 2.5Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/plait_tool_ios_share.xml b/res/drawable/ps_export.xml
+similarity index 73%
+rename from res/drawable/plait_tool_ios_share.xml
+rename to res/drawable/ps_export.xml
+index 33b49f6..5723e4d 100644
+--- a/res/drawable/plait_tool_ios_share.xml
++++ b/res/drawable/ps_export.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M240-40q-33 0-56.5-23.5T160-120v-440q0-33 23.5-56.5T240-640h80q17 0 28.5 11.5T360-600q0 17-11.5 28.5T320-560h-80v440h480v-440h-80q-17 0-28.5-11.5T600-600q0-17 11.5-28.5T640-640h80q33 0 56.5 23.5T800-560v440q0 33-23.5 56.5T720-40H240Zm200-727-36 36q-12 12-28 11.5T348-732q-11-12-11.5-28t11.5-28l104-104q12-12 28-12t28 12l104 104q11 11 11 27.5T612-732q-12 12-28.5 12T555-732l-35-35v407q0 17-11.5 28.5T480-320q-17 0-28.5-11.5T440-360v-407Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/plait_gallery_album_add.xml b/res/drawable/ps_folder.xml
+similarity index 70%
+rename from res/drawable/plait_gallery_album_add.xml
+rename to res/drawable/ps_folder.xml
+index fb9dbbf..f02e745 100644
+--- a/res/drawable/plait_gallery_album_add.xml
++++ b/res/drawable/ps_folder.xml
+@@ -8,6 +8,6 @@
+     <group android:translateY="960">
+         <path
+             android:fillColor="#FF000000"
+-            android:pathData="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h207q16 0 30.5 6t25.5 17l57 57h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Zm400-160v40q0 17 11.5 28.5T600-320q17 0 28.5-11.5T640-360v-40h40q17 0 28.5-11.5T720-440q0-17-11.5-28.5T680-480h-40v-40q0-17-11.5-28.5T600-560q-17 0-28.5 11.5T560-520v40h-40q-17 0-28.5 11.5T480-440q0 17 11.5 28.5T520-400h40Z" />
++            android:pathData="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h207q16 0 30.5 6t25.5 17l57 57h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/ps_frames.xml b/res/drawable/ps_frames.xml
+new file mode 100644
+index 0000000..b89ce62
+--- /dev/null
++++ b/res/drawable/ps_frames.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M160-80q-33 0-56.5-23.5T80-160v-560q0-33 23.5-56.5T160-800h160l132-132q12-12 28-12t28 12l132 132h160q33 0 56.5 23.5T880-720v560q0 33-23.5 56.5T800-80H160Zm0-80h640v-560H160v560Zm80-120v-320q0-17 11.5-28.5T280-640h400q17 0 28.5 11.5T720-600v320q0 17-11.5 28.5T680-240H280q-17 0-28.5-11.5T240-280Zm80-40h320v-240H320v240Zm160-120Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/plait_tool_crop_square.xml b/res/drawable/ps_image.xml
+similarity index 53%
+rename from res/drawable/plait_tool_crop_square.xml
+rename to res/drawable/ps_image.xml
+index 97056dd..67e59e7 100644
+--- a/res/drawable/plait_tool_crop_square.xml
++++ b/res/drawable/ps_image.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
+-            android:pathData="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0 0v-560 560Z" />
++            android:fillColor="#FF000000"
++            android:pathData="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0 0v-560 560Zm80-80h400q12 0 18-11t-2-21L586-459q-6-8-16-8t-16 8L450-320l-74-99q-6-8-16-8t-16 8l-80 107q-8 10-2 21t18 11Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/plait_gallery_info.xml b/res/drawable/ps_info.xml
+similarity index 100%
+rename from res/drawable/plait_gallery_info.xml
+rename to res/drawable/ps_info.xml
+diff --git a/res/drawable/ps_list.xml b/res/drawable/ps_list.xml
+new file mode 100644
+index 0000000..6324bb4
+--- /dev/null
++++ b/res/drawable/ps_list.xml
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960"
++    android:autoMirrored="true">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M320-280q17 0 28.5-11.5T360-320q0-17-11.5-28.5T320-360q-17 0-28.5 11.5T280-320q0 17 11.5 28.5T320-280Zm0-160q17 0 28.5-11.5T360-480q0-17-11.5-28.5T320-520q-17 0-28.5 11.5T280-480q0 17 11.5 28.5T320-440Zm0-160q17 0 28.5-11.5T360-640q0-17-11.5-28.5T320-680q-17 0-28.5 11.5T280-640q0 17 11.5 28.5T320-600Zm160 320h160q17 0 28.5-11.5T680-320q0-17-11.5-28.5T640-360H480q-17 0-28.5 11.5T440-320q0 17 11.5 28.5T480-280Zm0-160h160q17 0 28.5-11.5T680-480q0-17-11.5-28.5T640-520H480q-17 0-28.5 11.5T440-480q0 17 11.5 28.5T480-440Zm0-160h160q17 0 28.5-11.5T680-640q0-17-11.5-28.5T640-680H480q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/ps_looks.xml b/res/drawable/ps_looks.xml
+new file mode 100644
+index 0000000..76b6eb0
+--- /dev/null
++++ b/res/drawable/ps_looks.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M5 21q-.825 0-1.413-.587Q3 19.825 3 19V5q0-.825.587-1.413Q4.175 3 5 3h8q.425 0 .713.287Q14 3.575 14 4t-.287.712Q13.425 5 13 5H5v14h14v-8q0-.425.288-.713Q19.575 10 20 10t.712.287Q21 10.575 21 11v8q0 .825-.587 1.413Q19.825 21 19 21Zm5.75-7.75L9 12.45q-.275-.125-.275-.45T9 11.55l1.75-.8.8-1.75q.125-.275.45-.275t.45.275l.8 1.75 1.75.8q.275.125.275.45t-.275.45l-1.75.8-.8 1.75q-.125.275-.45.275T11.55 15Zm5.3-5.3-1.325-.6q-.2-.1-.2-.35 0-.25.2-.35l1.325-.6.6-1.325q.1-.2.35-.2.25 0 .35.2l.6 1.325 1.325.6q.2.1.2.35 0 .25-.2.35l-1.325.6-.6 1.325q-.1.2-.35.2-.25 0-.35-.2Z" />
++</vector>
+diff --git a/res/drawable/plait_tool_draw.xml b/res/drawable/ps_markup.xml
+similarity index 79%
+rename from res/drawable/plait_tool_draw.xml
+rename to res/drawable/ps_markup.xml
+index 7738b42..62dcb0f 100644
+--- a/res/drawable/plait_tool_draw.xml
++++ b/res/drawable/ps_markup.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M200-120q-17 0-28.5-11.5T160-160v-97q0-16 6-30.5t17-25.5l504-503q12-12 27-18t30-6q16 0 30.5 6t25.5 18l56 56q12 11 18 25.5t6 30.5q0 15-6 30t-18 27L353-143q-11 11-25.5 17t-30.5 6h-97Zm40-80h56l393-392-28-29-29-28-392 393v56Zm560-503-57-57 57 57Zm-139 82-29-28 57 57-28-29ZM560-120q74 0 137-37t63-103q0-32-16-55.5T702-359q-14-10-30-10t-27 12q-11 12-11 29.5t14 27.5q14 11 23 20t9 20q0 23-36.5 41.5T560-200q-17 0-28.5 11.5T520-160q0 17 11.5 28.5T560-120ZM360-720q0 14-17.5 25.5T262-654q-80 35-111 63.5T120-520q0 26 12 46t31 35q13 11 29 9.5t27-14.5q11-13 10-29t-14-27q-7-5-11-10t-4-10q0-12 18-24t76-37q88-38 117-69t29-70q0-55-44-87.5T280-840q-45 0-80.5 16T145-785q-11 13-9 29t15 26q13 11 29 9t27-13q14-14 31-20t42-6q41 0 60.5 12t19.5 28Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/plait_tool_flip.xml b/res/drawable/ps_mirror.xml
+similarity index 83%
+rename from res/drawable/plait_tool_flip.xml
+rename to res/drawable/ps_mirror.xml
+index fe2d33d..4eb9307 100644
+--- a/res/drawable/plait_tool_flip.xml
++++ b/res/drawable/ps_mirror.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M640-760q-17 0-28.5-11.5T600-800q0-17 11.5-28.5T640-840q17 0 28.5 11.5T680-800q0 17-11.5 28.5T640-760Zm160 0q-17 0-28.5-11.5T760-800q0-17 11.5-28.5T800-840q17 0 28.5 11.5T840-800q0 17-11.5 28.5T800-760Zm0 160q-17 0-28.5-11.5T760-640q0-17 11.5-28.5T800-680q17 0 28.5 11.5T840-640q0 17-11.5 28.5T800-600Zm0 160q-17 0-28.5-11.5T760-480q0-17 11.5-28.5T800-520q17 0 28.5 11.5T840-480q0 17-11.5 28.5T800-440Zm0 160q-17 0-28.5-11.5T760-320q0-17 11.5-28.5T800-360q17 0 28.5 11.5T840-320q0 17-11.5 28.5T800-280ZM640-120q-17 0-28.5-11.5T600-160q0-17 11.5-28.5T640-200q17 0 28.5 11.5T680-160q0 17-11.5 28.5T640-120Zm160 0q-17 0-28.5-11.5T760-160q0-17 11.5-28.5T800-200q17 0 28.5 11.5T840-160q0 17-11.5 28.5T800-120Zm-600 0q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h120q17 0 28.5 11.5T360-800q0 17-11.5 28.5T320-760H200v560h120q17 0 28.5 11.5T360-160q0 17-11.5 28.5T320-120H200Zm240 40v-800q0-17 11.5-28.5T480-920q17 0 28.5 11.5T520-880v800q0 17-11.5 28.5T480-40q-17 0-28.5-11.5T440-80Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/ps_more_vert.xml b/res/drawable/ps_more_vert.xml
+new file mode 100644
+index 0000000..38371cb
+--- /dev/null
++++ b/res/drawable/ps_more_vert.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M480-160q-33 0-56.5-23.5T400-240q0-33 23.5-56.5T480-320q33 0 56.5 23.5T560-240q0 33-23.5 56.5T480-160Zm0-240q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm0-240q-33 0-56.5-23.5T400-720q0-33 23.5-56.5T480-800q33 0 56.5 23.5T560-720q0 33-23.5 56.5T480-640Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/plait_tool_invert_colors.xml b/res/drawable/ps_negative.xml
+similarity index 66%
+rename from res/drawable/plait_tool_invert_colors.xml
+rename to res/drawable/ps_negative.xml
+index 2fb7d3a..2b6617e 100644
+--- a/res/drawable/plait_tool_invert_colors.xml
++++ b/res/drawable/ps_negative.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M480-120q-133 0-226.5-92.5T160-436q0-66 25-122t69-100l184-181q9-8 20-12.5t22-4.5q11 0 22 4.5t20 12.5l184 181q44 44 69 100t25 122q0 131-93.5 223.5T480-120Zm0-80v-568L310-600q-35 33-52.5 74.5T240-436q0 97 70 166.5T480-200Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/ps_pause.xml b/res/drawable/ps_pause.xml
+new file mode 100644
+index 0000000..21fd72b
+--- /dev/null
++++ b/res/drawable/ps_pause.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M600-200q-33 0-56.5-23.5T520-280v-400q0-33 23.5-56.5T600-760h80q33 0 56.5 23.5T760-680v400q0 33-23.5 56.5T680-200h-80Zm-320 0q-33 0-56.5-23.5T200-280v-400q0-33 23.5-56.5T280-760h80q33 0 56.5 23.5T440-680v400q0 33-23.5 56.5T360-200h-80Zm320-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/ps_play.xml b/res/drawable/ps_play.xml
+new file mode 100644
+index 0000000..1cf1e5d
+--- /dev/null
++++ b/res/drawable/ps_play.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M320-273v-414q0-17 12-28.5t28-11.5q5 0 10.5 1.5T381-721l326 207q9 6 13.5 15t4.5 19q0 10-4.5 19T707-446L381-239q-5 3-10.5 4.5T360-233q-16 0-28-11.5T320-273Zm80-207Zm0 134 210-134-210-134v268Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/plait_tool_gradient.xml b/res/drawable/ps_posterize.xml
+similarity index 73%
+rename from res/drawable/plait_tool_gradient.xml
+rename to res/drawable/ps_posterize.xml
+index da79517..548011d 100644
+--- a/res/drawable/plait_tool_gradient.xml
++++ b/res/drawable/ps_posterize.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M440-440v-80h80v80h-80Zm-80 80v-80h80v80h-80Zm160 0v-80h80v80h-80Zm80-80v-80h80v80h-80Zm-320 0v-80h80v80h-80Zm-80 320q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm80-80h80v-80h-80v80Zm160 0h80v-80h-80v80Zm320 0v-80 80Zm-560-80h80v-80h80v80h80v-80h80v80h80v-80h80v80h80v-80h-80v-80h80v-320H200v320h80v80h-80v80Zm0 80v-560 560Zm560-240v80-80ZM600-280v80h80v-80h-80Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/ps_redo.xml b/res/drawable/ps_redo.xml
+new file mode 100644
+index 0000000..de4339c
+--- /dev/null
++++ b/res/drawable/ps_redo.xml
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960"
++    android:autoMirrored="true">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M648-560H396q-63 0-109.5 40T240-420q0 60 46.5 100T396-280h244q17 0 28.5 11.5T680-240q0 17-11.5 28.5T640-200H396q-97 0-166.5-63T160-420q0-94 69.5-157T396-640h252l-76-76q-11-11-11-28t11-28q11-11 28-11t28 11l144 144q6 6 8.5 13t2.5 15q0 8-2.5 15t-8.5 13L628-428q-11 11-28 11t-28-11q-11-11-11-28t11-28l76-76Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/ps_replay.xml b/res/drawable/ps_replay.xml
+new file mode 100644
+index 0000000..59f1b71
+--- /dev/null
++++ b/res/drawable/ps_replay.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M480-80q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T120-440q0-17 11.5-28.5T160-480q17 0 28.5 11.5T200-440q0 117 81.5 198.5T480-160q117 0 198.5-81.5T760-440q0-117-81.5-198.5T480-720h-6l34 34q12 12 11.5 28T508-630q-12 12-28.5 12.5T451-629L348-732q-12-12-12-28t12-28l103-103q12-12 28.5-11.5T508-890q11 12 11.5 28T508-834l-34 34h6q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-440q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-80Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/plait_tool_straighten.xml b/res/drawable/ps_ruler.xml
+similarity index 71%
+rename from res/drawable/plait_tool_straighten.xml
+rename to res/drawable/ps_ruler.xml
+index 9a0a841..6283e7d 100644
+--- a/res/drawable/plait_tool_straighten.xml
++++ b/res/drawable/ps_ruler.xml
+@@ -1,14 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Generated by plait-os/scripts/gallery-icons.py from Material Symbols Rounded (Apache License 2.0). Do not edit. -->
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
+ <vector xmlns:android="http://schemas.android.com/apk/res/android"
+     android:width="24dp"
+     android:height="24dp"
+     android:viewportWidth="960"
+-    android:viewportHeight="960"
+-    android:tint="?android:attr/colorControlNormal">
++    android:viewportHeight="960">
+     <group android:translateY="960">
+         <path
+-            android:fillColor="@android:color/white"
++            android:fillColor="#FF000000"
+             android:pathData="M160-240q-33 0-56.5-23.5T80-320v-320q0-33 23.5-56.5T160-720h640q33 0 56.5 23.5T880-640v320q0 33-23.5 56.5T800-240H160Zm0-80h640v-320H680v120q0 17-11.5 28.5T640-480q-17 0-28.5-11.5T600-520v-120h-80v120q0 17-11.5 28.5T480-480q-17 0-28.5-11.5T440-520v-120h-80v120q0 17-11.5 28.5T320-480q-17 0-28.5-11.5T280-520v-120H160v320Zm160-160Zm160 0Zm160 0Zm-160 0Z" />
+     </group>
+ </vector>
+diff --git a/res/drawable/ps_search.xml b/res/drawable/ps_search.xml
+new file mode 100644
+index 0000000..2e30479
+--- /dev/null
++++ b/res/drawable/ps_search.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M380-320q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l224 224q11 11 11 28t-11 28q-11 11-28 11t-28-11L532-372q-30 24-69 38t-83 14Zm0-80q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/ps_settings.xml b/res/drawable/ps_settings.xml
+new file mode 100644
+index 0000000..4015c6d
+--- /dev/null
++++ b/res/drawable/ps_settings.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z" />
++    </group>
++</vector>
+diff --git a/res/drawable/plait_gallery_share.xml b/res/drawable/ps_share.xml
+similarity index 100%
+rename from res/drawable/plait_gallery_share.xml
+rename to res/drawable/ps_share.xml
+diff --git a/res/drawable/plait_gallery_star.xml b/res/drawable/ps_star.xml
+similarity index 100%
+rename from res/drawable/plait_gallery_star.xml
+rename to res/drawable/ps_star.xml
+diff --git a/res/drawable/plait_gallery_star_filled.xml b/res/drawable/ps_star_fill.xml
+similarity index 100%
+rename from res/drawable/plait_gallery_star_filled.xml
+rename to res/drawable/ps_star_fill.xml
+diff --git a/res/drawable/plait_editor_tune.xml b/res/drawable/ps_tune.xml
+similarity index 100%
+rename from res/drawable/plait_editor_tune.xml
+rename to res/drawable/ps_tune.xml
+diff --git a/res/drawable/ps_undo.xml b/res/drawable/ps_undo.xml
+new file mode 100644
+index 0000000..1b8a44d
+--- /dev/null
++++ b/res/drawable/ps_undo.xml
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Generated by tools/icons.py from Material Symbols (Apache License 2.0). Do not edit. -->
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960"
++    android:autoMirrored="true">
++    <group android:translateY="960">
++        <path
++            android:fillColor="#FF000000"
++            android:pathData="M320-200q-17 0-28.5-11.5T280-240q0-17 11.5-28.5T320-280h244q63 0 109.5-40T720-420q0-60-46.5-100T564-560H312l76 76q11 11 11 28t-11 28q-11 11-28 11t-28-11L188-572q-6-6-8.5-13t-2.5-15q0-8 2.5-15t8.5-13l144-144q11-11 28-11t28 11q11 11 11 28t-11 28l-76 76h252q97 0 166.5 63T800-420q0 94-69.5 157T564-200H320Z" />
++    </group>
++</vector>
+diff --git a/res/layout-land/filtershow_category_panel_new.xml b/res/layout-land/filtershow_category_panel_new.xml
+index ad85f71..5f6e851 100644
+--- a/res/layout-land/filtershow_category_panel_new.xml
++++ b/res/layout-land/filtershow_category_panel_new.xml
+@@ -24,7 +24,8 @@
+             android:id="@+id/addButton"
+             android:layout_width="match_parent"
+             android:layout_height="@dimen/category_panel_height"
+-            android:src="@drawable/filtershow_add"/>
++            android:src="@drawable/ps_add"
++            android:tint="?android:attr/textColorPrimary"/>
+ 
+     <ListView
+             android:id="@+id/listItems"
+diff --git a/res/layout-land/filtershow_color_border_ui.xml b/res/layout-land/filtershow_color_border_ui.xml
+index 9945d9d..443c332 100644
+--- a/res/layout-land/filtershow_color_border_ui.xml
++++ b/res/layout-land/filtershow_color_border_ui.xml
+@@ -234,7 +234,8 @@
+                         android:layout_width="48dp"
+                         android:layout_gravity="center"
+                         android:layout_height="wrap_content"
+-                        android:background="@drawable/ic_action_overflow"
++                        android:background="@drawable/ps_more_vert"
++                        android:backgroundTint="?android:attr/textColorPrimary"
+                         />
+             </FrameLayout>
+         </LinearLayout>
+diff --git a/res/layout-land/filtershow_draw_ui.xml b/res/layout-land/filtershow_draw_ui.xml
+index 5e0a327..24ec70a 100644
+--- a/res/layout-land/filtershow_draw_ui.xml
++++ b/res/layout-land/filtershow_draw_ui.xml
+@@ -212,10 +212,11 @@
+                     android:layout_width="48dp"
+                     android:layout_gravity="center"
+                     android:layout_height="wrap_content"
+-                    android:background="@drawable/ic_action_overflow"
++                    android:background="@drawable/ps_more_vert"
++                    android:backgroundTint="?android:attr/textColorPrimary"
+                     />
+         </FrameLayout>
+-        <!--@drawable/ic_action_overflow
++        <!--@drawable/ps_more_vert
+         @android:drawable/ic_menu_more-->
+     </LinearLayout>
+ </LinearLayout>
+diff --git a/res/layout-land/filtershow_editor_panel.xml b/res/layout-land/filtershow_editor_panel.xml
+index ef5aca5..a1a5f66 100644
+--- a/res/layout-land/filtershow_editor_panel.xml
++++ b/res/layout-land/filtershow_editor_panel.xml
+@@ -62,7 +62,7 @@
+                     android:background="@android:color/transparent"
+                     android:layout_weight=".1"
+                     android:gravity="center"
+-                    android:src="@drawable/plait_gallery_close"
++                    android:src="@drawable/ps_close"
+                     android:contentDescription="@android:string/cancel"
+                     android:tint="?android:attr/textColorPrimary"
+                     android:textSize="18dip"/>
+@@ -88,7 +88,8 @@
+                         android:background="@android:color/transparent"
+                         android:text="@string/apply_effect"
+                         android:textSize="18dip"
+-                        android:drawableEnd="@drawable/filtershow_menu_marker_rtl"
++                        android:drawableEnd="@drawable/ps_expand_more"
++                        android:drawableTint="?android:attr/textColorPrimary"
+                         android:textAllCaps="false"/>
+ 
+             </LinearLayout>
+@@ -106,7 +107,7 @@
+                     android:layout_weight=".1"
+                     android:background="@android:color/transparent"
+                     android:gravity="center"
+-                    android:src="@drawable/plait_editor_check"
++                    android:src="@drawable/ps_check"
+                     android:contentDescription="@string/plait_editor_apply"
+                     android:tint="?android:attr/colorAccent"
+                     android:textSize="18dip"/>
+diff --git a/res/layout-land/filtershow_grad_ui.xml b/res/layout-land/filtershow_grad_ui.xml
+index fd09bee..7632531 100644
+--- a/res/layout-land/filtershow_grad_ui.xml
++++ b/res/layout-land/filtershow_grad_ui.xml
+@@ -118,7 +118,8 @@
+             android:scaleType="centerInside"
+             android:layout_weight="0"
+             android:background="@drawable/filtershow_button_background"
+-            android:src="@drawable/filtershow_addpoint"
++            android:src="@drawable/ps_add"
++            android:tint="?android:attr/textColorPrimary"
+             android:paddingBottom="8dp"
+             android:layout_marginLeft="48dp" />
+ 
+diff --git a/res/layout-land/filtershow_main_panel.xml b/res/layout-land/filtershow_main_panel.xml
+index 501432a..8ba23d9 100644
+--- a/res/layout-land/filtershow_main_panel.xml
++++ b/res/layout-land/filtershow_main_panel.xml
+@@ -28,22 +28,18 @@
+                  android:layout_height="0dip"
+                  android:layout_weight="1"/>
+ 
+-    <View
+-            android:background="@color/toolbar_separation_line"
+-            android:layout_height="1dip"
+-            android:layout_width="match_parent"/>
+ 
+     <com.android.gallery3d.filtershow.CenteredLinearLayout
+             xmlns:custom="http://schemas.android.com/apk/res/com.android.gallery3d"
+             android:layout_width="match_parent"
+-            android:layout_height="58dp"
++            android:layout_height="80dp"
+             android:layout_gravity="center|bottom"
+             custom:max_width="400dip"
+             android:orientation="vertical">
+ 
+         <LinearLayout android:layout_width="match_parent"
+                       android:layout_height="match_parent"
+-                      android:background="?android:attr/colorBackgroundFloating">
++                      android:background="@color/plait_bar">
+ 
+             <!-- PlaitOS: three tabs as in Snapseed: Looks, Tools (a grid of every tool), Export -->
+ <Button
+@@ -58,7 +54,7 @@
+                     android:textAllCaps="false"
+                     android:textColor="?android:attr/textColorPrimary"
+                     android:textSize="12sp"
+-                    android:drawableTop="@drawable/plait_editor_filter"
++                    android:drawableTop="@drawable/ps_looks"
+                     android:drawableTint="?android:attr/textColorPrimary" />
+             <Button
+                     android:id="@+id/toolsButton"
+@@ -72,7 +68,7 @@
+                     android:textAllCaps="false"
+                     android:textColor="?android:attr/textColorPrimary"
+                     android:textSize="12sp"
+-                    android:drawableTop="@drawable/plait_editor_tune"
++                    android:drawableTop="@drawable/ps_tune"
+                     android:drawableTint="?android:attr/textColorPrimary" />
+             <Button
+                     android:id="@+id/exportButton"
+@@ -86,16 +82,12 @@
+                     android:textAllCaps="false"
+                     android:textColor="?android:attr/textColorPrimary"
+                     android:textSize="12sp"
+-                    android:drawableTop="@drawable/plait_tool_ios_share"
++                    android:drawableTop="@drawable/ps_export"
+                     android:drawableTint="?android:attr/textColorPrimary" />
+ 
+         </LinearLayout>
+ 
+     </com.android.gallery3d.filtershow.CenteredLinearLayout>
+ 
+-    <View
+-            android:background="@color/toolbar_separation_line"
+-            android:layout_height="1dip"
+-            android:layout_width="match_parent"/>
+ 
+ </LinearLayout>
+\ No newline at end of file
+diff --git a/res/layout/filtershow_actionbar.xml b/res/layout/filtershow_actionbar.xml
+index 8496b36..84a47e4 100644
+--- a/res/layout/filtershow_actionbar.xml
++++ b/res/layout/filtershow_actionbar.xml
+@@ -27,7 +27,7 @@
+         android:layout_width="48dp"
+         android:layout_height="48dp"
+         android:contentDescription="@string/plait_gallery_back"
+-        android:src="@drawable/plait_gallery_close"
++        android:src="@drawable/ps_close"
+         android:tint="?android:attr/textColorPrimary" />
+ 
+     <TextView
+diff --git a/res/layout/filtershow_category_panel.xml b/res/layout/filtershow_category_panel.xml
+index c1b8bbe..6b8e249 100644
+--- a/res/layout/filtershow_category_panel.xml
++++ b/res/layout/filtershow_category_panel.xml
+@@ -27,7 +27,8 @@
+         android:layout_weight="1"
+         android:background="@drawable/filtershow_button_background"
+         android:scaleType="centerInside"
+-        android:src="@drawable/ic_photoeditor_effects" />
++        android:src="@drawable/ps_looks"
++        android:tint="?android:attr/textColorPrimary" />
+ 
+     <ImageButton
+         android:id="@+id/borderButton"
+@@ -37,7 +38,8 @@
+         android:background="@drawable/filtershow_button_background"
+         android:padding="2dip"
+         android:scaleType="centerInside"
+-        android:src="@drawable/ic_photoeditor_border" />
++        android:src="@drawable/ps_frames"
++        android:tint="?android:attr/textColorPrimary" />
+ 
+     <ImageButton
+         android:id="@+id/geometryButton"
+@@ -47,7 +49,8 @@
+         android:background="@drawable/filtershow_button_background"
+         android:padding="2dip"
+         android:scaleType="centerInside"
+-        android:src="@drawable/ic_photoeditor_fix" />
++        android:src="@drawable/ps_crop"
++        android:tint="?android:attr/textColorPrimary" />
+ 
+     <ImageButton
+         android:id="@+id/colorsButton"
+@@ -57,6 +60,7 @@
+         android:background="@drawable/filtershow_button_background"
+         android:padding="2dip"
+         android:scaleType="centerInside"
+-        android:src="@drawable/ic_photoeditor_color" />
++        android:src="@drawable/ps_tune"
++        android:tint="?android:attr/textColorPrimary" />
+ 
+ </LinearLayout>
+\ No newline at end of file
+diff --git a/res/layout/filtershow_category_panel_new.xml b/res/layout/filtershow_category_panel_new.xml
+index 8073f68..3e545f1 100644
+--- a/res/layout/filtershow_category_panel_new.xml
++++ b/res/layout/filtershow_category_panel_new.xml
+@@ -43,6 +43,7 @@
+             android:id="@+id/addButton"
+             android:layout_width="@dimen/category_panel_height"
+             android:layout_height="@dimen/category_panel_height"
+-            android:src="@drawable/filtershow_add"/>
++            android:src="@drawable/ps_add"
++            android:tint="?android:attr/textColorPrimary"/>
+ 
+ </LinearLayout>
+\ No newline at end of file
+diff --git a/res/layout/filtershow_control_action_slider.xml b/res/layout/filtershow_control_action_slider.xml
+index 34eac1e..fab3022 100644
+--- a/res/layout/filtershow_control_action_slider.xml
++++ b/res/layout/filtershow_control_action_slider.xml
+@@ -29,7 +29,8 @@
+         android:scaleType="centerInside"
+         android:layout_weight="0"
+         android:background="@drawable/filtershow_button_background"
+-        android:src="@drawable/filtershow_addpoint"
++        android:src="@drawable/ps_add"
++        android:tint="?android:attr/textColorPrimary"
+         android:paddingBottom="8dp"  />
+ 
+     <SeekBar
+diff --git a/res/layout/filtershow_control_color_chooser.xml b/res/layout/filtershow_control_color_chooser.xml
+index 5bfe460..cbc98cc 100644
+--- a/res/layout/filtershow_control_color_chooser.xml
++++ b/res/layout/filtershow_control_color_chooser.xml
+@@ -79,7 +79,8 @@
+             android:layout_width="wrap_content"
+             android:layout_gravity="center"
+             android:layout_height="wrap_content"
+-            android:background="@drawable/ic_action_overflow"
++            android:background="@drawable/ps_more_vert"
++            android:backgroundTint="?android:attr/textColorPrimary"
+             />
+     </FrameLayout>
+ </LinearLayout>
+diff --git a/res/layout/filtershow_editor_panel.xml b/res/layout/filtershow_editor_panel.xml
+index 9afb28c..4e96bab 100644
+--- a/res/layout/filtershow_editor_panel.xml
++++ b/res/layout/filtershow_editor_panel.xml
+@@ -23,7 +23,7 @@
+     android:layout_width="match_parent"
+     android:layout_height="wrap_content"
+     android:orientation="vertical"
+-    android:background="?android:attr/colorBackgroundFloating"
++    android:background="@color/plait_bar"
+     android:paddingTop="8dp"
+     android:visibility="visible" >
+ 
+@@ -51,7 +51,7 @@
+ 
+     <LinearLayout
+             android:layout_width="match_parent"
+-            android:layout_height="64dp"
++            android:layout_height="80dp"
+             android:orientation="horizontal"
+             android:gravity="center_vertical"
+             android:paddingStart="12dp"
+@@ -64,7 +64,7 @@
+                 android:layout_width="48dp"
+                 android:layout_height="48dp"
+                 android:background="@drawable/plait_editor_round_tile"
+-                android:src="@drawable/plait_gallery_close"
++                android:src="@drawable/ps_close"
+                 android:contentDescription="@android:string/cancel"
+                 android:tint="@color/plait_editor_on_tile"/>
+ 
+@@ -86,7 +86,7 @@
+                     android:textColor="@color/plait_editor_label"
+                     android:textSize="16sp"
+                     android:textAllCaps="false"
+-                    android:drawableEnd="@drawable/filtershow_menu_marker_rtl"
++                    android:drawableEnd="@drawable/ps_expand_more"
+                     android:drawableTint="@color/plait_editor_on_tile"
+                     />
+ 
+@@ -97,7 +97,7 @@
+                 android:layout_width="48dp"
+                 android:layout_height="48dp"
+                 android:background="@drawable/plait_editor_round_tone"
+-                android:src="@drawable/plait_editor_check"
++                android:src="@drawable/ps_check"
+                 android:contentDescription="@string/plait_editor_apply"
+                 android:tint="@color/plait_editor_on_tone"/>
+     </LinearLayout>
+diff --git a/res/layout/filtershow_main_panel.xml b/res/layout/filtershow_main_panel.xml
+index fec5d86..2e2e579 100644
+--- a/res/layout/filtershow_main_panel.xml
++++ b/res/layout/filtershow_main_panel.xml
+@@ -22,7 +22,7 @@
+               android:orientation="vertical"
+               android:animateLayoutChanges="false"
+               android:visibility="visible"
+-              android:background="?android:attr/colorBackgroundFloating" >
++              android:background="@color/plait_bar" >
+ 
+     <FrameLayout android:id="@+id/state_panel_container"
+                  android:layout_width="match_parent"
+@@ -38,23 +38,19 @@
+                  android:layout_gravity="center"
+                  android:layout_weight="1"/>
+ 
+-    <View
+-            android:background="@color/toolbar_separation_line"
+-            android:layout_height="1dip"
+-            android:layout_width="match_parent"/>
+ 
+     <com.android.gallery3d.filtershow.CenteredLinearLayout
+             xmlns:custom="http://schemas.android.com/apk/res/com.android.gallery3d"
+             android:id="@+id/bottom_panel"
+             android:layout_width="match_parent"
+-            android:layout_height="58dp"
++            android:layout_height="80dp"
+             android:layout_gravity="center|bottom"
+             custom:max_width="400dip"
+             android:orientation="vertical">
+ 
+         <LinearLayout android:layout_width="match_parent"
+                       android:layout_height="match_parent"
+-                      android:background="?android:attr/colorBackgroundFloating">
++                      android:background="@color/plait_bar">
+ 
+             <!-- PlaitOS: three tabs as in Snapseed: Looks, Tools (a grid of every tool), Export -->
+ <Button
+@@ -69,7 +65,7 @@
+                     android:textAllCaps="false"
+                     android:textColor="?android:attr/textColorPrimary"
+                     android:textSize="12sp"
+-                    android:drawableTop="@drawable/plait_editor_filter"
++                    android:drawableTop="@drawable/ps_looks"
+                     android:drawableTint="?android:attr/textColorPrimary" />
+             <Button
+                     android:id="@+id/toolsButton"
+@@ -83,7 +79,7 @@
+                     android:textAllCaps="false"
+                     android:textColor="?android:attr/textColorPrimary"
+                     android:textSize="12sp"
+-                    android:drawableTop="@drawable/plait_editor_tune"
++                    android:drawableTop="@drawable/ps_tune"
+                     android:drawableTint="?android:attr/textColorPrimary" />
+             <Button
+                     android:id="@+id/exportButton"
+@@ -97,7 +93,7 @@
+                     android:textAllCaps="false"
+                     android:textColor="?android:attr/textColorPrimary"
+                     android:textSize="12sp"
+-                    android:drawableTop="@drawable/plait_tool_ios_share"
++                    android:drawableTop="@drawable/ps_export"
+                     android:drawableTint="?android:attr/textColorPrimary" />
+ 
+         </LinearLayout>
+diff --git a/res/layout/filtershow_state_panel_new.xml b/res/layout/filtershow_state_panel_new.xml
+index b199695..7855a8e 100644
+--- a/res/layout/filtershow_state_panel_new.xml
++++ b/res/layout/filtershow_state_panel_new.xml
+@@ -38,7 +38,8 @@
+             android:id="@+id/toggleVersionsPanel"
+             android:layout_width="wrap_content"
+             android:layout_height="48dip"
+-            android:src="@drawable/filtershow_versions_compare"
++            android:src="@drawable/ps_compare"
++            android:tint="?android:attr/textColorPrimary"
+             style="?android:attr/borderlessButtonStyle"
+             android:layout_gravity="center"/>
+ 
+diff --git a/res/menu/filtershow_activity_menu.xml b/res/menu/filtershow_activity_menu.xml
+index bb0b094..963c377 100644
+--- a/res/menu/filtershow_activity_menu.xml
++++ b/res/menu/filtershow_activity_menu.xml
+@@ -8,12 +8,14 @@
+         android:title="@string/share"/>
+     <item
+         android:id="@+id/undoButton"
+-        android:icon="@drawable/filtershow_button_undo"
++        android:icon="@drawable/ps_undo"
++        android:iconTint="?android:attr/textColorPrimary"
+         android:showAsAction="always"
+         android:title="@string/filtershow_undo"/>
+     <item
+         android:id="@+id/redoButton"
+-        android:icon="@drawable/filtershow_button_redo"
++        android:icon="@drawable/ps_redo"
++        android:iconTint="?android:attr/textColorPrimary"
+         android:showAsAction="always"
+         android:title="@string/filtershow_redo"/>
+     <item
+diff --git a/res/values-night/plait_editor_colors.xml b/res/values-night/plait_editor_colors.xml
+index c2256ab..15ad3e1 100644
+--- a/res/values-night/plait_editor_colors.xml
++++ b/res/values-night/plait_editor_colors.xml
+@@ -6,4 +6,9 @@
+     <color name="plait_editor_accent">@android:color/system_primary_dark</color>
+     <color name="plait_editor_label">@android:color/system_on_surface_dark</color>
+     <color name="plait_editor_hud">#B3000000</color>
++    <!-- PlaitOS: every bottom bar (PlaitBars): surfaceContainerLow, accent indicator, solid primary for the main action -->
++    <color name="plait_bar">@android:color/system_surface_container_low_dark</color>
++    <color name="plait_bar_icon">@android:color/system_on_surface_variant_dark</color>
++    <color name="plait_bar_label_selected">@android:color/system_on_surface_dark</color>
++    <color name="plait_on_accent">@android:color/system_on_primary_dark</color>
+ </resources>
+diff --git a/res/values/plait_editor_colors.xml b/res/values/plait_editor_colors.xml
+index 9aee4f3..1908a54 100644
+--- a/res/values/plait_editor_colors.xml
++++ b/res/values/plait_editor_colors.xml
+@@ -7,4 +7,9 @@
+     <color name="plait_editor_accent">@android:color/system_primary_light</color>
+     <color name="plait_editor_label">@android:color/system_on_surface_light</color>
+     <color name="plait_editor_hud">#B3000000</color>
++    <!-- PlaitOS: every bottom bar (PlaitBars): surfaceContainerLow, accent indicator, solid primary for the main action -->
++    <color name="plait_bar">@android:color/system_surface_container_low_light</color>
++    <color name="plait_bar_icon">@android:color/system_on_surface_variant_light</color>
++    <color name="plait_bar_label_selected">@android:color/system_on_surface_light</color>
++    <color name="plait_on_accent">@android:color/system_on_primary_light</color>
+ </resources>
+diff --git a/src/com/android/gallery3d/app/CommonControllerOverlay.java b/src/com/android/gallery3d/app/CommonControllerOverlay.java
+index 9adb4e7..a553d48 100644
+--- a/src/com/android/gallery3d/app/CommonControllerOverlay.java
++++ b/src/com/android/gallery3d/app/CommonControllerOverlay.java
+@@ -102,11 +102,20 @@ public abstract class CommonControllerOverlay extends FrameLayout implements
+         addView(mLoadingView, wrapContent);
+ 
+         mPlayPauseReplayView = new ImageView(context);
+-        mPlayPauseReplayView.setImageResource(R.drawable.ic_vidcontrol_play);
++        mPlayPauseReplayView.setImageResource(R.drawable.ps_play);
+         mPlayPauseReplayView.setContentDescription(
+                 context.getResources().getString(R.string.accessibility_play_video));
+-        mPlayPauseReplayView.setBackgroundResource(R.drawable.bg_vidcontrol);
+-        mPlayPauseReplayView.setScaleType(ScaleType.CENTER);
++        // PlaitOS: the design guide's play/pause/replay icons, white on a round scrim
++        android.graphics.drawable.GradientDrawable scrim = new android.graphics.drawable.GradientDrawable();
++        scrim.setShape(android.graphics.drawable.GradientDrawable.OVAL);
++        scrim.setColor(0x99000000);
++        mPlayPauseReplayView.setBackground(scrim);
++        mPlayPauseReplayView.setImageTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
++        mPlayPauseReplayView.setScaleType(ScaleType.FIT_CENTER);
++        int buttonPad = Math.round(20 * context.getResources().getDisplayMetrics().density);
++        mPlayPauseReplayView.setPadding(buttonPad, buttonPad, buttonPad, buttonPad);
++        mPlayPauseReplayView.setMinimumWidth(Math.round(80 * context.getResources().getDisplayMetrics().density));
++        mPlayPauseReplayView.setMinimumHeight(Math.round(80 * context.getResources().getDisplayMetrics().density));
+         mPlayPauseReplayView.setFocusable(true);
+         mPlayPauseReplayView.setClickable(true);
+         mPlayPauseReplayView.setOnClickListener(this);
+@@ -308,13 +317,13 @@ public abstract class CommonControllerOverlay extends FrameLayout implements
+         mBackground.setVisibility(View.VISIBLE);
+         mTimeBar.setVisibility(View.VISIBLE);
+         Resources resources = getContext().getResources();
+-        int imageResource = R.drawable.ic_vidcontrol_reload;
++        int imageResource = R.drawable.ps_replay;
+         String contentDescription = resources.getString(R.string.accessibility_reload_video);
+         if (mState == State.PAUSED) {
+-            imageResource = R.drawable.ic_vidcontrol_play;
++            imageResource = R.drawable.ps_play;
+             contentDescription = resources.getString(R.string.accessibility_play_video);
+         } else if (mState == State.PLAYING) {
+-            imageResource = R.drawable.ic_vidcontrol_pause;
++            imageResource = R.drawable.ps_pause;
+             contentDescription = resources.getString(R.string.accessibility_pause_video);
+         }
+ 
+diff --git a/src/com/android/gallery3d/app/PlaitGalleryActivity.java b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+index eab20f7..52665af 100644
+--- a/src/com/android/gallery3d/app/PlaitGalleryActivity.java
++++ b/src/com/android/gallery3d/app/PlaitGalleryActivity.java
+@@ -366,7 +366,7 @@ public final class PlaitGalleryActivity extends Activity {
+         LinearLayout header = new LinearLayout(this);
+         header.setGravity(Gravity.CENTER_VERTICAL);
+         header.setPadding(dp(16), 0, dp(8), 0);
+-        if (!library) header.addView(viewerButton(R.drawable.plait_gallery_back,
++        if (!library) header.addView(viewerButton(R.drawable.ps_back,
+                 R.string.plait_gallery_back, this::onBackPressed),
+                 new LinearLayout.LayoutParams(dp(48), dp(48)));
+         TextView name = new TextView(this);
+@@ -380,7 +380,7 @@ public final class PlaitGalleryActivity extends Activity {
+         name.setGravity(Gravity.CENTER_VERTICAL);
+         if (library) {
+             ImageButton gear = new ImageButton(this, null, android.R.attr.borderlessButtonStyle);
+-            gear.setImageResource(R.drawable.plait_gallery_settings);
++            gear.setImageResource(R.drawable.ps_settings);
+             gear.setContentDescription(getText(R.string.plait_gallery_settings));
+             gear.setOnClickListener(view -> settings());
+             header.addView(gear, new LinearLayout.LayoutParams(dp(48), dp(48)));
+@@ -470,7 +470,7 @@ public final class PlaitGalleryActivity extends Activity {
+         grid.setAdapter(new TileAdapter());
+         viewport.addView(grid, new android.widget.FrameLayout.LayoutParams(-1, -1));
+         viewport.addView(topChrome, new android.widget.FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+-        int barColor = color(android.R.attr.colorBackgroundFloating);
++        int barColor = com.android.gallery3d.util.PlaitBars.barColor(this);
+         getWindow().setNavigationBarColor(barColor);
+         getWindow().setNavigationBarDividerColor(barColor);
+         getWindow().setNavigationBarContrastEnforced(false);
+@@ -479,49 +479,24 @@ public final class PlaitGalleryActivity extends Activity {
+         int lightNav = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+         boolean light = androidx.core.graphics.ColorUtils.calculateLuminance(barColor) > 0.45;
+         decor.setSystemUiVisibility(light ? flags | lightNav : flags & ~lightNav);
+-        View divider = new View(this);
+-        int primary = color(android.R.attr.textColorPrimary);
+-        divider.setBackgroundColor((primary & 0xffffff) | 0x24000000);
++        // PlaitOS: the shared bottom bar (PlaitBars): surfaceContainerLow, no divider, icon pills
+         LinearLayout bottomBar = column();
+-        bottomBar.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+         LinearLayout navigation = new LinearLayout(this);
+-        navigation.setPadding(dp(5), dp(3), dp(5), dp(4));
++        com.android.gallery3d.util.PlaitBars.styleBar(navigation);
+         int[] labels = {R.string.plait_gallery_photos, R.string.plait_gallery_albums,
+                 R.string.plait_gallery_explore};
+-        navigation.setBackgroundColor(barColor);
+-        int[] icons = {R.drawable.plait_gallery_photos, R.drawable.plait_gallery_albums,
+-                R.drawable.plait_gallery_explore};
++        int[] icons = {R.drawable.ps_image, R.drawable.ps_folder, R.drawable.ps_search};
+         for (int index = 0; index < labels.length; index++) {
+             final int destination = index;
+-            LinearLayout button = column();
+-            button.setGravity(Gravity.CENTER);
+-            button.setSelected(tab == index);
+-            button.setContentDescription(getText(labels[index]));
+-            button.setFocusable(true);
+-            button.setBackground(new RippleDrawable(
+-                    ColorStateList.valueOf(color(android.R.attr.colorControlHighlight)), null,
+-                    shape(0xffffffff, 0)));
+-            ImageView icon = new ImageView(this);
+-            icon.setImageResource(icons[index]);
+-            int foreground = color(tab == index
+-                    ? android.R.attr.colorAccent : android.R.attr.textColorSecondary);
+-            icon.setColorFilter(foreground);
+-            icon.setScaleType(ImageView.ScaleType.CENTER);
+-            if (tab == index) icon.setBackground(shape((foreground & 0xffffff) | 0x29000000, 18));
+-            button.addView(icon, new LinearLayout.LayoutParams(dp(52), dp(31)));
+-            TextView label = label(getString(labels[index]), 12, tab == index);
+-            label.setTextColor(foreground);
+-            if (tab == index) label.setTextColor(primary);
+-            label.setGravity(Gravity.CENTER);
+-            label.setPadding(0, dp(2), 0, 0);
+-            button.addView(label, new LinearLayout.LayoutParams(-2, -2));
+-            button.setOnClickListener(view -> {
+-                tab = destination;
+-                category = null;
+-                query = "";
+-                showLibrary();
+-            });
+-            navigation.addView(button, new LinearLayout.LayoutParams(0, dp(53), 1));
++            LinearLayout button = com.android.gallery3d.util.PlaitBars.navItem(this, icons[index],
++                    getText(labels[index]), tab == index, view -> {
++                        tab = destination;
++                        category = null;
++                        query = "";
++                        showLibrary();
++                    });
++            navigation.addView(button, new LinearLayout.LayoutParams(0,
++                    dp(com.android.gallery3d.util.PlaitBars.BAR_HEIGHT_DP), 1));
+         }
+         bottomBar.addView(navigation);
+         viewport.addView(bottomBar, new android.widget.FrameLayout.LayoutParams(
+@@ -553,7 +528,7 @@ public final class PlaitGalleryActivity extends Activity {
+         bar.setGravity(Gravity.CENTER_VERTICAL);
+         bar.setPadding(dp(4), 0, dp(4), 0);
+         int count = checkedMedia.size();
+-        bar.addView(selectionButton(R.drawable.plait_gallery_close,
++        bar.addView(selectionButton(R.drawable.ps_close,
+                 R.string.plait_gallery_clear_selection, this::clearSelection),
+                 new LinearLayout.LayoutParams(dp(48), dp(48)));
+         boolean hasVideo = media.stream().anyMatch(item -> item.video && checkedMedia.contains(item.uri));
+@@ -565,9 +540,9 @@ public final class PlaitGalleryActivity extends Activity {
+         title.setEllipsize(TextUtils.TruncateAt.END);
+         title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+         bar.addView(title, new LinearLayout.LayoutParams(0, dp(56), 1));
+-        bar.addView(selectionButton(R.drawable.plait_gallery_share, R.string.plait_gallery_share,
++        bar.addView(selectionButton(R.drawable.ps_share, R.string.plait_gallery_share,
+                 this::shareSelection), new LinearLayout.LayoutParams(dp(48), dp(48)));
+-        bar.addView(selectionButton(R.drawable.plait_gallery_trash, R.string.plait_gallery_trash,
++        bar.addView(selectionButton(R.drawable.ps_delete, R.string.plait_gallery_trash,
+                 this::trashSelection), new LinearLayout.LayoutParams(dp(48), dp(48)));
+         libraryTitle.addView(bar);
+     }
+@@ -1022,20 +997,24 @@ public final class PlaitGalleryActivity extends Activity {
+         photo.addView(pager, new LinearLayout.LayoutParams(-1, 0, 1));
+ 
+         LinearLayout actions = new LinearLayout(this);
+-        addViewerAction(actions, R.drawable.plait_gallery_edit, R.string.plait_gallery_edit,
++        // PlaitOS: the shared bottom bar (PlaitBars), tonal action tiles
++        actions.setGravity(Gravity.CENTER_VERTICAL);
++        com.android.gallery3d.util.PlaitBars.styleBar(actions);
++        actions.setMinimumHeight(dp(com.android.gallery3d.util.PlaitBars.BAR_HEIGHT_DP));
++        addViewerAction(actions, R.drawable.ps_edit, R.string.plait_gallery_edit,
+                 () -> open(selected, true));
+-        addViewerAction(actions, R.drawable.plait_gallery_info, R.string.plait_gallery_details,
++        addViewerAction(actions, R.drawable.ps_info, R.string.plait_gallery_details,
+                 () -> details(selected));
+-        addViewerAction(actions, R.drawable.plait_gallery_album_add,
++        addViewerAction(actions, R.drawable.ps_album_add,
+                 R.string.plait_gallery_add_to_album, () -> chooseAlbum(selected));
+-        addViewerAction(actions, R.drawable.plait_gallery_share, R.string.plait_gallery_share, () -> {
++        addViewerAction(actions, R.drawable.ps_share, R.string.plait_gallery_share, () -> {
+             Media current = selected;
+             Intent share = new Intent(Intent.ACTION_SEND).setType(current.mime)
+                     .putExtra(Intent.EXTRA_STREAM, current.uri)
+                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+             startActivity(Intent.createChooser(share, getText(R.string.plait_gallery_share)));
+         });
+-        addViewerAction(actions, R.drawable.plait_gallery_trash, R.string.plait_gallery_trash,
++        addViewerAction(actions, R.drawable.ps_delete, R.string.plait_gallery_trash,
+                 this::trashPhoto);
+         photo.addView(actions);
+         setContentView(photo);
+@@ -1113,7 +1092,7 @@ public final class PlaitGalleryActivity extends Activity {
+ 
+     private void updateViewerHeader(LinearLayout slot) {
+         LinearLayout title = header(selected.name, false);
+-        favoriteButton = viewerButton(R.drawable.plait_gallery_star,
++        favoriteButton = viewerButton(R.drawable.ps_star,
+                 R.string.plait_gallery_favorites, () -> requestMediaChange(selected, false));
+         title.addView(favoriteButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+         updateFavoriteLabel();
+@@ -1158,8 +1137,8 @@ public final class PlaitGalleryActivity extends Activity {
+ 
+     private void updateFavoriteLabel() {
+         if (favoriteButton == null || selected == null) return;
+-        favoriteButton.setImageResource(selected.favorite ? R.drawable.plait_gallery_star_filled
+-                : R.drawable.plait_gallery_star);
++        favoriteButton.setImageResource(selected.favorite ? R.drawable.ps_star_fill
++                : R.drawable.ps_star);
+         favoriteButton.setSelected(selected.favorite);
+         favoriteButton.setContentDescription(getText(selected.favorite
+                 ? R.string.plait_gallery_remove_favorite : R.string.plait_gallery_favorites));
+@@ -1185,31 +1164,17 @@ public final class PlaitGalleryActivity extends Activity {
+     }
+ 
+     private void addViewerAction(LinearLayout row, int icon, int description, Runnable runnable) {
+-        row.addView(viewerButton(icon, description, runnable),
+-                new LinearLayout.LayoutParams(0, dp(56), 1));
++        android.widget.FrameLayout cell = new android.widget.FrameLayout(this);
++        ImageButton button = viewerButton(icon, description, runnable);
++        cell.addView(button, new android.widget.FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER));
++        row.addView(cell, new LinearLayout.LayoutParams(0,
++                dp(com.android.gallery3d.util.PlaitBars.BAR_HEIGHT_DP), 1));
+     }
+ 
++    /** PlaitOS: a tonal tile button (PlaitBars), the same in the viewer's header and bottom bar. */
+     private ImageButton viewerButton(int icon, int description, Runnable action) {
+-        ImageButton button = selectionButton(icon, description, action);
+-        boolean night = (getResources().getConfiguration().uiMode
+-                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+-                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+-        int container = getColor(night ? android.R.color.system_primary_container_dark
+-                : android.R.color.system_primary_container_light);
+-        int foreground = getColor(night ? android.R.color.system_on_primary_container_dark
+-                : android.R.color.system_on_primary_container_light);
+-        RippleDrawable ripple = new RippleDrawable(
+-                ColorStateList.valueOf(color(android.R.attr.colorControlHighlight)),
+-                shape(container, 12), null);
+-        android.graphics.drawable.LayerDrawable tile =
+-                new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{ripple});
+-        tile.setLayerSize(0, dp(40), dp(40));
+-        tile.setLayerGravity(0, Gravity.CENTER);
+-        button.setBackground(tile);
+-        button.setPadding(0, 0, 0, 0);
+-        button.setScaleType(ImageView.ScaleType.CENTER);
+-        button.setColorFilter(foreground);
+-        return button;
++        return com.android.gallery3d.util.PlaitBars.actionTile(this, icon, getText(description), false,
++                view -> action.run());
+     }
+ 
+     private void open(Media item, boolean edit) {
+diff --git a/src/com/android/gallery3d/filtershow/FilterShowActivity.java b/src/com/android/gallery3d/filtershow/FilterShowActivity.java
+index 92c9740..92f4fef 100644
+--- a/src/com/android/gallery3d/filtershow/FilterShowActivity.java
++++ b/src/com/android/gallery3d/filtershow/FilterShowActivity.java
+@@ -272,6 +272,9 @@ public class FilterShowActivity extends FragmentActivity implements OnItemClickL
+     @Override
+     public void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
++        // PlaitOS: the system navigation bar continues the editor's bottom bar (PlaitBars)
++        getWindow().setNavigationBarColor(com.android.gallery3d.util.PlaitBars.barColor(this));
++        getWindow().setNavigationBarContrastEnforced(false);
+ 
+         boolean onlyUsePortrait = getResources().getBoolean(R.bool.only_use_portrait);
+         if (onlyUsePortrait) {
+diff --git a/src/com/android/gallery3d/filtershow/category/CategoryView.java b/src/com/android/gallery3d/filtershow/category/CategoryView.java
+index 78a53f5..0d3067e 100644
+--- a/src/com/android/gallery3d/filtershow/category/CategoryView.java
++++ b/src/com/android/gallery3d/filtershow/category/CategoryView.java
+@@ -117,7 +117,12 @@ public class CategoryView extends IconView
+             // PlaitOS: tools are tonal tiles, filters and borders rounded previews (PlaitToolTiles)
+             int icon = PlaitToolTiles.iconFor(mAction);
+             boolean selected = mAdapter != null && mAdapter.isSelected(this);
+-            if (icon != 0 && mAction.getType() != Action.ADD_ACTION) {
++            if (mAction.getType() == Action.ADD_ACTION) {
++                PlaitToolTiles.drawTool(canvas, getContext(), getWidth(), getHeight(), R.drawable.ps_add,
++                        getResources().getString(R.string.filtershow_add_button_looks), false, mPaint);
++                return;
++            }
++            if (icon != 0) {
+                 PlaitToolTiles.drawTool(canvas, getContext(), getWidth(), getHeight(), icon,
+                         mAction.getName(), selected, mPaint);
+                 return;
+@@ -147,9 +152,7 @@ public class CategoryView extends IconView
+         mCanBeRemoved = action.canBeRemoved();
+         setUseOnlyDrawable(false);
+         if (mAction.getType() == Action.ADD_ACTION) {
+-            Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.filtershow_add);
+-            setBitmap(bitmap);
+-            setUseOnlyDrawable(true);
++            setUseOnlyDrawable(true); // PlaitOS: drawn as a tool tile with the guide's add icon
+             setText(getResources().getString(R.string.filtershow_add_button_looks));
+         } else {
+             setBitmap(mAction.getImage());
+diff --git a/src/com/android/gallery3d/filtershow/category/MainPanel.java b/src/com/android/gallery3d/filtershow/category/MainPanel.java
+index c168941..c1f5c42 100644
+--- a/src/com/android/gallery3d/filtershow/category/MainPanel.java
++++ b/src/com/android/gallery3d/filtershow/category/MainPanel.java
+@@ -73,19 +73,25 @@ public class MainPanel extends Fragment {
+     }
+ 
+     private void setToolSelected(View tool, boolean selected) {
+-        tool.setSelected(selected);
+-        android.widget.Button button = (android.widget.Button) tool;
+-        int attribute = selected ? android.R.attr.colorAccent : android.R.attr.textColorPrimary;
+-        android.content.res.TypedArray colors = button.getContext().obtainStyledAttributes(
+-                new int[]{attribute});
+-        try {
+-            android.content.res.ColorStateList tint = colors.getColorStateList(0);
+-            if (tint != null) {
+-                button.setTextColor(tint);
+-                button.setCompoundDrawableTintList(tint);
+-            }
+-        } finally {
+-            colors.recycle();
++        // PlaitOS: the shared bottom bar (PlaitBars)
++        if (tool instanceof LinearLayout) {
++            com.android.gallery3d.util.PlaitBars.setSelected((LinearLayout) tool, selected);
++        }
++    }
++
++    /** PlaitOS: Looks / Tools / Export as the shared bar's section items, in place of the buttons. */
++    private void buildTabs(FilterShowActivity activity) {
++        LinearLayout row = (LinearLayout) mMainView.findViewById(R.id.fxButton).getParent();
++        row.removeAllViews();
++        looksButton = com.android.gallery3d.util.PlaitBars.navItem(activity, R.drawable.ps_looks,
++                getString(R.string.plait_editor_looks), false, v -> showPanel(LOOKS));
++        toolsButton = com.android.gallery3d.util.PlaitBars.navItem(activity, R.drawable.ps_tune,
++                getString(R.string.plait_editor_tools), false, v -> loadToolsPanel());
++        // Export is an action (a menu), never the selected section
++        exportButton = com.android.gallery3d.util.PlaitBars.navItem(activity, R.drawable.ps_export,
++                getString(R.string.plait_editor_export), false, v -> activity.plaitShowExportMenu(v));
++        for (View tab : new View[] {looksButton, toolsButton, exportButton}) {
++            row.addView(tab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+         }
+     }
+ 
+@@ -107,15 +113,9 @@ public class MainPanel extends Fragment {
+         mMainView = (LinearLayout) inflater.inflate(
+                 R.layout.filtershow_main_panel, null, false);
+ 
+-        looksButton = mMainView.findViewById(R.id.fxButton);
+-        toolsButton = mMainView.findViewById(R.id.toolsButton);
+-        exportButton = mMainView.findViewById(R.id.exportButton);
+-
+         FilterShowActivity activity = (FilterShowActivity) getActivity();
+-        looksButton.setOnClickListener(v -> showPanel(LOOKS));
+         // Tools again from a strip (Frames, Effects) goes back to the grid
+-        toolsButton.setOnClickListener(v -> loadToolsPanel());
+-        exportButton.setOnClickListener(v -> activity.plaitShowExportMenu(v));
++        buildTabs(activity);
+         showImageStatePanel(activity.isShowingImageStatePanel());
+         int panel = activity.getCurrentPanel();
+         showPanel(panel == LOOKS ? LOOKS : TOOLS);
+diff --git a/src/com/android/gallery3d/filtershow/category/PlaitToolTiles.java b/src/com/android/gallery3d/filtershow/category/PlaitToolTiles.java
+index 5e5f598..1b20002 100644
+--- a/src/com/android/gallery3d/filtershow/category/PlaitToolTiles.java
++++ b/src/com/android/gallery3d/filtershow/category/PlaitToolTiles.java
+@@ -28,25 +28,21 @@ import java.util.Map;
+  */
+ public final class PlaitToolTiles {
+     private static final Map<String, Integer> ICONS = new HashMap<>();
++    // Icons from the Plait design guide (plait-design icons.txt, copied by scripts/gallery-icons.py).
++    // Tune image's adjustments have no tile: they live inside that one tool.
+     static {
+-        ICONS.put("WBALANCE", R.drawable.plait_tool_auto_awesome);
+-        ICONS.put("EXPOSURE", R.drawable.plait_tool_exposure);
+-        ICONS.put("CONTRAST", R.drawable.plait_tool_contrast);
+-        ICONS.put("SHADOWS", R.drawable.plait_tool_shadow);
+-        ICONS.put("HIGHLIGHTS", R.drawable.plait_tool_highlight);
+-        ICONS.put("VIBRANCE", R.drawable.plait_tool_palette);
+-        ICONS.put("CURVES", R.drawable.plait_tool_show_chart);
+-        ICONS.put("HUE", R.drawable.plait_tool_colorize);
+-        ICONS.put("BWFILTER", R.drawable.plait_tool_filter_b_and_w);
+-        ICONS.put("NEGATIVE", R.drawable.plait_tool_invert_colors);
+-        ICONS.put("EDGE", R.drawable.plait_tool_blur_on);
+-        ICONS.put("KMEANS", R.drawable.plait_tool_gradient);
+-        ICONS.put("TINYPLANET", R.drawable.plait_tool_public);
+-        ICONS.put("CROP", R.drawable.plait_tool_crop);
+-        ICONS.put("STRAIGHTEN", R.drawable.plait_tool_straighten);
+-        ICONS.put("ROTATION", R.drawable.plait_tool_rotate_90_degrees_cw);
+-        ICONS.put("MIRROR", R.drawable.plait_tool_flip);
+-        ICONS.put("DRAW", R.drawable.plait_tool_draw);
++        ICONS.put("WBALANCE", R.drawable.ps_auto_color);
++        ICONS.put("CURVES", R.drawable.ps_curves);
++        ICONS.put("BWFILTER", R.drawable.ps_black_white);
++        ICONS.put("NEGATIVE", R.drawable.ps_negative);
++        ICONS.put("EDGE", R.drawable.ps_edges);
++        ICONS.put("KMEANS", R.drawable.ps_posterize);
++        ICONS.put("TINYPLANET", R.drawable.ps_browser);
++        ICONS.put("CROP", R.drawable.ps_crop);
++        ICONS.put("STRAIGHTEN", R.drawable.ps_ruler);
++        ICONS.put("ROTATION", R.drawable.ps_crop_rotate);
++        ICONS.put("MIRROR", R.drawable.ps_mirror);
++        ICONS.put("DRAW", R.drawable.ps_markup);
+     }
+ 
+     private PlaitToolTiles() {}
+diff --git a/src/com/android/gallery3d/filtershow/category/PlaitToolsPanel.java b/src/com/android/gallery3d/filtershow/category/PlaitToolsPanel.java
+index b1dc1b1..f543553 100644
+--- a/src/com/android/gallery3d/filtershow/category/PlaitToolsPanel.java
++++ b/src/com/android/gallery3d/filtershow/category/PlaitToolsPanel.java
+@@ -44,26 +44,26 @@ public class PlaitToolsPanel extends Fragment {
+         root.setPadding(dp(8), dp(4), dp(8), dp(4));
+ 
+         addGroup(root, R.string.plait_editor_group_adjust, new Tile[] {
+-                new Tile(R.drawable.plait_tool_tune, getString(R.string.plait_editor_tune_image),
++                new Tile(R.drawable.ps_tune, getString(R.string.plait_editor_tune_image),
+                         activity::plaitOpenTune),
+-                tool(activity, "CURVES", R.drawable.plait_tool_show_chart),
+-                tool(activity, "WBALANCE", R.drawable.plait_tool_auto_awesome, R.string.plait_editor_auto_color),
+-                tool(activity, "BWFILTER", R.drawable.plait_tool_filter_b_and_w, R.string.plait_editor_black_white),
++                tool(activity, "CURVES", R.drawable.ps_curves),
++                tool(activity, "WBALANCE", R.drawable.ps_auto_color, R.string.plait_editor_auto_color),
++                tool(activity, "BWFILTER", R.drawable.ps_black_white, R.string.plait_editor_black_white),
+         });
+         addGroup(root, R.string.plait_editor_group_shape, new Tile[] {
+-                tool(activity, "CROP", R.drawable.plait_tool_crop),
+-                tool(activity, "ROTATION", R.drawable.plait_tool_rotate_90_degrees_cw),
+-                tool(activity, "STRAIGHTEN", R.drawable.plait_tool_straighten),
+-                tool(activity, "MIRROR", R.drawable.plait_tool_flip),
++                tool(activity, "CROP", R.drawable.ps_crop),
++                tool(activity, "ROTATION", R.drawable.ps_crop_rotate),
++                tool(activity, "STRAIGHTEN", R.drawable.ps_ruler),
++                tool(activity, "MIRROR", R.drawable.ps_mirror),
+         });
+         Tile tinyPlanet = PrimaryImage.getImage().hasTinyPlanet()
+-                ? tool(activity, "TINYPLANET", R.drawable.plait_tool_public) : null;
++                ? tool(activity, "TINYPLANET", R.drawable.ps_browser) : null;
+         addGroup(root, R.string.plait_editor_group_create, new Tile[] {
+-                new Tile(R.drawable.plait_tool_draw, getString(R.string.plait_gallery_markup),
++                new Tile(R.drawable.ps_markup, getString(R.string.plait_gallery_markup),
+                         () -> activity.showRepresentation(new FilterDrawRepresentation())),
+-                new Tile(R.drawable.plait_tool_crop_square, getString(R.string.plait_editor_frames),
++                new Tile(R.drawable.ps_frames, getString(R.string.plait_editor_frames),
+                         () -> mainPanel(activity, MainPanel.BORDERS)),
+-                new Tile(R.drawable.plait_tool_blur_on, getString(R.string.plait_editor_effects),
++                new Tile(R.drawable.ps_effects, getString(R.string.plait_editor_effects),
+                         () -> mainPanel(activity, MainPanel.EFFECTS)),
+                 tinyPlanet,
+         });
+@@ -125,7 +125,7 @@ public class PlaitToolsPanel extends Fragment {
+         square.setDuplicateParentStateEnabled(true);
+         ImageView icon = new ImageView(context);
+         icon.setImageResource(tile.icon);
+-        icon.setImageTintList(ColorStateList.valueOf(context.getColor(R.color.plait_editor_on_tile)));
++        icon.setImageTintList(ColorStateList.valueOf(context.getColor(R.color.plait_editor_on_tone)));
+         square.addView(icon, new FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER));
+         cell.addView(square, new LinearLayout.LayoutParams(dp(52), dp(52)));
+ 
+diff --git a/src/com/android/gallery3d/filtershow/editors/Editor.java b/src/com/android/gallery3d/filtershow/editors/Editor.java
+index f4a90cd..9fe4d28 100644
+--- a/src/com/android/gallery3d/filtershow/editors/Editor.java
++++ b/src/com/android/gallery3d/filtershow/editors/Editor.java
+@@ -286,7 +286,9 @@ public class Editor implements OnSeekBarChangeListener, SwapButton.SwapButtonLis
+ 
+     protected void setMenuIcon(boolean on) {
+         mEditTitle.setCompoundDrawablesRelativeWithIntrinsicBounds(
+-                0, 0, on ? R.drawable.filtershow_menu_marker_rtl : 0, 0);
++                0, 0, on ? R.drawable.ps_expand_more : 0, 0);
++        // PlaitOS: the design guide's icons are drawn in black; tint them like the label
++        mEditTitle.setCompoundDrawableTintList(mEditTitle.getTextColors());
+     }
+ 
+     protected void createMenu(int[] strId, View button) {
+diff --git a/src/com/android/gallery3d/filtershow/editors/EditorPanel.java b/src/com/android/gallery3d/filtershow/editors/EditorPanel.java
+index 7e6599b..7273ee7 100644
+--- a/src/com/android/gallery3d/filtershow/editors/EditorPanel.java
++++ b/src/com/android/gallery3d/filtershow/editors/EditorPanel.java
+@@ -80,6 +80,9 @@ public class EditorPanel extends Fragment {
+         ImageButton cancelButton = (ImageButton) mMainView.findViewById(R.id.cancelFilter);
+         ImageButton applyButton = (ImageButton) mMainView.findViewById(R.id.applyFilter);
+         Button editTitle = (Button) mMainView.findViewById(R.id.applyEffect);
++        // PlaitOS: the shared bottom bar's tiles (PlaitBars): cancel tonal, apply the one solid action
++        com.android.gallery3d.util.PlaitBars.styleActionTile(cancelButton, R.drawable.ps_close, false);
++        com.android.gallery3d.util.PlaitBars.styleActionTile(applyButton, R.drawable.ps_check, true);
+         cancelButton.setOnClickListener(new View.OnClickListener() {
+             @Override
+             public void onClick(View v) {
+@@ -135,7 +138,7 @@ public class EditorPanel extends Fragment {
+         float density = getResources().getDisplayMetrics().density;
+         int size = Math.round(48 * density), gap = Math.round(6 * density);
+ 
+-        ImageButton list = tuneButton(activity, R.drawable.plait_tool_list,
++        ImageButton list = tuneButton(activity, R.drawable.ps_list,
+                 R.string.plait_editor_adjustments);
+         list.setOnClickListener(v -> {
+             java.util.List<com.android.gallery3d.filtershow.filters.FilterRepresentation> params =
+@@ -150,7 +153,7 @@ public class EditorPanel extends Fragment {
+             menu.show();
+         });
+ 
+-        ImageButton compare = tuneButton(activity, R.drawable.plait_tool_compare,
++        ImageButton compare = tuneButton(activity, R.drawable.ps_compare,
+                 R.string.plait_editor_compare);
+         compare.setOnTouchListener((v, event) -> {
+             int action = event.getActionMasked();
+@@ -173,14 +176,8 @@ public class EditorPanel extends Fragment {
+     }
+ 
+     private static ImageButton tuneButton(FilterShowActivity activity, int icon, int description) {
+-        ImageButton button = new ImageButton(activity);
+-        button.setImageResource(icon);
+-        button.setBackgroundResource(R.drawable.plait_editor_round_tile);
+-        button.setImageTintList(android.content.res.ColorStateList.valueOf(
+-                activity.getColor(R.color.plait_editor_on_tile)));
+-        button.setContentDescription(activity.getString(description));
+-        button.setTooltipText(activity.getString(description));
+-        return button;
++        return com.android.gallery3d.util.PlaitBars.actionTile(activity, icon,
++                activity.getString(description), false, null);
+     }
+ 
+     @Override
+diff --git a/src/com/android/gallery3d/util/PlaitBars.java b/src/com/android/gallery3d/util/PlaitBars.java
+new file mode 100644
+index 0000000..dcad4a6
+--- /dev/null
++++ b/src/com/android/gallery3d/util/PlaitBars.java
+@@ -0,0 +1,142 @@
++/*
++ * SPDX-FileCopyrightText: PlaitOS
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.android.gallery3d.util;
++
++import android.content.Context;
++import android.content.res.ColorStateList;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.RippleDrawable;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.ImageButton;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import com.android.gallery3d.R;
++
++/**
++ * PlaitOS: one look for every bottom bar in the Gallery, from the Plait design guide
++ * (plait-design PlaitNavigationBar / PlaitNavItem / TonalTile). All bars sit on surfaceContainerLow
++ * with no divider, 80 dp tall.
++ * <ul>
++ * <li>Sections (library tabs, the editor's Looks / Tools / Export): a 24 dp icon in a 64 x 32 pill,
++ * the selected one tinted with the accent (16 %), its icon in the accent; a 12 sp label.</li>
++ * <li>Actions (photo viewer, editor tool bar): 40 dp tonal tiles with 12 dp corners
++ * (primaryContainer); the one main action solid primary.</li>
++ * </ul>
++ */
++public final class PlaitBars {
++    public static final int BAR_HEIGHT_DP = 80;
++    public static final int TILE_DP = 40;
++
++    private PlaitBars() {}
++
++    public static int barColor(Context context) {
++        return context.getColor(R.color.plait_bar);
++    }
++
++    /** The bar itself: surfaceContainerLow, no divider. */
++    public static void styleBar(View bar) {
++        bar.setBackgroundColor(barColor(bar.getContext()));
++    }
++
++    /** A section item (icon in a pill + label); update it with {@link #setSelected}. */
++    public static LinearLayout navItem(Context context, int icon, CharSequence label, boolean selected,
++            View.OnClickListener onClick) {
++        LinearLayout item = new LinearLayout(context);
++        item.setOrientation(LinearLayout.VERTICAL);
++        item.setGravity(Gravity.CENTER);
++        item.setContentDescription(label);
++        item.setFocusable(true);
++        item.setClickable(true);
++        item.setOnClickListener(onClick);
++
++        ImageView image = new ImageView(context);
++        image.setImageResource(icon);
++        image.setScaleType(ImageView.ScaleType.CENTER);
++        item.addView(image, new LinearLayout.LayoutParams(dp(context, 64), dp(context, 32)));
++
++        TextView text = new TextView(context);
++        text.setText(label);
++        text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
++        text.setGravity(Gravity.CENTER);
++        text.setSingleLine();
++        text.setPadding(0, dp(context, 4), 0, 0);
++        item.addView(text, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
++                ViewGroup.LayoutParams.WRAP_CONTENT));
++        setSelected(item, selected);
++        return item;
++    }
++
++    public static void setSelected(LinearLayout item, boolean selected) {
++        Context context = item.getContext();
++        ImageView image = (ImageView) item.getChildAt(0);
++        TextView text = (TextView) item.getChildAt(1);
++        int accent = context.getColor(R.color.plait_editor_accent);
++        int icon = selected ? accent : context.getColor(R.color.plait_bar_icon);
++        image.setImageTintList(ColorStateList.valueOf(icon));
++        GradientDrawable pill = new GradientDrawable();
++        pill.setCornerRadius(dp(context, 16));
++        pill.setColor(selected ? (accent & 0xffffff) | 0x29000000 : 0);
++        image.setBackground(new RippleDrawable(ColorStateList.valueOf(
++                (accent & 0xffffff) | 0x29000000), pill, roundMask(context, 16)));
++        text.setTextColor(context.getColor(selected ? R.color.plait_bar_label_selected
++                : R.color.plait_bar_icon));
++        text.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT,
++                selected ? 600 : 500, false));
++        item.setSelected(selected);
++    }
++
++    /** An action tile: tonal (primaryContainer), or solid primary for the one main action. */
++    public static ImageButton actionTile(Context context, int icon, CharSequence description,
++            boolean main, View.OnClickListener onClick) {
++        ImageButton button = new ImageButton(context);
++        styleActionTile(button, icon, main);
++        button.setContentDescription(description);
++        button.setTooltipText(description);
++        if (onClick != null) button.setOnClickListener(onClick);
++        return button;
++    }
++
++    public static void styleActionTile(ImageButton button, int icon, boolean main) {
++        Context context = button.getContext();
++        if (icon != 0) button.setImageResource(icon);
++        int container = context.getColor(main ? R.color.plait_editor_accent : R.color.plait_editor_tone);
++        int content = context.getColor(main ? R.color.plait_on_accent : R.color.plait_editor_on_tone);
++        GradientDrawable tile = new GradientDrawable();
++        tile.setCornerRadius(dp(context, 12));
++        tile.setColor(container);
++        RippleDrawable ripple = new RippleDrawable(
++                ColorStateList.valueOf((content & 0xffffff) | 0x33000000), tile, null);
++        // The tile is 40 dp inside a 48 dp touch target
++        android.graphics.drawable.InsetDrawable inset = new android.graphics.drawable.InsetDrawable(
++                ripple, dp(context, 4));
++        button.setBackground(inset);
++        button.setImageTintList(ColorStateList.valueOf(content));
++        button.setScaleType(ImageView.ScaleType.CENTER);
++        button.setPadding(0, 0, 0, 0);
++    }
++
++    /** Layout params for an action tile's 48 dp touch target. */
++    public static LinearLayout.LayoutParams tileParams(Context context) {
++        return new LinearLayout.LayoutParams(dp(context, 48), dp(context, 48));
++    }
++
++    private static Drawable roundMask(Context context, int radiusDp) {
++        GradientDrawable mask = new GradientDrawable();
++        mask.setCornerRadius(dp(context, radiusDp));
++        mask.setColor(0xffffffff);
++        return mask;
++    }
++
++    public static int dp(Context context, int value) {
++        return Math.round(value * context.getResources().getDisplayMetrics().density);
++    }
++}
+-- 
+2.56.1
+
